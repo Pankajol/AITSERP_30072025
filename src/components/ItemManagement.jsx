@@ -780,26 +780,57 @@ useEffect(() => {
 
 
   // Generate item code for new items
+// const generateItemCode = async () => {
+//   try {
+//     const res = await axios.get("/api/lastItemCode");
+//     const lastCode = res.data.lastItemCode || "ITEM000";
+
+//     // Validate code format like ITEM001
+//     if (!/^ITEM\d{3}$/.test(lastCode)) {
+//       throw new Error("No valid items found in the system");
+//     }
+
+//     const lastNumber = parseInt(lastCode.slice(4), 10) || 0; // get the number part
+//     const newNumber = lastNumber + 1;
+//     const generatedCode = `ITEM${newNumber.toString().padStart(3, "0")}`;
+
+//     setItemDetails(prev => ({ ...prev, itemCode: generatedCode }));
+//   } catch (error) {
+//     console.error("Failed to generate code:", error.message);
+//     setItemDetails(prev => ({ ...prev, itemCode: "ITEM000" }));
+//   }
+// };
+
+
 const generateItemCode = async () => {
   try {
-    const res = await axios.get("/api/lastItemCode");
+    const token = localStorage.getItem("token"); // Or however you're storing the JWT
+
+    const res = await axios.get("/api/lastItemCode", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
     const lastCode = res.data.lastItemCode || "ITEM000";
+    const num = parseInt(lastCode.split("-")[1] || "0", 10) + 1;
 
-    // Validate code format like ITEM001
-    if (!/^ITEM\d{3}$/.test(lastCode)) {
-      throw new Error("No valid items found in the system");
-    }
+    // Ensure the format is like "ITEM000"
+    // if (!/^ITEM\d{3}$/.test(lastCode)) {
+    //   throw new Error("Invalid item code format");
+    // }
 
-    const lastNumber = parseInt(lastCode.slice(4), 10) || 0; // get the number part
-    const newNumber = lastNumber + 1;
-    const generatedCode = `ITEM${newNumber.toString().padStart(3, "0")}`;
+    // const lastNumber = parseInt(lastCode.slice(4), 10) || 0;
+    // const newNumber = lastNumber + 1;
+    // const generatedCode = `ITEM${newNumber.toString().padStart(3, "0")}`;
 
-    setItemDetails(prev => ({ ...prev, itemCode: generatedCode }));
+    setItemDetails(prev => ({ ...prev, itemCode: `ITEM${num.toString().padStart(4, "0")}` }));
   } catch (error) {
-    console.error("Failed to generate code:", error.message);
-    setItemDetails(prev => ({ ...prev, itemCode: "ITEM000" }));
+    console.error("Failed to generate item code:", error.message);
+    // setItemDetails(prev => ({ ...prev, itemCode: `ITEM-${num.toString().padStart(4, "0")}` }));
   }
 };
+
 
 
   // Handle form field changes

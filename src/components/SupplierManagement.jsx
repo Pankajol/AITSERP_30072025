@@ -343,13 +343,36 @@ useEffect(() => {
 
 
 
-  const generateSupplierCode = async () => {
-    try {
-      const { data } = await axios.get("/api/lastSupplierCode");
-      const num = parseInt(data.lastSupplierCode.split("-")[1] || "0", 10) + 1;
-      setSupplierDetails(prev => ({ ...prev, supplierCode: `SUPP-${num.toString().padStart(4, "0")}` }));
-    } catch {}
-  };
+const generateSupplierCode = async () => {
+  try {
+    const token = localStorage.getItem("token"); // Make sure this is how you store your token
+
+    const response = await axios.get("/api/lastSupplierCode", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const lastCode = response.data.lastSupplierCode || "SUPP-0000";
+    const num = parseInt(lastCode.split("-")[1] || "0", 10) + 1;
+
+    setSupplierDetails(prev => ({
+      ...prev,
+      supplierCode: `SUPP-${num.toString().padStart(4, "0")}`,
+    }));
+  } catch (err) {
+    console.error("Error generating supplier code:", err);
+  }
+};
+
+
+  // const generateSupplierCode = async () => {
+  //   try {
+  //     const { data } = await axios.get("/api/lastSupplierCode");
+  //     const num = parseInt(data.lastSupplierCode.split("-")[1] || "0", 10) + 1;
+  //     setSupplierDetails(prev => ({ ...prev, supplierCode: `SUPP-${num.toString().padStart(4, "0")}` }));
+  //   } catch {}
+  // };
 
   const handleChange = e => {
     const { name, value } = e.target;

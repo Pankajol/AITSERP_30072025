@@ -740,19 +740,45 @@ useEffect(() => {
   fetchCustomers();
 }, []);
 
+const generateCustomerCode = async () => {
+  try {
+    const token = localStorage.getItem("token"); // Or however you store it
+
+    const res = await fetch("/api/lastCustomerCode", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch last customer code");
+    }
+
+    const { lastCustomerCode } = await res.json();
+    const num = parseInt(lastCustomerCode.split("-")[1], 10) + 1;
+
+    setCustomerDetails(prev => ({
+      ...prev,
+      customerCode: `CUST-${num.toString().padStart(4, "0")}`,
+    }));
+  } catch (err) {
+    console.error("Error generating customer code:", err);
+  }
+};
 
 
-  const generateCustomerCode = async () => {
-    try {
-      const res = await fetch("/api/lastCustomerCode");
-      const { lastCustomerCode } = await res.json();
-      const num = parseInt(lastCustomerCode.split("-")[1], 10) + 1;
-      setCustomerDetails(prev => ({
-        ...prev,
-        customerCode: `CUST-${num.toString().padStart(4, "0")}`,
-      }));
-    } catch {}
-  };
+  // const generateCustomerCode = async () => {
+  //   try {
+  //     const res = await fetch("/api/lastCustomerCode");
+  //     const { lastCustomerCode } = await res.json();
+  //     const num = parseInt(lastCustomerCode.split("-")[1], 10) + 1;
+  //     setCustomerDetails(prev => ({
+  //       ...prev,
+  //       customerCode: `CUST-${num.toString().padStart(4, "0")}`,
+  //     }));
+  //   } catch {}
+  // };
 
   const handleChange = e => {
     const { name, value } = e.target;
