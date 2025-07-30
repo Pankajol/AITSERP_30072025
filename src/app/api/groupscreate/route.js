@@ -51,6 +51,47 @@ export async function GET(req) {
   }
 }
 
+export async function POST(req) {
+  await dbConnect();
+
+  const { user, error, status } = await authenticate(req);
+  if (error) {
+    return NextResponse.json({ success: false, message: error }, { status });
+  }
+
+  try {
+    const body = await req.json();
+    const { name, description } = body;
+
+    if (!name) {
+      return NextResponse.json(
+        { success: false, message: "Name is required" },
+        { status: 400 }
+      );
+    }
+
+    const newGroup = new Group({
+      name,
+      description,
+      companyId: user.companyId, // associate with user's company
+    });
+
+    await newGroup.save();
+
+    return NextResponse.json(
+      { success:"true", message: "Group created successfully", data: newGroup },
+      { status: 201 }
+    );
+  } catch (err) {
+    console.error("POST Error:", err.message);
+    return NextResponse.json(
+      { success: false, message: "Error creating group" },
+      { status: 500 }
+    );
+  }
+}
+
+
 
 
 
