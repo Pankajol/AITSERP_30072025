@@ -93,7 +93,7 @@ export default function AdminSidebar({ children }) {
             <Item href="/admin/CreateGroup" icon={<HiUserGroup />} label="Create Group" close={closeSidebar} />
             <Item href="/admin/CreateItemGroup" icon={<HiOutlineCube />} label="Create Item Group" close={closeSidebar} />
             <Item href="/admin/account-bankhead" icon={<HiOutlineLibrary />} label="Account Head" close={closeSidebar} />
-            <Item href="/admin/bank-head-details" icon={<HiCurrencyDollar />} label="Bank Head" close={closeSidebar} />
+            <Item href="/admin/bank-head-details" icon={<HiCurrencyDollar />} label="Genral Ledger" close={closeSidebar} />
           </Section>
 
           {/* Masters View ------------------------------------------------ */}
@@ -102,7 +102,7 @@ export default function AdminSidebar({ children }) {
             <Item href="/admin/supplier" icon={<HiUserGroup />} label="Supplier View" close={closeSidebar} />
             <Item href="/admin/item" icon={<HiCube />} label="Item View" close={closeSidebar} />
             <Item href="/admin/account-head-view" icon={<HiOutlineLibrary />} label="Account Head View" close={closeSidebar} />
-            <Item href="/admin/bank-head-details-view" icon={<HiCurrencyDollar />} label="Bank Head View" close={closeSidebar} />
+            <Item href="/admin/bank-head-details-view" icon={<HiCurrencyDollar />} label="Genral Ledger View" close={closeSidebar} />
           </Section>
 
           {/* Transactions ------------------------------------------------ */}
