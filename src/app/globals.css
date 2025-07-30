@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #535252;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #535252;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+}
+
+.label {
+  @apply block text-gray-700 font-medium mb-2;
+}
+
+.btn-primary {
+  @apply bg-amber-500 text-white px-6 py-2 rounded-lg hover:bg-amber-700 transition shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition shadow-md;
+}
+/* Hide spinner controls in Chrome, Safari, Edge, and Opera */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Hide spinner controls in Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+@media print {
+  body, html {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    width: 210mm;
+    height: auto;
+  }
+
+  .invoice-box {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 20mm;
+    box-shadow: none;
+  }
+
+  .no-print, nav, header, aside, footer {
+    display: none !important;
+  }
+}
+
+.page-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #f3f4f6; /* Light gray for screen preview */
+  padding: 20px;
+}
+
+.invoice-box {
+  background: white;
+  width: 210mm;          /* A4 width */
+  min-height: 297mm;     /* A4 height */
+  padding: 20mm;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  color: black;
+  font-family: Arial, sans-serif;
+}
+
+/* ✅ Screen preview layout */
+.print-layout {
+  display: flex;
+  justify-content: center;
+  align-items: start;
+  min-height: 100vh;
+  padding: 2rem;
+  background: #f3f4f6;
+  box-sizing: border-box;
+}
+
+/* ✅ A4 invoice size */
+.invoice-sheet {
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
+
+/* ✅ Clean print layout */
+@media print {
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 210mm;
+    height: auto;
+    background: white !important;
+  }
+
+  .print-layout {
+    display: block;
+    padding: 0;
+    margin: 0;
+    background: white;
+  }
+
+  .invoice-sheet {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 20mm;
+    margin: 0 auto;
+    box-shadow: none !important;
+    page-break-after: avoid;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+    .invoice-sheet {
+    margin: 0 auto !important;
+    width: 210mm !important;
+  }
+
+  .print-layout {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  header, nav, aside {
+    display: none !important;
+    width: 0 !important;
+  }
+}

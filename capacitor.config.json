@@ -1,0 +1,9 @@
+{
+  "appId": "com.pankajal.importexport",
+  "appName": "ImportExportSystem",
+  "webDir": "empty",
+  "server": {
+    "url": "https://aitserp.vercel.app/",
+    "cleartext": true
+  }
+}
