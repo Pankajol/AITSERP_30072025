@@ -45,19 +45,24 @@ export async function GET(req) {
       return NextResponse.json({ success: false, message: "Country is required" }, { status: 400 });
     }
 
-    // ✅ Find country by code OR name
+    // ✅ Find country by code or name AND companyId
     const country = await Country.findOne({
-      $or: [{ code: countryParam }, { name: new RegExp(`^${countryParam}$`, "i") }],
+      companyId: user.companyId,
+      $or: [
+        { code: countryParam.toUpperCase() },
+        { name: new RegExp(`^${countryParam}$`, "i") },
+      ],
     });
 
     if (!country) {
       return NextResponse.json({ success: false, message: "Country not found" }, { status: 404 });
     }
 
-    // ✅ Fetch states for the country with optional search filter
+    // ✅ Fetch states for the country and company with optional search filter
     const states = await State.find({
+      companyId: user.companyId,
       country: country._id,
-      name: { $regex: search, $options: "i" }, // search by name if provided
+      name: { $regex: search, $options: "i" },
     }).sort({ name: 1 });
 
     return NextResponse.json({ success: true, data: states }, { status: 200 });
@@ -66,6 +71,7 @@ export async function GET(req) {
     return NextResponse.json({ success: false, message: "Failed to fetch states" }, { status: 500 });
   }
 }
+
 
 /* ========================================
    ✏️ POST /api/states

@@ -25,7 +25,7 @@ export async function GET(req) {
       .sort({ itemCode: -1 })
       .limit(1);
 
-    const lastItemCode = lastItem?.itemCode || "ITEM-000";
+    const lastItemCode = lastItem?.itemCode || "ITEM-0000";
 
     return NextResponse.json({ lastItemCode });
   } catch (error) {

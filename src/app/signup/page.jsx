@@ -123,7 +123,7 @@ export default function CompanyRegister() {
           {/* row 3 */}
           <div className="flex flex-col md:flex-row md:space-x-4">
             <Input
-              label="GST Number (optional)"
+              label="GST Number"
               id="gstNumber"
               value={formData.gstNumber}
               error={errors.gstNumber}

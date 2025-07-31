@@ -812,7 +812,7 @@ const generateItemCode = async () => {
       },
     });
 
-    const lastCode = res.data.lastItemCode || "ITEM000";
+    const lastCode = res.data.lastItemCode || "ITEM-0000";
     const num = parseInt(lastCode.split("-")[1] || "0", 10) + 1;
 
     // Ensure the format is like "ITEM000"
@@ -824,7 +824,7 @@ const generateItemCode = async () => {
     // const newNumber = lastNumber + 1;
     // const generatedCode = `ITEM${newNumber.toString().padStart(3, "0")}`;
 
-    setItemDetails(prev => ({ ...prev, itemCode: `ITEM${num.toString().padStart(4, "0")}` }));
+    setItemDetails(prev => ({ ...prev, itemCode: `ITEM-${num.toString().padStart(4, "0")}` }));
   } catch (error) {
     console.error("Failed to generate item code:", error.message);
     // setItemDetails(prev => ({ ...prev, itemCode: `ITEM-${num.toString().padStart(4, "0")}` }));

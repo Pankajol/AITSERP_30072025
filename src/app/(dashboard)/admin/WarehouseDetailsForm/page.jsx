@@ -61,13 +61,23 @@ const WarehouseDetailsForm = () => {
     });
   };
 
-  const handleSelectCountry = (country) => {
-    setFormData({ ...formData, country, state: "" });
-  };
+const handleSelectCountry = (country) => {
+  setFormData((prev) => ({
+    ...prev,
+    country: country?._id || "",
+    state: "", // reset state if country changes
+  }));
+};
 
-  const handleSelectState = (state) => {
-    setFormData({ ...formData, state });
-  };
+const handleSelectState = (state) => {
+  setFormData((prev) => ({
+    ...prev,
+    state: state?._id || "",
+  }));
+};
+
+
+
 
   const validateForm = () => {
     const newErrors = {};
@@ -161,12 +171,21 @@ const WarehouseDetailsForm = () => {
         {/* ✅ Country & State */}
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700">Country & State</label>
-          <CountryStateSearch
+          {/* <CountryStateSearch
             selectedCountry={formData.country}
             selectedState={formData.state}
             onSelectCountry={handleSelectCountry}
             onSelectState={handleSelectState}
-          />
+          /> */}
+
+            <CountryStateSearch
+  valueCountry={formData.country}
+  valueState={formData.state}
+  onSelectCountry={handleSelectCountry}
+  onSelectState={handleSelectState}
+/>
+
+                    
           {errors.country && <span className="text-red-500 text-sm">{errors.country}</span>}
           {errors.state && <span className="text-red-500 text-sm">{errors.state}</span>}
         </div>
