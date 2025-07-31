@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
 const CountrySchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
