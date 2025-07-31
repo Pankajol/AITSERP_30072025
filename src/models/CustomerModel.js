@@ -222,7 +222,7 @@ const customerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     uppercase: true,
-    match: [/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GST format"]
+    // match: [/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, "Invalid GST format"]
   },
   gstCategory: {
     type: String,
@@ -245,7 +245,7 @@ const customerSchema = new mongoose.Schema({
     required: [true, "PAN is required"],
     trim: true,
     uppercase: true,
-    match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, "Invalid PAN format"]
+    // match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, "Invalid PAN format"]
   },
   contactPersonName: { type: String, trim: true },
   commissionRate: { type: String, trim: true },
