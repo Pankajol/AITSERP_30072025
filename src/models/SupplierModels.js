@@ -20,7 +20,7 @@ const SupplierSchema = new mongoose.Schema({
   supplierCode: {
     type: String,
     required: [true, "Supplier code is required"],
-    unique: true,
+
     trim: true,
     uppercase: true
   },

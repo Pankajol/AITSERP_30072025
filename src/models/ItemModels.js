@@ -11,7 +11,7 @@ const ItemSchema = new mongoose.Schema(
   {
     companyId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
     createdBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },
-    itemCode: { type: String, required: true, unique: true },
+    itemCode: { type: String, required: true,  },
     itemName: { type: String, required: true },
     description: { type: String },
     category: { type: String, required: true },
