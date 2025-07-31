@@ -6,12 +6,12 @@ const stateSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "CompanyUser" },
   name: {
     type: String,
-    required: true,
+   
   },
   code: {
     type: String,
     required: true,
-    unique: true,
+   
   },
   country: {
     type: mongoose.Schema.Types.ObjectId,
