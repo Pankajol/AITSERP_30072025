@@ -184,7 +184,7 @@ const customerSchema = new mongoose.Schema({
 
   customerCode: {
     type: String,
-    unique: true,
+   
     trim: true,
     uppercase: true
   },
@@ -206,7 +206,7 @@ const customerSchema = new mongoose.Schema({
   },
   emailId: {
     type: String,
-    required: true,
+   
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
   },
   fromLead: { type: String, trim: true },
