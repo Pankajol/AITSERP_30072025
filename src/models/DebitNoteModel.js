@@ -133,7 +133,7 @@ const DebitNoteSchema = new mongoose.Schema({
   supplierCode:    { type: String },
   supplierName:    { type: String },
   supplierContact: { type: String },                    // no longer required
-  documentNumberDebitNote: { type: String, unique: true }, // Unique document number for the debit note
+  documentNumberDebitNote: { type: String, required: true }, // Unique document number for the debit note
   refNumber:    { type: String },
   salesEmployee:{ type: String },
 
@@ -172,48 +172,54 @@ const DebitNoteSchema = new mongoose.Schema({
   createdAt:    { type: Date,    default: Date.now },
 },   
   { timestamps: true });
-  DebitNoteSchema.pre("save", async function (next) {
-    if (this.documentNumberDebitNote) return next();
-    try {
-      const key = `DebitNote${this.companyId}`;
-   const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
+
+
+DebitNoteSchema.index({ companyId: 1, documentNumberDebitNote: 1 }, { unique: true });
+
+
+
+//   DebitNoteSchema.pre("save", async function (next) {
+//     if (this.documentNumberDebitNote) return next();
+//     try {
+//       const key = `DebitNote${this.companyId}`;
+//    const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
   
-      const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+//       const now = new Date();
+//   const currentYear = now.getFullYear();
+//   const currentMonth = now.getMonth() + 1;
   
-  // Calculate financial year
-  let fyStart = currentYear;
-  let fyEnd = currentYear + 1;
+//   // Calculate financial year
+//   let fyStart = currentYear;
+//   let fyEnd = currentYear + 1;
   
-  if (currentMonth < 4) {
-    // Jan–Mar => part of previous FY
-    fyStart = currentYear - 1;
-    fyEnd = currentYear;
-  }
+//   if (currentMonth < 4) {
+//     // Jan–Mar => part of previous FY
+//     fyStart = currentYear - 1;
+//     fyEnd = currentYear;
+//   }
   
-  const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+//   const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
   
-  // Assuming `counter.seq` is your sequence number (e.g., 30)
-  const paddedSeq = String(counter.seq).padStart(5, '0');
+//   // Assuming `counter.seq` is your sequence number (e.g., 30)
+//   const paddedSeq = String(counter.seq).padStart(5, '0');
   
-  // Generate final sales order number
-  this.documentNumberDebitNote = `DN-/${financialYear}/${paddedSeq}`;
+//   // Generate final sales order number
+//   this.documentNumberDebitNote = `DN-/${financialYear}/${paddedSeq}`;
   
   
    
-      next();
-    } catch (err) {
-      next(err);
-    }
-  });
+//       next();
+//     } catch (err) {
+//       next(err);
+//     }
+//   });
 
 
 

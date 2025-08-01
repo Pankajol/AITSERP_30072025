@@ -149,7 +149,7 @@ function Table({ invoices, onDelete, onCopy }) {
     <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
       <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
         <tr>
-          {['#', 'Invoice No.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
+          {['#', 'Documents No.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
             <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100">
               {h}
             </th>
@@ -160,7 +160,7 @@ function Table({ invoices, onDelete, onCopy }) {
         {invoices.map((inv, i) => (
           <tr key={inv._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{inv.invoiceNumber || inv.refNumber}</td>
+            <td className="px-4 py-3">{inv.invoiceNumber }</td>
             <td className="px-4 py-3">{inv.customerName}</td>
             <td className="px-4 py-3">{new Date(inv.orderDate || inv.postingDate).toLocaleDateString('en-GB')}</td>
             <td className="px-4 py-3">{inv.status}</td>
@@ -190,7 +190,7 @@ function Card({ invoice, idx, onDelete, onCopy }) {
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {invoice.invoiceNumber || invoice.refNumber}
+          #{idx + 1} • {invoice.invoiceNumber}
         </div>
         <RowMenu invoice={invoice} onDelete={onDelete} onCopy={onCopy} isMobile />
       </div>

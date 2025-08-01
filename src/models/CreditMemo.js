@@ -52,7 +52,7 @@ const CreditNoteSchema = new mongoose.Schema({
   postingDate: { type: Date },
   validUntil: { type: Date },
   documentDate: { type: Date },
-  documentNumberCreditNote: { type: String, unique: true },
+  documentNumberCreditNote: { type: String, required: true },
   paymentTerms: { type: String },
   items: [ItemSchema],
   remarks: { type: String },
@@ -75,48 +75,51 @@ const CreditNoteSchema = new mongoose.Schema({
 },
   { timestamps: true });
 
-CreditNoteSchema.pre("save", async function (next) {
-    if (this.documentNumberCreditNote) return next();
-    try {
-      const key = `CreditNote${this.companyId}`;
-  const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
+CreditNoteSchema.index({ documentNumberCreditNote: 1, companyId: 1 }, { unique: true });
   
-      const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
+
+// CreditNoteSchema.pre("save", async function (next) {
+//     if (this.documentNumberCreditNote) return next();
+//     try {
+//       const key = `CreditNote${this.companyId}`;
+//   const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
   
-  // Calculate financial year
-  let fyStart = currentYear;
-  let fyEnd = currentYear + 1;
+//       const now = new Date();
+//   const currentYear = now.getFullYear();
+//   const currentMonth = now.getMonth() + 1;
   
-  if (currentMonth < 4) {
-    // Jan–Mar => part of previous FY
-    fyStart = currentYear - 1;
-    fyEnd = currentYear;
-  }
+//   // Calculate financial year
+//   let fyStart = currentYear;
+//   let fyEnd = currentYear + 1;
   
-  const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+//   if (currentMonth < 4) {
+//     // Jan–Mar => part of previous FY
+//     fyStart = currentYear - 1;
+//     fyEnd = currentYear;
+//   }
   
-  // Assuming `counter.seq` is your sequence number (e.g., 30)
-  const paddedSeq = String(counter.seq).padStart(5, '0');
+//   const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
   
-  // Generate final sales order number
-  this.documentNumberCreditNote = `DN-/${financialYear}/${paddedSeq}`;
+//   // Assuming `counter.seq` is your sequence number (e.g., 30)
+//   const paddedSeq = String(counter.seq).padStart(5, '0');
+  
+//   // Generate final sales order number
+//   this.documentNumberCreditNote = `DN-/${financialYear}/${paddedSeq}`;
   
   
    
-      next();
-    } catch (err) {
-      next(err);
-    }
-  });
+//       next();
+//     } catch (err) {
+//       next(err);
+//     }
+//   });
 
 
 export default mongoose.models.CreditNote || mongoose.model("CreditNote", CreditNoteSchema);

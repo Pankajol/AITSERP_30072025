@@ -6,6 +6,7 @@ import { v2 as cloudinary } from "cloudinary";
 import dbConnect from "@/lib/db";
 import PurchaseQuotation from "@/models/PurchaseQuotationModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import Counter from "@/models/Counter";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -16,9 +17,10 @@ cloudinary.config({
 export const config = { api: { bodyParser: false } };
 
 export async function POST(req) {
-  try {
-    await dbConnect();
+  await dbConnect();
+  const session = await mongoose.startSession();
 
+  try {
     const token = getTokenFromHeader(req);
     if (!token) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
@@ -37,6 +39,7 @@ export async function POST(req) {
     if (!jsonData.supplier || !mongoose.isValidObjectId(jsonData.supplier)) {
       return NextResponse.json({ success: false, error: "Valid supplier ID required" }, { status: 422 });
     }
+
     if (!Array.isArray(jsonData.items) || jsonData.items.length === 0) {
       return NextResponse.json({ success: false, error: "At least one item is required" }, { status: 422 });
     }
@@ -63,14 +66,56 @@ export async function POST(req) {
 
     const finalAttachments = [...(jsonData.existingFiles || []), ...uploadedFiles];
 
-    // ✅ Save in DB
-    const quotation = await PurchaseQuotation.create({
-      ...jsonData,
-      companyId,
-      attachments: finalAttachments,
-    });
+    // ✅ Begin transaction to safely generate document number
+    session.startTransaction();
 
-    const populatedQuotation = await PurchaseQuotation.findById(quotation._id)
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    let fyStart = currentYear;
+    let fyEnd = currentYear + 1;
+
+    if (currentMonth < 4) {
+      fyStart = currentYear - 1;
+      fyEnd = currentYear;
+    }
+
+    const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+    const key = `PurchaseQuatation`;
+
+    // ✅ Get or create counter per company
+    let counter = await Counter.findOne({ id: key, companyId }).session(session);
+
+    if (!counter) {
+      const [createdCounter] = await Counter.create(
+        [{ id: key, companyId, seq: 1 }],
+        { session }
+      );
+      counter = createdCounter;
+    } else {
+      counter.seq += 1;
+      await counter.save({ session });
+    }
+
+    const paddedSeq = String(counter.seq).padStart(5, "0");
+    const documentNumber = `PURCH-QUA/${financialYear}/${paddedSeq}`;
+
+    jsonData.documentNumber = documentNumber;
+
+    // ✅ Save the quotation in DB inside the transaction
+    const quotation = await PurchaseQuotation.create(
+      [{
+        ...jsonData,
+        companyId,
+        attachments: finalAttachments,
+      }],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const populatedQuotation = await PurchaseQuotation.findById(quotation[0]._id)
       .populate("supplier", "supplierCode supplierName contactPerson")
       .populate("items.item", "itemCode itemName unitPrice");
 
@@ -78,7 +123,10 @@ export async function POST(req) {
       { success: true, data: populatedQuotation, message: "Purchase Quotation created successfully" },
       { status: 201 }
     );
+
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("POST /api/purchase-quotation error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

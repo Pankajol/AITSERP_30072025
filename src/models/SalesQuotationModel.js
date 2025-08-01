@@ -48,7 +48,7 @@ const SalesQuotationSchema = new mongoose.Schema(
     postingDate: { type: Date },
     validUntil: { type: Date },
     documentDate: { type: Date },
-    documentNumberQuatation: { type: String ,unique:true},
+    documentNumberQuatation: { type: String ,required:true },
 
     items: [ItemSchema],
     salesEmployee: { type: String },
@@ -75,48 +75,52 @@ const SalesQuotationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-SalesQuotationSchema.pre("save", async function (next) {
-  if (this.documentNumberQuatation) return next();
-  try {
-    const key = `salesQuatation${this.companyId}`;
-    const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
 
-    const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
-
-// Calculate financial year
-let fyStart = currentYear;
-let fyEnd = currentYear + 1;
-
-if (currentMonth < 4) {
-  // Jan–Mar => part of previous FY
-  fyStart = currentYear - 1;
-  fyEnd = currentYear;
-}
-
-const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
-
-// Assuming `counter.seq` is your sequence number (e.g., 30)
-const paddedSeq = String(counter.seq).padStart(5, '0');
-
-// Generate final sales order number
-this.documentNumberQuatation = `Sal-QUA/${financialYear}/${paddedSeq}`;
+ SalesQuotationSchema.index({ documentNumberQuatation: 1, companyId: 1 }, { unique: true });
 
 
-    // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+// SalesQuotationSchema.pre("save", async function (next) {
+//   if (this.documentNumberQuatation) return next();
+//   try {
+//     const key = `salesQuatation${this.companyId}`;
+//     const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
+
+//     const now = new Date();
+// const currentYear = now.getFullYear();
+// const currentMonth = now.getMonth() + 1;
+
+// // Calculate financial year
+// let fyStart = currentYear;
+// let fyEnd = currentYear + 1;
+
+// if (currentMonth < 4) {
+//   // Jan–Mar => part of previous FY
+//   fyStart = currentYear - 1;
+//   fyEnd = currentYear;
+// }
+
+// const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+
+// // Assuming `counter.seq` is your sequence number (e.g., 30)
+// const paddedSeq = String(counter.seq).padStart(5, '0');
+
+// // Generate final sales order number
+// this.documentNumberQuatation = `Sal-QUA/${financialYear}/${paddedSeq}`;
+
+
+//     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
+//     next();
+//   } catch (err) {
+//     next(err);
+//   }
+// });
 
 export default mongoose.models.SalesQuotation ||
   mongoose.model("SalesQuotation", SalesQuotationSchema);

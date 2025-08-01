@@ -66,7 +66,7 @@ const GRNSchema = new mongoose.Schema({
   supplierName: { type: String },
   contactPerson: { type: String },
   refNumber: { type: String },
-   documentNumberGrn: { type: String, unique: true },
+   documentNumberGrn: { type: String, required: true},
   status: { type: String, default: 'Received' },
   postingDate: { type: Date },
   validUntil: { type: Date },
@@ -90,50 +90,51 @@ const GRNSchema = new mongoose.Schema({
     ],
 }, { timestamps: true });
 
+GRNSchema.index({ companyId: 1, documentNumberGrn: 1 }, { unique: true });
 
 
-GRNSchema.pre("save", async function (next) {
-  if (this.documentNumberGrn) return next();
-  try {
-    const key = `GRN${this.companyId}`;
-  const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
+// GRNSchema.pre("save", async function (next) {
+//   if (this.documentNumberGrn) return next();
+//   try {
+//     const key = `GRN${this.companyId}`;
+//   const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
 
-    const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
+//     const now = new Date();
+// const currentYear = now.getFullYear();
+// const currentMonth = now.getMonth() + 1;
 
-// Calculate financial year
-let fyStart = currentYear;
-let fyEnd = currentYear + 1;
+// // Calculate financial year
+// let fyStart = currentYear;
+// let fyEnd = currentYear + 1;
 
-if (currentMonth < 4) {
-  // Jan–Mar => part of previous FY
-  fyStart = currentYear - 1;
-  fyEnd = currentYear;
-}
+// if (currentMonth < 4) {
+//   // Jan–Mar => part of previous FY
+//   fyStart = currentYear - 1;
+//   fyEnd = currentYear;
+// }
 
-const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+// const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
 
-// Assuming `counter.seq` is your sequence number (e.g., 30)
-const paddedSeq = String(counter.seq).padStart(5, '0');
+// // Assuming `counter.seq` is your sequence number (e.g., 30)
+// const paddedSeq = String(counter.seq).padStart(5, '0');
 
-// Generate final sales order number
-this.documentNumberGrn = `GRN/${financialYear}/${paddedSeq}`;
+// // Generate final sales order number
+// this.documentNumberGrn = `GRN/${financialYear}/${paddedSeq}`;
 
 
-    // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+//     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
+//     next();
+//   } catch (err) {
+//     next(err);
+//   }
+// });
 
 
 // Export model

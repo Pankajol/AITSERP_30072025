@@ -13,6 +13,7 @@ import GRN from "@/models/grnModels"; // Assuming your GRN model
 import Inventory from "@/models/Inventory";
 import StockMovement from "@/models/StockMovement";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth"; // Your auth helpers
+import Counter from "@/models/Counter";
 
 export const dynamic = 'force-dynamic';
 
@@ -220,62 +221,91 @@ export async function POST(req) {
   session.startTransaction();
 
   try {
+    // ✅ 1. Auth
     const token = getTokenFromHeader(req);
-    if (!token) {
-      await session.abortTransaction();
-      session.endSession();
-      return NextResponse.json({ success: false, error: "Unauthorized: No token provided" }, { status: 401 });
-    }
-    const decoded = verifyJWT(token);
-    if (!decoded || !decoded.companyId) {
-      await session.abortTransaction();
-      session.endSession();
-      return NextResponse.json({ success: false, error: "Unauthorized: Invalid token payload" }, { status: 401 });
-    }
+    if (!token) throw new Error("Unauthorized: No token provided");
 
+    const decoded = verifyJWT(token);
+    const companyId = decoded?.companyId;
+    if (!companyId) throw new Error("Unauthorized: Invalid token payload");
+
+    // ✅ 2. Parse form
     const { fields, files } = await parseForm(req);
-    
     const grnData = JSON.parse(fields.grnData || "{}");
     const removedFilesPublicIds = JSON.parse(fields.removedFiles || "[]");
     const existingFilesMetadata = JSON.parse(fields.existingFiles || "[]");
 
-    grnData.companyId = decoded.companyId;
+    if (!Array.isArray(grnData.items) || grnData.items.length === 0) {
+      throw new Error("Invalid GRN data: Missing items or invalid structure.");
+    }
+
+    grnData.companyId = companyId;
     delete grnData._id;
 
-    const newUploadedFiles = await uploadFiles(files.newAttachments || [], "grn-attachments", decoded.companyId);
+    // ✅ 3. Upload files
+    const newUploadedFiles = await uploadFiles(files.newAttachments || [], "grn-attachments", companyId);
 
     grnData.attachments = [
-      ...(Array.isArray(existingFilesMetadata) ? existingFilesMetadata.filter(f => !removedFilesPublicIds.includes(f.publicId)) : []),
+      ...(existingFilesMetadata.filter(f => !removedFilesPublicIds.includes(f.publicId)) || []),
       ...newUploadedFiles,
     ];
 
     await deleteFilesByPublicIds(removedFilesPublicIds);
 
-    if (!grnData || !Array.isArray(grnData.items) || grnData.items.length === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return NextResponse.json({ success: false, error: "Invalid GRN data: Missing items or invalid structure." }, { status: 400 });
+    // ✅ 4. Generate GRN document number per company
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    let fyStart = currentYear;
+    let fyEnd = currentYear + 1;
+    if (currentMonth < 4) {
+      fyStart = currentYear - 1;
+      fyEnd = currentYear;
     }
 
+    const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+    const key = "PurchaseGrn";
+
+    let counter = await Counter.findOne({ id: key, companyId }).session(session);
+    if (!counter) {
+      const [created] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
+      counter = created;
+    } else {
+      counter.seq += 1;
+      await counter.save({ session });
+    }
+
+    const paddedSeq = String(counter.seq).padStart(5, "0");
+    grnData.documentNumberGrn = `PURCH-GRN/${financialYear}/${paddedSeq}`;
+
+    // ✅ 5. Save GRN
     const [grn] = await GRN.create([grnData], { session });
-    console.log("GRN created with _id:", grn._id);
     const fromPO = !!grnData.purchaseOrderId;
-  
+
     for (const item of grnData.items) {
-        await processGrnItem(item, grn._id, decoded, session,fromPO);
+      await processGrnItem(item, grn._id, decoded, session, fromPO);
     }
 
     await session.commitTransaction();
     session.endSession();
 
-    return NextResponse.json({ success: true, message: "GRN created successfully and inventory updated", data: grn }, { status: 201 });
-
+    return NextResponse.json(
+      { success: true, message: "GRN created successfully and inventory updated", data: grn },
+      { status: 201 }
+    );
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("POST /api/grn error:", error.stack || error);
-    const errorMessage = error.message || "Failed to process GRN due to an internal server error.";
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message || "Failed to process GRN due to an internal server error.",
+      },
+      { status: 500 }
+    );
   }
 }
 /**

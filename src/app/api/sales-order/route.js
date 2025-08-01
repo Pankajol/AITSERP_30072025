@@ -8,10 +8,10 @@ import Inventory from '@/models/Inventory';
 import StockMovement from '@/models/StockMovement';
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 import { v2 as cloudinary } from 'cloudinary';
+import Counter from '@/models/Counter';
 
 export const config = { api: { bodyParser: false } };
 
-// ✅ Cloudinary Config
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -20,14 +20,12 @@ cloudinary.config({
 
 const { Types } = mongoose;
 
-// ✅ Authorization Check
 function isAuthorized(user) {
   if (user.type === 'company') return true;
   if (user.role === 'Sales Manager' || user.role === 'Admin') return true;
   return user.permissions?.includes('sales');
 }
 
-// ✅ Convert Next.js request to Node.js stream for formidable
 async function toNodeReq(request) {
   const buf = Buffer.from(await request.arrayBuffer());
   const nodeReq = new Readable({
@@ -42,7 +40,6 @@ async function toNodeReq(request) {
   return nodeReq;
 }
 
-// ✅ Parse multipart form data
 async function parseMultipart(request) {
   const nodeReq = await toNodeReq(request);
   const form = formidable({ multiples: true, keepExtensions: true });
@@ -59,34 +56,24 @@ export async function POST(req) {
   mongoSession.startTransaction();
 
   try {
-    /* 1 — Auth */
     const token = getTokenFromHeader(req);
     if (!token) throw new Error("JWT token missing");
 
     const user = await verifyJWT(token);
     if (!user || !isAuthorized(user)) throw new Error('Forbidden');
 
-    /* 2 — Parse multipart form */
     const { fields, files } = await parseMultipart(req);
     const orderData = JSON.parse(fields.orderData || "{}");
 
-    // Clean old IDs
     delete orderData._id;
     orderData.items?.forEach(i => delete i._id);
     delete orderData.billingAddress?._id;
     delete orderData.shippingAddress?._id;
 
-    /* 3 — Tenant info */
     orderData.companyId = user.companyId;
     if (user.type === 'user') orderData.createdBy = user.id;
 
-    /* 4 — Handle attachments */
-    const fileArray = Array.isArray(files.newFiles)
-      ? files.newFiles
-      : files.newFiles
-      ? [files.newFiles]
-      : [];
-
+    const fileArray = Array.isArray(files.newFiles) ? files.newFiles : files.newFiles ? [files.newFiles] : [];
     const uploadedFiles = await Promise.all(
       fileArray.map(async (file) => {
         const result = await cloudinary.uploader.upload(file.filepath, {
@@ -101,16 +88,34 @@ export async function POST(req) {
         };
       })
     );
+    orderData.attachments = [...(orderData.attachments || []), ...uploadedFiles];
 
-    orderData.attachments = [
-      ...(orderData.attachments || []),
-      ...uploadedFiles,
-    ];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    let fyStart = currentYear;
+    let fyEnd = currentYear + 1;
+    if (currentMonth < 4) {
+      fyStart = currentYear - 1;
+      fyEnd = currentYear;
+    }
+    const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+    const key = "SalesOrder";
 
-    /* 5 — Create order */
+    let counter = await Counter.findOne({ id: key, companyId: user.companyId }).session(mongoSession);
+    if (!counter) {
+      const [created] = await Counter.create([{ id: key, companyId: user.companyId, seq: 1 }], { session: mongoSession });
+      counter = created;
+    } else {
+      counter.seq += 1;
+      await counter.save({ session: mongoSession });
+    }
+
+    const paddedSeq = String(counter.seq).padStart(5, "0");
+    orderData.documentNumberOrder = `SALES-ORD/${financialYear}/${paddedSeq}`;
+
     const [order] = await SalesOrder.create([orderData], { session: mongoSession });
 
-    /* 6 — Reserve inventory with Auto-Create */
     for (const item of orderData.items) {
       const itemId = item.item?._id || item.item;
       const warehouseId = item.warehouse?._id || item.warehouse;
@@ -126,21 +131,11 @@ export async function POST(req) {
 
       if (!inv) {
         [inv] = await Inventory.create(
-          [
-            {
-              item: itemObjId,
-              warehouse: warehouseObjId,
-              quantity: 0,
-              committed: 0,
-              batches: [],
-            },
-          ],
+          [{ item: itemObjId, warehouse: warehouseObjId, quantity: 0, committed: 0, batches: [] }],
           { session: mongoSession }
         );
-        console.log(`✅ Created inventory for item ${itemId} in warehouse ${warehouseId}`);
       }
 
-      // Validate stock
       if (item.batches?.length) {
         for (const alloc of item.batches) {
           const idx = inv.batches.findIndex(b => b.batchNumber === alloc.batchCode);
@@ -152,24 +147,20 @@ export async function POST(req) {
         throw new Error(`Insufficient stock for item ${itemId}`);
       }
 
-      // Reserve inventory
       inv.committed = (inv.committed || 0) + item.quantity;
       await inv.save({ session: mongoSession });
 
-      await StockMovement.create(
-        [
-          {
-            companyId: user.companyId,
-            item: itemObjId,
-            warehouse: warehouseObjId,
-            movementType: 'RESERVE',
-            quantity: item.quantity,
-            reference: order._id,
-            remarks: 'Sales Order reservation',
-          },
-        ],
-        { session: mongoSession }
-      );
+      await StockMovement.create([
+        {
+          companyId: user.companyId,
+          item: itemObjId,
+          warehouse: warehouseObjId,
+          movementType: 'RESERVE',
+          quantity: item.quantity,
+          reference: order._id,
+          remarks: 'Sales Order reservation',
+        },
+      ], { session: mongoSession });
     }
 
     await mongoSession.commitTransaction();

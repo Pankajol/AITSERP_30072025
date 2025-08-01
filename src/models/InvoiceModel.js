@@ -69,7 +69,7 @@ const PurchaseInvoiceSchema = new mongoose.Schema(
     postingDate: { type: Date },
     validUntil: { type: Date },
     documentDate: { type: Date },
-    documentNumberPurchaseInvoice: { type: String, unique: true }, // Unique document number for the invoice
+    documentNumberPurchaseInvoice: { type: String, required: true,  }, // Unique document number for the invoice
     grn: { type: mongoose.Schema.Types.ObjectId, ref: "GRN" },
     purchaseOrder: { type: mongoose.Schema.Types.ObjectId, ref: "PurchaseOrder" },
     // New field to distinguish invoice types:
@@ -120,49 +120,51 @@ const PurchaseInvoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
-PurchaseInvoiceSchema.pre("save", async function (next) {
-  if (this.documentNumberPurchaseInvoice) return next();
-  try {
-    const key = `purchaseInvoice${this.companyId}`;
-  const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
-
-    const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
-
-// Calculate financial year
-let fyStart = currentYear;
-let fyEnd = currentYear + 1;
-
-if (currentMonth < 4) {
-  // Jan–Mar => part of previous FY
-  fyStart = currentYear - 1;
-  fyEnd = currentYear;
-}
-
-const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
-
-// Assuming `counter.seq` is your sequence number (e.g., 30)
-const paddedSeq = String(counter.seq).padStart(5, '0');
-
-// Generate final sales order number
-this.documentNumberPurchaseInvoice = `PURCH-INV/${financialYear}/${paddedSeq}`;
+PurchaseInvoiceSchema.index({ companyId: 1, documentNumberPurchaseInvoice: 1 }, { unique: true });
 
 
-    // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+// PurchaseInvoiceSchema.pre("save", async function (next) {
+//   if (this.documentNumberPurchaseInvoice) return next();
+//   try {
+//     const key = `purchaseInvoice${this.companyId}`;
+//   const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
+
+//     const now = new Date();
+// const currentYear = now.getFullYear();
+// const currentMonth = now.getMonth() + 1;
+
+// // Calculate financial year
+// let fyStart = currentYear;
+// let fyEnd = currentYear + 1;
+
+// if (currentMonth < 4) {
+//   // Jan–Mar => part of previous FY
+//   fyStart = currentYear - 1;
+//   fyEnd = currentYear;
+// }
+
+// const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+
+// // Assuming `counter.seq` is your sequence number (e.g., 30)
+// const paddedSeq = String(counter.seq).padStart(5, '0');
+
+// // Generate final sales order number
+// this.documentNumberPurchaseInvoice = `PURCH-INV/${financialYear}/${paddedSeq}`;
+
+
+//     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
+//     next();
+//   } catch (err) {
+//     next(err);
+//   }
+// });
 // Pre-save hook to auto-generate an invoice number if missing.
 // PurchaseInvoiceSchema.pre("save", async function (next) {
 //   if (!this.invoiceNumber) {

@@ -50,7 +50,7 @@ const DeliverySchema = new Schema({
   deliveryType: { type: String, enum: ["Sales", "Purchase"], required: true },
   deliveryDate: { type: Date, required: true },
   deliveryNumber: { type: String },
-  documentNumberDelivery: { type: String, unique: true },
+  documentNumberDelivery: { type: String, required: true },
 
   salesOrderId: { type: Schema.Types.ObjectId, ref: "SalesOrder" },
   customer: { type: Schema.Types.ObjectId, ref: "Customer" },
@@ -88,48 +88,52 @@ const DeliverySchema = new Schema({
     uploadedAt: { type: Date, default: Date.now }
   }]
 }, { timestamps: true });
-DeliverySchema.pre("save", async function (next) {
-  if (this.documentNumberDelivery) return next();
-  try {
-    const key = `delivery${this.companyId}`;
-    const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
 
-    const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
-
-// Calculate financial year
-let fyStart = currentYear;
-let fyEnd = currentYear + 1;
-
-if (currentMonth < 4) {
-  // Jan–Mar => part of previous FY
-  fyStart = currentYear - 1;
-  fyEnd = currentYear;
-}
-
-const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
-
-// Assuming `counter.seq` is your sequence number (e.g., 30)
-const paddedSeq = String(counter.seq).padStart(5, '0');
-
-// Generate final sales order number
-this.documentNumberDelivery = `SALE-DELI/${financialYear}/${paddedSeq}`;
+DeliverySchema.index({ documentNumberDelivery: 1, companyId: 1 }, { unique: true });
 
 
-    // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+// DeliverySchema.pre("save", async function (next) {
+//   if (this.documentNumberDelivery) return next();
+//   try {
+//     const key = `delivery${this.companyId}`;
+//     const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
+
+//     const now = new Date();
+// const currentYear = now.getFullYear();
+// const currentMonth = now.getMonth() + 1;
+
+// // Calculate financial year
+// let fyStart = currentYear;
+// let fyEnd = currentYear + 1;
+
+// if (currentMonth < 4) {
+//   // Jan–Mar => part of previous FY
+//   fyStart = currentYear - 1;
+//   fyEnd = currentYear;
+// }
+
+// const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+
+// // Assuming `counter.seq` is your sequence number (e.g., 30)
+// const paddedSeq = String(counter.seq).padStart(5, '0');
+
+// // Generate final sales order number
+// this.documentNumberDelivery = `SALE-DELI/${financialYear}/${paddedSeq}`;
+
+
+//     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
+//     next();
+//   } catch (err) {
+//     next(err);
+//   }
+// });
 
 export default mongoose.models.Delivery || mongoose.model("Delivery", DeliverySchema);
 

@@ -104,7 +104,7 @@ export default function DebitNoteList() {
                 {filteredNotes.map((note, idx) => (
                   <tr key={note._id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3">{idx + 1}</td>
-                    <td className="px-4 py-3">{note.documentNumber}</td>
+                    <td className="px-4 py-3">{note.documentNumberDebitNote}</td>
                     <td className="px-4 py-3">{note.supplierName}</td>
                     <td className="px-4 py-3">{note.refNumber}</td>
                     <td className="px-4 py-3">{note.status}</td>
@@ -131,7 +131,7 @@ export default function DebitNoteList() {
             {filteredNotes.map((note, idx) => (
               <div key={note._id} className="bg-white p-4 rounded-lg shadow border">
                 <div className="flex justify-between mb-2">
-                  <div className="font-semibold">#{idx + 1} - {note.documentNumber} </div>
+                  <div className="font-semibold">#{idx + 1} - {note.documentNumberDebitNote} </div>
                   <RowMenu note={note} onDelete={handleDelete} isMobile />
                 </div>
                 <div><strong>Supplier:</strong> {note.supplierName}</div>

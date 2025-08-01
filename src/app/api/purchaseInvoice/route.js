@@ -11,6 +11,7 @@ import PurchaseOrder from "@/models/PurchaseOrder";
 import Inventory from "@/models/Inventory";
 import StockMovement from "@/models/StockMovement";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import Counter from "@/models/Counter";
 
 
 export const dynamic = 'force-dynamic';
@@ -170,6 +171,7 @@ export async function POST(req) {
     const token = getTokenFromHeader(req);
     if (!token) throw new Error("Unauthorized");
     const decoded = verifyJWT(token);
+    const companyId = decoded?.companyId;
     if (!decoded?.companyId) throw new Error("Invalid token payload");
 
     const { fields, files } = await parseForm(req);
@@ -194,6 +196,8 @@ export async function POST(req) {
       throw new Error("Invoice must contain at least one item");
     }
 
+
+
     const grandTotal = Number(invoiceData.grandTotal) || 0;
 const paidAmount = Number(invoiceData.paidAmount) || 0;
 
@@ -203,6 +207,35 @@ if (invoiceData.remainingAmount < 0) {
 
 // Calculate remaining amount
 invoiceData.remainingAmount = grandTotal - paidAmount;
+
+
+    const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+    
+        let fyStart = currentYear;
+        let fyEnd = currentYear + 1;
+        if (currentMonth < 4) {
+          fyStart = currentYear - 1;
+          fyEnd = currentYear;
+        }
+    
+        const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+        const key = "PurchaseInvoice";
+    
+        let counter = await Counter.findOne({ id: key, companyId }).session(session);
+        if (!counter) {
+          const [created] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
+          counter = created;
+        } else {
+          counter.seq += 1;
+          await counter.save({ session });
+        }
+    
+        const paddedSeq = String(counter.seq).padStart(5, "0");
+        invoiceData.documentNumberPurchaseInvoice = `PURCH-INV/${financialYear}/${paddedSeq}`;
+    
+     
     // ✅ Save Invoice
     const [invoice] = await PurchaseInvoice.create([invoiceData], { session });
 

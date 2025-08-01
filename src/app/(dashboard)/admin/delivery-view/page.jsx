@@ -29,7 +29,11 @@ export default function SalesDeliveryList() {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("/api/sales-delivery");
+      const token = localStorage.getItem("token");
+
+      const res = await axios.get("/api/sales-delivery",{
+         headers: { Authorization: `Bearer ${token}` },
+      });
       setOrders(res.data || []);
     } catch (error) {
       console.error("Error fetching deliveries:", error);

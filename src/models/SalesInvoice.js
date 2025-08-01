@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Counter from "@/models/Counter";
+import { type } from "os";
 
 
 const { Schema } = mongoose;
@@ -62,8 +63,10 @@ const SalesInvoiceSchema = new Schema(
     branchId: { type: Schema.Types.ObjectId, ref: "Branch"},
     branchName: { type: String,  },
     branchCode: { type: String,  },
-    
-    invoiceNumber: { type: String, unique: true },
+    // documentNumberSalesInvoice :{type: String , required: true},
+    invoiceNumber: { type: String, required: true},
+    postingDate: { type: Date,},
+    invoiceDate: { type: Date,  },
     customer: { type: Schema.Types.ObjectId, ref: "Customer" },
     customerCode: { type: String, required: true },
     customerName: { type: String, required: true },
@@ -107,49 +110,52 @@ const SalesInvoiceSchema = new Schema(
   { timestamps: true }
 );
 
+SalesInvoiceSchema.index({ invoiceNumber: 1, companyId: 1 }, { unique: true });
+
+
 /* per‑tenant auto‑increment */
-SalesInvoiceSchema.pre("save", async function (next) {
-  if (this.invoiceNumber) return next();
-  try {
-    const key = `salesInvoice${this.companyId}`;
-  const counter = await Counter.findOneAndUpdate(
-  { id: key, companyId: this.companyId }, // Match on both
-  { 
-    $inc: { seq: 1 },
-    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
-  },
-  { new: true, upsert: true }
-);
+// SalesInvoiceSchema.pre("save", async function (next) {
+//   if (this.invoiceNumber) return next();
+//   try {
+//     const key = `salesInvoice${this.companyId}`;
+//   const counter = await Counter.findOneAndUpdate(
+//   { id: key, companyId: this.companyId }, // Match on both
+//   { 
+//     $inc: { seq: 1 },
+//     $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+//   },
+//   { new: true, upsert: true }
+// );
 
-    const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = now.getMonth() + 1;
+//     const now = new Date();
+// const currentYear = now.getFullYear();
+// const currentMonth = now.getMonth() + 1;
 
-// Calculate financial year
-let fyStart = currentYear;
-let fyEnd = currentYear + 1;
+// // Calculate financial year
+// let fyStart = currentYear;
+// let fyEnd = currentYear + 1;
 
-if (currentMonth < 4) {
-  // Jan–Mar => part of previous FY
-  fyStart = currentYear - 1;
-  fyEnd = currentYear;
-}
+// if (currentMonth < 4) {
+//   // Jan–Mar => part of previous FY
+//   fyStart = currentYear - 1;
+//   fyEnd = currentYear;
+// }
 
-const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+// const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
 
-// Assuming `counter.seq` is your sequence number (e.g., 30)
-const paddedSeq = String(counter.seq).padStart(5, '0');
+// // Assuming `counter.seq` is your sequence number (e.g., 30)
+// const paddedSeq = String(counter.seq).padStart(5, '0');
 
-// Generate final sales order number
-this.invoiceNumber = `Sal-INV/${financialYear}/${paddedSeq}`;
+// // Generate final sales order number
+// this.invoiceNumber = `Sal-INV/${financialYear}/${paddedSeq}`;
 
 
-    // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
+//     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;
+//     next();
+//   } catch (err) {
+//     next(err);
+//   }
+// });
 
 
 export default mongoose.models.SalesInvoice || mongoose.model("SalesInvoice", SalesInvoiceSchema);
