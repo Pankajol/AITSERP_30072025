@@ -5,7 +5,7 @@ const CounterSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
   
   
-  id: { type: String, required: true, unique: true },
+  id: { type: String, required: true},
   seq: { type: Number, default: 0 },
 });
 
