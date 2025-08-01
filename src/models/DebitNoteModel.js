@@ -76,6 +76,7 @@
 
 import mongoose from 'mongoose';
 import Counter from "@/models/Counter";
+const { Schema } = mongoose;
 
 /* ----------- BATCH (all fields now optional) ----------- */
 const BatchSchema = new mongoose.Schema(

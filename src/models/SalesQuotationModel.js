@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
-import Counter from "@/models/Counter"
+import Counter from "@/models/Counter";
+const { Schema } = mongoose;
 
 
 const ItemSchema = new mongoose.Schema(

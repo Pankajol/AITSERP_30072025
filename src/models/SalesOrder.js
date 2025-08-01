@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import Counter from "./Counter"; // Assuming you have a Counter model for auto-incrementing IDs
+import Counter from "@/models/Counter";
+const { Schema } = mongoose; // Assuming you have a Counter model for auto-incrementing IDs
 
 // Address schema for billing and shipping addresses
 const addressSchema = new mongoose.Schema({

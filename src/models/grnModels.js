@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import Counter from "@/models/Counter";
+const Schema = mongoose.Schema;
+
 
 // Batch sub-schema
 const BatchSchema = new mongoose.Schema({
