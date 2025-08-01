@@ -138,7 +138,7 @@ const res = await axios.get("/api/credit-note", {
                     className="border-b hover:bg-gray-50"
                   >
                     <td className="px-4 py-3">{i + 1}</td>
-                    <td className="px-4 py-3">{n.documentNumber}</td>
+                    <td className="px-4 py-3">{n.documentNumberCreditNote}</td>
                     <td className="px-4 py-3">{n.customerName}</td>
                     <td className="px-4 py-3">{n.contactPerson}</td>
                     <td className="px-4 py-3">{n.refNumber}</td>
@@ -170,7 +170,7 @@ const res = await axios.get("/api/credit-note", {
               >
                 <div className="flex justify-between">
                   <div className="font-semibold">
-                    #{i + 1} • {n.documentNumber}
+                    #{i + 1} • {n.documentNumberCreditNote}
                   </div>
                   <RowMenu note={n} onDelete={handleDelete} isMobile />
                 </div>

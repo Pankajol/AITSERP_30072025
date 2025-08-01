@@ -179,7 +179,7 @@ function InvoiceTable({ invoices, onDelete, onCopyTo }) {
             className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
             <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{invoice.documentNumber}</td>
+            <td className="px-4 py-3">{invoice.documentNumberPurchaseInvoice}</td>
             <td className="px-4 py-3">{invoice.supplierName}</td>
             <td className="px-4 py-3">
               {invoice.documentDate
@@ -213,7 +213,7 @@ function InvoiceCard({ invoice, idx, onDelete, onCopyTo }) {
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {invoice.documentNumber}
+          #{idx + 1} • {invoice.documentNumberPurchaseInvoice}
         </div>
         <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} isMobile />
       </div>

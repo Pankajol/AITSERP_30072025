@@ -410,7 +410,7 @@ function Card({ order, idx, onDelete, onCopy }) {
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {order.documentNumber}
+          #{idx + 1} • {order.documentNumberPurchaseOrder}
         </div>
         <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
       </div>
