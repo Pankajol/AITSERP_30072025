@@ -64,7 +64,7 @@ const GRNSchema = new mongoose.Schema({
   supplierName: { type: String },
   contactPerson: { type: String },
   refNumber: { type: String },
-   documentNumber: { type: String, unique: true },
+   documentNumberGrn: { type: String, unique: true },
   status: { type: String, default: 'Received' },
   postingDate: { type: Date },
   validUntil: { type: Date },
@@ -91,14 +91,17 @@ const GRNSchema = new mongoose.Schema({
 
 
 GRNSchema.pre("save", async function (next) {
-  if (this.documentNumber) return next();
+  if (this.documentNumberGrn) return next();
   try {
     const key = `GRN${this.companyId}`;
-    const counter = await Counter.findOneAndUpdate(
-      { id: key },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
+  const counter = await Counter.findOneAndUpdate(
+  { id: key, companyId: this.companyId }, // Match on both
+  { 
+    $inc: { seq: 1 },
+    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+  },
+  { new: true, upsert: true }
+);
 
     const now = new Date();
 const currentYear = now.getFullYear();
@@ -120,7 +123,7 @@ const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
 const paddedSeq = String(counter.seq).padStart(5, '0');
 
 // Generate final sales order number
-this.documentNumber = `GRN/${financialYear}/${paddedSeq}`;
+this.documentNumberGrn = `GRN/${financialYear}/${paddedSeq}`;
 
 
     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;

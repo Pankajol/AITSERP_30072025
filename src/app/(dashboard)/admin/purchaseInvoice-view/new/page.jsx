@@ -217,7 +217,7 @@ function PurchaseInvoiceForm() {
 
   // Effect to load data from Session Storage (from GRN or copied PI)
   useEffect(() => {
-    const grnDataForInvoice = sessionStorage.getItem("grnDataForInvoice");
+    const grnDataForInvoice = sessionStorage.getItem("grnData");
     const purchaseInvoiceCopyData = sessionStorage.getItem("purchaseInvoiceData"); // If copying from another PI
 
     if (!grnDataForInvoice && !purchaseInvoiceCopyData) return;
@@ -261,7 +261,7 @@ function PurchaseInvoiceForm() {
             batches: Array.isArray(item.batches)
               ? item.batches.map(b => ({ ...b, id: b.id || b._id || generateUniqueId(), expiryDate: formatDateForInput(b.expiryDate) }))
               : [],
-            warehouse: item.warehouse || "",
+               warehouse: item.warehouse || "",
             warehouseCode: item.warehouseCode || "",
             warehouseName: item.warehouseName || "",
           };

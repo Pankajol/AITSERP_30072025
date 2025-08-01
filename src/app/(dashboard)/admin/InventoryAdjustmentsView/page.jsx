@@ -61,6 +61,7 @@ export default function InventoryAdjustmentsView() {
                 <th className="text-left px-4 py-3 border-b text-gray-600">Item</th>
                 <th className="text-left px-4 py-3 border-b text-gray-600">Warehouse</th>
                 <th className="text-left px-4 py-3 border-b text-gray-600">Type</th>
+                <th className="text-left px-4 py-3 border-b text-gray-600">remarks</th>
                 <th className="text-left px-4 py-3 border-b text-gray-600">Quantity</th>
                 <th className="text-left px-4 py-3 border-b text-gray-600">Date</th>
               </tr>
@@ -77,6 +78,8 @@ export default function InventoryAdjustmentsView() {
                   >
                     {adj.movementType}
                   </td>
+                  <td className="px-4 py-3 border-b text-gray-700">{adj.remarks || "N/A"}</td>
+
                   <td className="px-4 py-3 border-b text-gray-700">{adj.quantity}</td>
                   <td className="px-4 py-3 border-b text-gray-500">
                     {new Date(adj.date).toLocaleDateString()}

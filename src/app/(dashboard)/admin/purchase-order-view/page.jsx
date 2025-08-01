@@ -377,7 +377,7 @@ function Table({ orders, onDelete, onCopy }) {
             className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
             <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{o.documentNumber}</td>
+            <td className="px-4 py-3">{o.documentNumberPurchaseOrder}</td>
             <td className="px-4 py-3">{o.supplierName}</td>
             <td className="px-4 py-3">
               {o.postingDate ? new Date(o.postingDate).toLocaleDateString() : ""}

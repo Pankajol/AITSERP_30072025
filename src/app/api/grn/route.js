@@ -124,7 +124,7 @@ async function deleteFilesByPublicIds(publicIds) {
  * ✅ Helper to process each GRN line item for Inventory and Stock Movement updates
  * This function handles both overall quantity and batch-specific updates.
  */
-async function processGrnItem(item, grnId, decodedToken, session) {
+async function processGrnItem(item, grnId, decodedToken, session,fromPO) {
   const qty = Number(item.quantity);
 
   // ✅ Extract proper IDs
@@ -157,7 +157,10 @@ async function processGrnItem(item, grnId, decodedToken, session) {
   }
 
   // ✅ Reduce onOrder, increase actual quantity
+  if (fromPO) {
   inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
+}
+
 
   /* ---------- Batch-Managed Items Handling ---------- */
   if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches) && item.batches.length > 0) {
@@ -256,9 +259,10 @@ export async function POST(req) {
 
     const [grn] = await GRN.create([grnData], { session });
     console.log("GRN created with _id:", grn._id);
-
+    const fromPO = !!grnData.purchaseOrderId;
+  
     for (const item of grnData.items) {
-        await processGrnItem(item, grn._id, decoded, session);
+        await processGrnItem(item, grn._id, decoded, session,fromPO);
     }
 
     await session.commitTransaction();

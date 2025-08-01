@@ -132,7 +132,7 @@ const DebitNoteSchema = new mongoose.Schema({
   supplierCode:    { type: String },
   supplierName:    { type: String },
   supplierContact: { type: String },                    // no longer required
-  documentNumber: { type: String, unique: true }, // Unique document number for the debit note
+  documentNumberDebitNote: { type: String, unique: true }, // Unique document number for the debit note
   refNumber:    { type: String },
   salesEmployee:{ type: String },
 
@@ -172,14 +172,17 @@ const DebitNoteSchema = new mongoose.Schema({
 },   
   { timestamps: true });
   DebitNoteSchema.pre("save", async function (next) {
-    if (this.documentNumber) return next();
+    if (this.documentNumberDebitNote) return next();
     try {
       const key = `DebitNote${this.companyId}`;
-      const counter = await Counter.findOneAndUpdate(
-        { id: key },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true }
-      );
+   const counter = await Counter.findOneAndUpdate(
+  { id: key, companyId: this.companyId }, // Match on both
+  { 
+    $inc: { seq: 1 },
+    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+  },
+  { new: true, upsert: true }
+);
   
       const now = new Date();
   const currentYear = now.getFullYear();
@@ -201,7 +204,7 @@ const DebitNoteSchema = new mongoose.Schema({
   const paddedSeq = String(counter.seq).padStart(5, '0');
   
   // Generate final sales order number
-  this.documentNumber = `DN-/${financialYear}/${paddedSeq}`;
+  this.documentNumberDebitNote = `DN-/${financialYear}/${paddedSeq}`;
   
   
    

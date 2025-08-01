@@ -1,94 +1,4 @@
-// import dbConnect from '@/lib/db';
-// import Inventory from '@/models/Inventory';
-// import BOM from '@/models/BOM';
-// import '@/models/warehouseModels';
-// import '@/models/ItemModels';
 
-// export async function GET(req) {
-//   await dbConnect();
-
-//   const { searchParams } = new URL(req.url);
-//   const itemId = searchParams.get('item');       // optional
-//   const warehouse = searchParams.get('warehouse'); // optional
-//   const bomId = searchParams.get('bomId');       // optional
-
-//   let query = {};
-
-//   // Priority 1: itemId (with optional warehouse)
-//   if (itemId) {
-//     query.item = itemId;
-//     if (warehouse) query.warehouse = warehouse;
-//   }
-
-//   // Priority 2: bomId (fallback if no itemId)
-//   else if (bomId) {
-//     const bom = await BOM.findById(bomId).lean();
-//     if (!bom) {
-//       return new Response(
-//         JSON.stringify({ success: false, message: "BOM not found" }),
-//         { status: 404, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-
-//     if (!bom.productNo.itemCode) {
-//       return new Response(
-//         JSON.stringify({ success: false, message: "productNo missing in BOM" }),
-//         { status: 400, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-
-//     query.item = bom.productNo;
-//     if (bom.warehouse) query.warehouse = bom.warehouse;
-//   }
-
-//   // Priority 3: No filters = return all inventory
-//   if (Object.keys(query).length === 0) {
-//     try {
-//       const inventories = await Inventory.find({})
-//         .populate('warehouse')
-//         .populate('item')
-//         .lean();
-
-//       return new Response(
-//         JSON.stringify({ success: true, data: inventories }),
-//         { status: 200, headers: { "Content-Type": "application/json" } }
-//       );
-//     } catch (error) {
-//       console.error("Error fetching inventories:", error);
-//       return new Response(
-//         JSON.stringify({ success: false, message: error.message }),
-//         { status: 500, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-//   }
-
-//   // Final: fetch filtered inventory
-//   try {
-//     const inventory = await Inventory.findOne(query)
-//       .populate('warehouse')
-      
-//       .populate('item')
-//       .lean();
-
-//     if (!inventory) {
-//       return new Response(
-//         JSON.stringify({ success: false, message: "No inventory found for given item/warehouse/BOM" }),
-//         { status: 404, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-
-//     return new Response(
-//       JSON.stringify({ success: true, inventory, batches: inventory.batches }),
-//       { status: 200, headers: { "Content-Type": "application/json" } }
-//     );
-//   } catch (error) {
-//     console.error("Error fetching inventory:", error);
-//     return new Response(
-//       JSON.stringify({ success: false, message: error.message }),
-//       { status: 500, headers: { "Content-Type": "application/json" } }
-//     );
-//   }
-// }
 
 
 
@@ -128,7 +38,8 @@ export async function GET(req) {
     const skip = (page - 1) * limit;
 
     // ✅ 3. Build query
-    const query = {};
+    // const query = {};
+    const query = { companyId: user.companyId };
     if (search) {
       query.$or = [
         { 'item.itemCode': { $regex: search, $options: 'i' } },
@@ -172,77 +83,4 @@ export async function GET(req) {
 }
 
 
-
-
-
-
-// import dbConnect from '@/lib/db';
-// import Inventory from '@/models/Inventory';
-// import '@/models/warehouseModels';
-// import '@/models/ItemModels';
-
-
-// export async function GET(req) {
-//   await dbConnect();
-  
-//   const { searchParams } = new URL(req.url);
-//   const itemId = searchParams.get('item');
-//   const warehouse = searchParams.get('warehouse'); // e.g. warehouse ID
-//   const bom = await BOM.findById(bomId).lean();
-//   if (!bom) {
-//     return new Response(
-//       JSON.stringify({ success: false, message: "BOM not found" }),
-//       { status: 404, headers: { "Content-Type": "application/json" } }
-//     );
-//   }
-
-  
-//   if (itemId) {
-//     const query = { item: itemId };
-//     if (warehouse) {
-//       query.warehouse = warehouse;
-//     }
-//     try {
-     
-//       const inventory = await Inventory.findOne(query)
-//         .populate('warehouse')
-//         .populate('item')
-//         .lean();
-//       if (!inventory) {
-//         return new Response(
-//           JSON.stringify({ success: false, message: "No inventory found for this item and warehouse" }),
-//           { status: 404, headers: { "Content-Type": "application/json" } }
-//         );
-//       }
-//       return new Response(
-//         JSON.stringify({ success: true, batches: inventory.batches }),
-//         { status: 200, headers: { "Content-Type": "application/json" } }
-//       );
-//     } catch (error) {
-//       console.error("Error fetching inventory:", error);
-//       return new Response(
-//         JSON.stringify({ success: false, message: error.message }),
-//         { status: 500, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-//   } else {
-//     // Optionally return all inventory records.
-//     try {
-//       const inventories = await Inventory.find({})
-//         .populate('warehouse')
-//         .populate('item')
-//         .lean();
-//       return new Response(
-//         JSON.stringify({ success: true, data: inventories }),
-//         { status: 200, headers: { "Content-Type": "application/json" } }
-//       );
-//     } catch (error) {
-//       console.error("Error fetching inventories:", error);
-//       return new Response(
-//         JSON.stringify({ success: false, message: error.message }),
-//         { status: 500, headers: { "Content-Type": "application/json" } }
-//       );
-//     }
-//   }
-// }
 

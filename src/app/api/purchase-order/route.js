@@ -155,13 +155,17 @@ export async function GET(req) {
     const decoded = verifyJWT(token);
     if (!decoded)
       return NextResponse.json({ success: false, error: "Invalid token" }, { status: 401 });
-
+   const user = await verifyJWT(token);
+if (!user) {
+  return NextResponse.json({ success: false, message: 'Unauthorized: Invalid token' }, { status: 401 });
+}
     // ✅ Parse filters (optional)
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const supplier = searchParams.get("supplier");
 
-    const query = {};
+    // const query = {};  
+    const query = { companyId: user.companyId };
     if (status) query.orderStatus = status;
     if (supplier) query.supplier = supplier;
 

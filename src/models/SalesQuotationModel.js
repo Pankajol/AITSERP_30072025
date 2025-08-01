@@ -79,10 +79,13 @@ SalesQuotationSchema.pre("save", async function (next) {
   try {
     const key = `salesQuatation${this.companyId}`;
     const counter = await Counter.findOneAndUpdate(
-      { id: key },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
+  { id: key, companyId: this.companyId }, // Match on both
+  { 
+    $inc: { seq: 1 },
+    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+  },
+  { new: true, upsert: true }
+);
 
     const now = new Date();
 const currentYear = now.getFullYear();

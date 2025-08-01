@@ -217,6 +217,10 @@ if (invoiceData.invoiceType !== "GRNCopy") {
     await processInvoiceItem(item, invoice._id, decoded, session, linkedToPO);
   }
 } else {
+      grnDoc.status = "Close"; // Or "LinkedToInvoice"
+    grnDoc.invoiceId = invoice._id; // Optional: link back to PI
+    await grnDoc.save({ session });
+    console.log(`✅ GRN ${grnDoc._id} marked as Invoiced`);
   console.log(`Skipping stock update for GRN-based invoice (ID: ${invoice._id})`);
 }
 // ✅ Update GRN status if this invoice is based on GRN

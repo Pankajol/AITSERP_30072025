@@ -57,7 +57,7 @@ const PurchaseOrderSchema = new mongoose.Schema({
   supplierName: { type: String },
   contactPerson: { type: String },
   refNumber: { type: String },
-  documentNumber: { type: String, unique: true },
+  documentNumberPurchaseOrder: { type: String, unique: true },
   // Status fields
   orderStatus: { 
     type: String, 
@@ -103,14 +103,17 @@ const PurchaseOrderSchema = new mongoose.Schema({
 
 
 PurchaseOrderSchema.pre("save", async function (next) {
-  if (this.documentNumber) return next();
+  if (this.documentNumberPurchaseOrder) return next();
   try {
     const key = `PurchaseOrder_${this.companyId}`;
-    const counter = await Counter.findOneAndUpdate(
-      { id: key },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
+   const counter = await Counter.findOneAndUpdate(
+  { id: key, companyId: this.companyId }, // Match on both
+  { 
+    $inc: { seq: 1 },
+    $setOnInsert: { companyId: this.companyId }  // Ensure it's set on insert
+  },
+  { new: true, upsert: true }
+);
 
     const now = new Date();
 const currentYear = now.getFullYear();
@@ -132,7 +135,7 @@ const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
 const paddedSeq = String(counter.seq).padStart(5, '0');
 
 // Generate final sales order number
-this.documentNumber = `PURCH-ORD/${financialYear}/${paddedSeq}`;
+this.documentNumberPurchaseOrder = `PURCH-ORD/${financialYear}/${paddedSeq}`;
 
 
     // this.salesNumber = `Sale-${String(counter.seq).padStart(3, '0')}`;

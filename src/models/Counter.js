@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import Company from './Company';
+const { Schema } = mongoose;
 
 const CounterSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },

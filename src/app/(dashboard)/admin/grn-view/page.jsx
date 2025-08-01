@@ -52,56 +52,83 @@ export default function GRNList() {
     fetchGRNs();
   }, []);
 
-  const handleCopyToInvoice = (grn) => {
-  if (!grn?._id) {
-    toast.error("Invalid GRN data");
-    return;
-  }
+//   const handleCopyToInvoice = (grn) => {
+//   if (!grn?._id) {
+//     toast.error("Invalid GRN data");
+//     return;
+//   }
 
-  const today = new Date().toISOString().split("T")[0];
+//   const today = new Date().toISOString().split("T")[0];
 
-  const dataToStore = {
-    supplier: grn.supplier?._id || grn.supplier,
-    supplierName: grn.supplier?.supplierName || "",
-    postingDate: today,
-    documentDate: today,
-    validUntil: today,
-    grn: grn._id,
-    invoiceType: "GRNCopy", // ✅ Important flag
-    refNumber: grn.refNumber || "",
-    remarks: grn.remarks || "",
-    freight: Number(grn.freight) || 0,
+//   const dataToStore = {
+//     supplier: grn.supplier?._id || grn.supplier,
+//     supplierName: grn.supplier?.supplierName || "",
+//     postingDate: today,
+//     documentDate: today,
+//     validUntil: today,
+//     grn: grn._id,
+//     invoiceType: "GRNCopy", // ✅ Important flag
+//     refNumber: grn.refNumber || "",
+//     remarks: grn.remarks || "",
+//     freight: Number(grn.freight) || 0,
 
-    items: (grn.items || []).map(item => ({
-      item: item.item?._id || item.item,
-      itemCode: item.itemCode || item.item?.itemCode || "",
-      itemName: item.itemName || item.item?.itemName || "",
-      itemDescription: item.itemDescription || "",
-      quantity: Number(item.receivedQuantity || item.quantity || 0),
-      unitPrice: Number(item.unitPrice) || 0,
-      discount: Number(item.discount) || 0,
-      gstRate: Number(item.gstRate) || 0,
-      managedBy: item.managedBy || "",
-      batches: Array.isArray(item.batches) ? item.batches : [],
-      warehouse: item.warehouse?._id || item.warehouse,
-    })),
+//     items: (grn.items || []).map(item => ({
+//       item: item.item?._id || item.item,
+//       itemCode: item.itemCode || item.item?.itemCode || "",
+//       itemName: item.itemName || item.item?.itemName || "",
+//       itemDescription: item.itemDescription || "",
+//       quantity: Number(item.receivedQuantity || item.quantity || 0),
+//       unitPrice: Number(item.unitPrice) || 0,
+//       discount: Number(item.discount) || 0,
+//       gstRate: Number(item.gstRate) || 0,
+//       managedBy: item.managedBy || "",
+//       batches: Array.isArray(item.batches) ? item.batches : [],
+//       warehouse: item.warehouse?._id || item.warehouse,
+//     })),
 
-    attachments: [], // ✅ No attachments copied
-  };
+//     attachments: [], // ✅ No attachments copied
+//   };
 
-  // Clear previous GRN copy data to avoid stale session issues
-  sessionStorage.removeItem("grnDataForInvoice");
-  sessionStorage.setItem("grnDataForInvoice", JSON.stringify(dataToStore));
+//   // Clear previous GRN copy data to avoid stale session issues
+//   sessionStorage.removeItem("grnDataForInvoice");
+//   sessionStorage.setItem("grnDataForInvoice", JSON.stringify(dataToStore));
 
-  toast.success("GRN data copied to Purchase Invoice");
-  router.push(`/admin/purchaseInvoice-view/new?source=${grn._id}`);
-};
+//   toast.success("GRN data copied to Purchase Invoice");
+//   router.push(`/admin/purchaseInvoice-view/new`);
+// };
 
   
 
   // ✅ Search filter
   
   
+const handleCopyToInvoice = (grn, destination) => {
+  if (!grn || typeof grn  !== "object") {
+    console.error("Invalid order data:", grn);
+    return;
+  }
+
+  const dataToStore = {
+    ...grn,
+    attachments: grn.attachments || [], // ✅ Preserve attachments
+    items: Array.isArray(grn.items) ? grn.items : [], // ✅ Ensure items are array
+  };
+
+  const key =
+    destination ===  "grnData" 
+
+  // ✅ Save order details in sessionStorage
+  
+  sessionStorage.setItem(key, JSON.stringify(dataToStore));
+
+  // ✅ Redirect user to the target page
+  router.push(
+    destination === "invoice"
+      ? "/admin/purchaseInvoice-view/new"
+      : "/admin/purchaseInvoice-view/new"
+  );
+};
+
   
   
   const displayGRNs = useMemo(() => {
@@ -249,7 +276,7 @@ function Table({ grns, onDelete, onCopy, onEmail, onPrint }) {
             className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
             <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{g.documentNumber}</td>
+            <td className="px-4 py-3">{g.documentNumberGrn}</td>
             <td className="px-4 py-3">{g.supplierName}</td>
             <td className="px-4 py-3">
               {g.postingDate ? new Date(g.postingDate).toLocaleDateString() : ""}
@@ -288,7 +315,7 @@ function Card({ grn, idx, onDelete, onCopy, onEmail, onPrint }) {
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {grn.documentNumber}
+          #{idx + 1} • {grn.documentNumberGrn}
         </div>
         <RowMenu
           grn={grn}

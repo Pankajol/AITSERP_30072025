@@ -32,7 +32,7 @@ const SupplierSchema = new mongoose.Schema({
   supplierType: {
     type: String,
     required: [true, "Supplier type is required"],
-    enum: ["Manufacturer", "Distributor", "Retailer", "Service Provider", "Other"],
+    enum: ["Manufacturer", "Distributor", "Retailer", "Service Provider","Wholesaler", "Other"],
     trim: true
   },
   supplierGroup: {
