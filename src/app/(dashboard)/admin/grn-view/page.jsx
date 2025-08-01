@@ -103,31 +103,25 @@ export default function GRNList() {
   
   
 const handleCopyToInvoice = (grn, destination) => {
-  if (!grn || typeof grn  !== "object") {
-    console.error("Invalid order data:", grn);
+  if (!grn || typeof grn !== "object") {
+    console.error("Invalid GRN data:", grn);
     return;
   }
 
   const dataToStore = {
     ...grn,
-    attachments: grn.attachments || [], // ✅ Preserve attachments
-    items: Array.isArray(grn.items) ? grn.items : [], // ✅ Ensure items are array
+    invoiceType: "GRNCopy",
+    attachments: grn.attachments || [],
+    items: Array.isArray(grn.items) ? grn.items : [],
   };
 
-  const key =
-    destination ===  "grnData" 
+  const key = destination === "invoice" ? "grnDataForInvoice" : "purchaseInvoiceData";
 
-  // ✅ Save order details in sessionStorage
-  
   sessionStorage.setItem(key, JSON.stringify(dataToStore));
 
-  // ✅ Redirect user to the target page
-  router.push(
-    destination === "invoice"
-      ? "/admin/purchaseInvoice-view/new"
-      : "/admin/purchaseInvoice-view/new"
-  );
+  router.push("/admin/purchaseInvoice-view/new");
 };
+
 
   
   

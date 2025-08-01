@@ -671,11 +671,17 @@ function PurchaseInvoiceForm() {
 
     const payload = {
       ...restData,
+       invoiceType: purchaseInvoiceData.invoiceType,
+
       items: itemsForSubmission,
       freight: Number(restData.freight) || 0,
       rounding: Number(restData.rounding) || 0,
       ...summary
     };
+
+
+    console.log("data copy from",payload)
+
 
     const formData = new FormData();
     formData.append("invoiceData", JSON.stringify(payload));

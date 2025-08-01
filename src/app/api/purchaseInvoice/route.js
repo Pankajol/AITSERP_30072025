@@ -157,6 +157,9 @@ async function processInvoiceItem(item, invoiceId, decoded, session, linkedToPO 
 }
 
 
+
+
+
 /** ✅ POST - Create Purchase Invoice */
 export async function POST(req) {
   await dbConnect();
@@ -211,32 +214,24 @@ invoiceData.remainingAmount = grandTotal - paidAmount;
 
     const linkedToPO = !!invoiceData.purchaseOrderId;
 
-// ✅ Only update stock if NOT a GRN copy
-if (invoiceData.invoiceType !== "GRNCopy") {
-  for (const item of invoiceData.items) {
-    await processInvoiceItem(item, invoice._id, decoded, session, linkedToPO);
-  }
-} else {
-      grnDoc.status = "Close"; // Or "LinkedToInvoice"
-    grnDoc.invoiceId = invoice._id; // Optional: link back to PI
-    await grnDoc.save({ session });
-    console.log(`✅ GRN ${grnDoc._id} marked as Invoiced`);
-  console.log(`Skipping stock update for GRN-based invoice (ID: ${invoice._id})`);
-}
-// ✅ Update GRN status if this invoice is based on GRN
-if (invoiceData.invoiceType === "GRNCopy" && invoiceData.grn) {
-  const GRNModel = mongoose.model("GRN"); // Adjust model name if different
-  const grnDoc = await GRNModel.findById(invoiceData.grn).session(session);
-
+// ✅ Step: Update GRN or Inventory based on invoiceType
+if ( invoiceData.invoiceType?.trim().toLowerCase() === "grncopy" ) {
+  const grnDoc = await GRN.findById(invoiceData.grn).session(session);
   if (grnDoc) {
-    grnDoc.status = "Close"; // Or "LinkedToInvoice"
-    grnDoc.invoiceId = invoice._id; // Optional: link back to PI
+    grnDoc.status = "Close";
+    grnDoc.invoiceId = invoice._id;
     await grnDoc.save({ session });
     console.log(`✅ GRN ${grnDoc._id} marked as Invoiced`);
   } else {
     console.warn(`⚠️ GRN not found for ID: ${invoiceData.grn}`);
   }
+  console.log(`⛔ Skipping stock update because invoice is GRN-based`);
+} else {
+  for (const item of invoiceData.items) {
+    await processInvoiceItem(item, invoice._id, decoded, session, linkedToPO);
+  }
 }
+
 
     
 
@@ -274,52 +269,7 @@ if (invoiceData.invoiceType === "GRNCopy" && invoiceData.grn) {
 }
 
 
-/** ✅ GET - Fetch all invoices */
-// export async function GET(req) {
-//   try {
-//     await dbConnect();
 
-//     // ✅ Authentication
-//     const token = getTokenFromHeader(req);
-//     if (!token)
-//       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
-//     const user = verifyJWT(token);
-//     if (!user)
-//       return NextResponse.json({ success: false, message: "Invalid token" }, { status: 403 });
-
-//     // ✅ Extract query params
-//     const { searchParams } = new URL(req.url);
-//     const supplierCode = searchParams.get("supplierCode");
-
-//     // ✅ Build base query
-//     let query = {
-//       companyId: user.companyId, // scope to logged-in company
-//     };
-
-//     // ✅ If supplierCode is given, find its _id
-//     if (supplierCode) {
-//       const supplier = await Supplier.findOne({ code: supplierCode });
-//       if (!supplier) {
-//         return NextResponse.json({ success: true, data: [] }, { status: 200 });
-//       }
-//       query.supplier = supplier._id;
-//     }
-
-//     // ✅ Fetch purchase invoices
-//     const invoices = await PurchaseInvoice.find(query)
-//       .populate("supplier") // optional: include supplier info
-//       .sort({ createdAt: -1 });
-
-//     return NextResponse.json({ success: true, data: invoices }, { status: 200 });
-
-//   } catch (error) {
-//     return NextResponse.json(
-//       { success: false, message: "Error fetching purchase invoices", error: error.message },
-//       { status: 500 }
-//     );
-//   }
-// }
 
 
 export async function GET(req) {
