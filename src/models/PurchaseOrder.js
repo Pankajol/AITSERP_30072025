@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
-import Counter from './Counter';
+import Counter from "@/models/Counter";
+const { Schema } = mongoose;
+
 
 // If you don't need batch management, you can remove BatchSchema entirely.
 const BatchSchema = new mongoose.Schema({

@@ -886,6 +886,8 @@ const generateCustomerCode = async () => {
     throw new Error("User is not authenticated");
   }
 
+
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
