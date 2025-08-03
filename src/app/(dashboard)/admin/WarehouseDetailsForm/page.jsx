@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import CountryStateSearch from "@/components/CountryStateSearch";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const WarehouseDetailsForm = () => {
   const initialFormData = {
@@ -78,28 +80,59 @@ const handleSelectState = (state) => {
 
 
 
+const validateForm = () => {
+  const requiredFields = [
+    "warehouseCode",
+    "warehouseName",
+    "account",
+    "company",
+    "phoneNo",
+    "addressLine1",
+    "city",
+    "state",
+    "pin",
+    "country",
+    "warehouseType",
+  ];
 
-  const validateForm = () => {
-    const newErrors = {};
-    const requiredFields = [
-      "warehouseCode",
-      "warehouseName",
-      "account",
-      "company",
-      "phoneNo",
-      "addressLine1",
-      "city",
-      "state",
-      "pin",
-      "country",
-      "warehouseType",
-    ];
-    requiredFields.forEach((field) => {
-      if (!formData[field]) newErrors[field] = "This field is required.";
+  const missingFields = requiredFields.filter((field) => !formData[field]);
+
+  if (missingFields.length > 0) {
+    toast.error("Please fill all required fields.", {
+      position: "top-right",
+      autoClose: 3000,
     });
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+
+    // Optional: list individual fields
+    missingFields.forEach((field) => {
+      toast.warning(`${field} is required`, {
+        position: "top-right",
+        autoClose: 2000,
+      });
+    });
+    if (!/^\d{10}$/.test(formData.phoneNo)) {
+    toast.error("Phone number must be exactly 10 digits.");
+    return false;
+  }
+
+  if (formData.mobileNo && !/^\d{10}$/.test(formData.mobileNo)) {
+    toast.error("Mobile number must be exactly 10 digits.");
+    return false;
+  }
+
+  if (!/^\d{6}$/.test(formData.pin)) {
+  toast.error("PIN code must be exactly 6 digits.");
+  return false;
+}
+
+
+
+    return false;
+  }
+
+  return true;
+};
+
 
   // ✅ Handle Submit (Create Warehouse)
   const handleSubmit = async (e) => {
@@ -161,12 +194,51 @@ const handleSelectState = (state) => {
         <InputField label="Parent Warehouse" name="parentWarehouse" value={formData.parentWarehouse} onChange={handleChange} />
         <InputField label="Account" name="account" value={formData.account} onChange={handleChange} error={errors.account} />
         <InputField label="Company" name="company" value={formData.company} onChange={handleChange} error={errors.company} />
-        <InputField label="Phone No" name="phoneNo" value={formData.phoneNo} onChange={handleChange} error={errors.phoneNo} />
-        <InputField label="Mobile No" name="mobileNo" value={formData.mobileNo} onChange={handleChange} />
+<InputField
+  label="Phone No"
+  name="phoneNo"
+  value={formData.phoneNo}
+  onChange={(e) => {
+    const input = e.target.value.replace(/\D/g, ""); // allow only numbers
+    if (input.length <= 10) {
+      handleChange({ target: { name: "phoneNo", value: input } });
+    }
+  }}
+  placeholder="Enter 10-digit Phone Number"
+  error={errors.phoneNo}
+/>
+
+<InputField
+  label="Mobile No"
+  name="mobileNo"
+  value={formData.mobileNo}
+  onChange={(e) => {
+    const input = e.target.value.replace(/\D/g, ""); // allow only numbers
+    if (input.length <= 10) {
+      handleChange({ target: { name: "mobileNo", value: input } });
+    }
+  }}
+  placeholder="Enter 10-digit Mobile Number"
+  error={errors.mobileNo}
+/>
+
         <InputField label="Address Line 1" name="addressLine1" value={formData.addressLine1} onChange={handleChange} error={errors.addressLine1} />
         <InputField label="Address Line 2" name="addressLine2" value={formData.addressLine2} onChange={handleChange} />
         <InputField label="City" name="city" value={formData.city} onChange={handleChange} error={errors.city} />
-        <InputField label="PIN" name="pin" value={formData.pin} onChange={handleChange} error={errors.pin} />
+      <InputField
+  label="PIN"
+  name="pin"
+  value={formData.pin}
+  onChange={(e) => {
+    const input = e.target.value.replace(/\D/g, ""); // only digits
+    if (input.length <= 6) {
+      handleChange({ target: { name: "pin", value: input } });
+    }
+  }}
+  placeholder="Enter 6-digit PIN Code"
+  error={errors.pin}
+/>
+
 
         {/* ✅ Country & State */}
         <div className="col-span-2">

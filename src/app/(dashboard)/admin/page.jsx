@@ -1,53 +1,155 @@
 "use client";
 
-import React, { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { FaUser, FaShoppingCart, FaRupeeSign, FaUserPlus, FaChartBar, FaTasks } from 'react-icons/fa';
+import React, { useEffect, useState } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  FaUser,
+  FaShoppingCart,
+  FaRupeeSign,
+  FaUserPlus,
+} from "react-icons/fa";
 
 export default function AdminDashboard() {
-  const [stats] = useState({
-    totalUsers: 1240,
-    totalOrders: 873,
-    revenue: 45230,
-    newUsers: 45,
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalOrders: 0,
+    totalPurchaseOrders: 0,
+    revenue: 0,
+    newUsers: 0,
   });
+  const [chartData, setChartData] = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const chartData = [
-    { month: 'Jan', orders: 65 },
-    { month: 'Feb', orders: 78 },
-    { month: 'Mar', orders: 90 },
-    { month: 'Apr', orders: 110 },
-    { month: 'May', orders: 95 },
-    { month: 'Jun', orders: 120 },
-    { month: 'Jul', orders: 130 },
-      { month: 'Aug', orders: 65 },
-    { month: 'Sep', orders: 78 },
-    { month: 'Oct', orders: 90 },
-    { month: 'Nov', orders: 110 },
-    { month: 'Dec', orders: 95 },
-  
-  ];
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        const token = localStorage.getItem("token");
+        const headers = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        };
 
-  const recentOrders = [
-    { id: 'A001', user: 'John Doe', amount: 1200, status: 'Shipped', date: '2025-05-21' },
-    { id: 'A002', user: 'Jane Smith', amount: 850, status: 'Processing', date: '2025-05-20' },
-    { id: 'A003', user: 'Alice Johnson', amount: 430, status: 'Delivered', date: '2025-05-19' },
-  ];
+        const [usersRes, salesRes, purchaseRes] = await Promise.all([
+          fetch("/api/suppliers", { headers }),
+          fetch("/api/sales-order", { headers }),
+          fetch("/api/purchase-order", { headers }),
+        ]);
 
-  const statusClasses = status => {
+        const usersData = await usersRes.json();
+        const salesData = await salesRes.json();
+        const purchaseData = await purchaseRes.json();
+
+        const users = usersData?.data || [];
+        const sales = salesData?.data || [];
+        const purchases = purchaseData?.data || [];
+
+        const recent30Days = (date) =>
+          new Date(date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        setStats({
+          totalUsers: users.length,
+          newUsers: users.filter((u) => recent30Days(u.createdAt)).length,
+          totalPurchaseOrders: purchases.length,
+          totalOrders: sales.length,
+          revenue: [...sales, ...purchases].reduce(
+            (sum, item) => sum + (item.totalAmount || 0),
+            0
+          ),
+        });
+
+
+        const ordersByMonth = {};
+
+        sales.forEach((order) => {
+          const date = new Date(order.createdAt);
+          const monthKey = `${date.toLocaleString("default", {
+            month: "short",
+          })} ${date.getFullYear()}`;
+          if (!ordersByMonth[monthKey]) {
+            ordersByMonth[monthKey] = { sales: 0, purchases: 0 };
+          }
+          ordersByMonth[monthKey].sales += 1;
+        });
+
+        purchases.forEach((order) => {
+          const date = new Date(order.createdAt);
+          const monthKey = `${date.toLocaleString("default", {
+            month: "short",
+          })} ${date.getFullYear()}`;
+          if (!ordersByMonth[monthKey]) {
+            ordersByMonth[monthKey] = { sales: 0, purchases: 0 };
+          }
+          ordersByMonth[monthKey].purchases += 1;
+        });
+
+        const allMonths = Array.from({ length: 12 }, (_, i) => {
+          const d = new Date(new Date().getFullYear(), i);
+          return `${d.toLocaleString("default", {
+            month: "short",
+          })} ${d.getFullYear()}`;
+        });
+
+        const updatedChartData = allMonths.map((month) => ({
+          month,
+          sales: ordersByMonth[month]?.sales || 0,
+          purchases: ordersByMonth[month]?.purchases || 0,
+        }));
+
+        setChartData(updatedChartData);
+
+        setRecentOrders(
+          [...sales, ...purchases]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 5)
+            .map((order) => ({
+              id:
+                order.documentNumberPurchaseOrder ||
+                order.documentNumberOrder ||
+                "N/A",
+              user: order.customerName || order.supplierName || "N/A",
+              amount: order.grandTotal || 0,
+              status: order.status || order.orderStatus || "Processing",
+              date: new Date(order.createdAt).toLocaleDateString("en-GB"),
+            }))
+        );
+      } catch (error) {
+        console.error("Dashboard fetch error:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  const statusClasses = (status) => {
     switch (status) {
-      case 'Delivered': return 'bg-green-100 text-green-800';
-      case 'Shipped': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-yellow-100 text-yellow-800';
+      case "Delivered":
+        return "bg-green-100 text-green-800";
+      case "Shipped":
+        return "bg-blue-100 text-blue-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
     }
   };
 
-  const formatCurrency = value => `₹${value.toLocaleString('en-IN')}`;
+  const formatCurrency = (value) => `₹${value.toLocaleString("en-IN")}`;
 
   const StatCard = ({ title, value, Icon, color }) => (
     <div className={`p-4 rounded-lg shadow text-white ${color}`}>
       <div className="flex items-center space-x-4">
-        <div className="text-3xl"><Icon /></div>
+        <div className="text-3xl">
+          <Icon />
+        </div>
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
           <p className="text-2xl font-bold">{value}</p>
@@ -56,30 +158,41 @@ export default function AdminDashboard() {
     </div>
   );
 
-  return (
-    <div className="p-6 space-y-6 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
-      <h1 className="text-4xl font-bold text-gray-800"> Dashboard</h1>
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <p className="text-xl font-medium text-gray-600">Loading dashboard...</p>
+      </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+  return (
+    <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
+      <h1 className="text-2xl md:text-4xl font-bold text-gray-800">Dashboard</h1>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         <StatCard title="Total Users" value={stats.totalUsers} Icon={FaUser} color="bg-indigo-500" />
         <StatCard title="Total Orders" value={stats.totalOrders} Icon={FaShoppingCart} color="bg-pink-500" />
-        <StatCard title="Revenue" value={formatCurrency(stats.revenue)} Icon={FaRupeeSign} color="bg-green-500" />
+        <StatCard title="Purchase Orders" value={stats.totalPurchaseOrders} Icon={FaShoppingCart} color="bg-red-500" />
+        {/* <StatCard title="Revenue" value={formatCurrency(stats.revenue)} Icon={FaRupeeSign} color="bg-green-500" /> */}
         <StatCard title="New Users (30d)" value={stats.newUsers} Icon={FaUserPlus} color="bg-yellow-500" />
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
         <h2 className="text-lg font-semibold mb-4">Monthly Orders</h2>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData}>
             <XAxis dataKey="month" />
             <YAxis />
             <Tooltip />
-            <Line type="monotone" dataKey="orders" stroke="#4F46E5" strokeWidth={2} />
+            <Legend />
+            <Line type="monotone" dataKey="sales" stroke="#4F46E5" strokeWidth={2} name="Sales" />
+            <Line type="monotone" dataKey="purchases" stroke="#22C55E" strokeWidth={2} name="Purchases" />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
         <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -93,7 +206,7 @@ export default function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {recentOrders.map(order => (
+              {recentOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm text-gray-700">{order.id}</td>
                   <td className="px-4 py-2 text-sm text-gray-700">{order.user}</td>
@@ -118,99 +231,300 @@ export default function AdminDashboard() {
 
 // "use client";
 
-// import React, { useState } from 'react';
-// import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+// import React, { useEffect, useState } from "react";
+// import {
+//   LineChart,
+//   Line,
+//   XAxis,
+//   YAxis,
+//   Tooltip,
+//   ResponsiveContainer,
+// } from "recharts";
+// import {
+//   FaUser,
+//   FaShoppingCart,
+//   FaRupeeSign,
+//   FaUserPlus,
+// } from "react-icons/fa";
 
 // export default function AdminDashboard() {
-//   const [stats] = useState({
-//     totalUsers: 1240,
-//     totalOrders: 873,
-//     revenue: 45230,
-//     newUsers: 45,
+//   const [stats, setStats] = useState({
+//     totalUsers: 0,
+//     totalOrders: 0,
+//     totalPurchaseOrders: 0,
+//     revenue: 0,
+//     newUsers: 0,
 //   });
+//   const [chartData, setChartData] = useState([]);
+//   const [recentOrders, setRecentOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
 
-//   const chartData = [
-//     { month: 'Jan', orders: 65 },
-//     { month: 'Feb', orders: 78 },
-//     { month: 'Mar', orders: 90 },
-//     { month: 'Apr', orders: 110 },
-//     { month: 'May', orders: 95 },
-//     { month: 'Jun', orders: 120 },
-//     { month: 'Jul', orders: 130 },
-//   ];
+//   useEffect(() => {
+//     async function fetchDashboardData() {
+//       try {
+//         const token = localStorage.getItem("token");
+//         const headers = {
+//           "Content-Type": "application/json",
+//           Authorization: `Bearer ${token}`,
+//         };
 
-//   const recentOrders = [
-//     { id: 'A001', user: 'John Doe', amount: 1200, status: 'Shipped', date: '2025-05-21' },
-//     { id: 'A002', user: 'Jane Smith', amount: 850, status: 'Processing', date: '2025-05-20' },
-//     { id: 'A003', user: 'Alice Johnson', amount: 430, status: 'Delivered', date: '2025-05-19' },
-//   ];
+//         const [usersRes, salesRes, purchaseRes,] = await Promise.all([
+//           fetch("/api/suppliers", { headers }),
+//           fetch("/api/sales-order", { headers }),
+//           fetch("/api/purchase-order", { headers }),
+//         ]);
 
-//   const statusClasses = status => {
+//         const usersData = await usersRes.json();
+//         const salesData = await salesRes.json();
+//         const purchaseData = await purchaseRes.json();
+        
+
+//         const users = usersData?.data || [];
+//         const sales = salesData?.data || [];
+//         const purchases = purchaseData?.data || [];
+    
+         
+//         const recent30Days = (date) =>
+//           new Date(date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        
+//         setStats({
+//           totalUsers: users.length,
+//           newUsers: users.filter((u) => recent30Days(u.createdAt)).length,
+//           totalPurchaseOrders:  purchases.length,
+//           totalOrders: sales.length,
+          
+//           revenue: [...sales, ...purchases].reduce(
+//             (sum, item) => sum + (item.totalAmount || 0),
+//             0
+//           ),
+//         });
+
+//      const ordersByMonth = {};
+
+// // Collect data separately for sales and purchases
+// sales.forEach((order) => {
+//   const date = new Date(order.createdAt);
+//   const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`;
+//   if (!ordersByMonth[monthYear]) {
+//     ordersByMonth[monthYear] = { sales: 0, purchases: 0 };
+//   }
+//   ordersByMonth[monthYear].sales += 1;
+// });
+
+// purchases.forEach((order) => {
+//   const date = new Date(order.createdAt);
+//   const monthYear = `${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`;
+//   if (!ordersByMonth[monthYear]) {
+//     ordersByMonth[monthYear] = { sales: 0, purchases: 0 };
+//   }
+//   ordersByMonth[monthYear].purchases += 1;
+// });
+
+// // Sort and prepare chart data
+// const sortedMonths = Object.keys(ordersByMonth).sort((a, b) => {
+//   const getDateObj = (str) => new Date(`01 ${str}`);
+//   return getDateObj(a) - getDateObj(b);
+// });
+
+// setChartData(
+//   sortedMonths.map((month) => ({
+//     month,
+//     sales: ordersByMonth[month].sales,
+//     purchases: ordersByMonth[month].purchases,
+//   }))
+// );
+
+// console.log("Orders by Month:", chartData)
+
+
+//         const months = [
+//           "Jan",
+//           "Feb",
+//           "Mar",
+//           "Apr",
+//           "May",
+//           "Jun",
+//           "Jul",
+//           "Aug",
+//           "Sep",
+//           "Oct",
+//           "Nov",
+//           "Dec",
+//         ];
+
+     
+
+
+//         setRecentOrders(
+          
+//           [...sales, ...purchases]
+
+//             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+//             .slice(0, 5)
+//             .map((order) => ({
+//               id: order.documentNumberPurchaseOrder || order.documentNumberOrder,
+//               user: order.customerName || order.supplierName || "N/A",
+//               amount: order.grandTotal || 0,
+//               status: order.status || order.orderStatus || "Processing",
+              
+//               date: new Date(order.createdAt).toLocaleDateString('en-GB')
+
+           
+               
+              
+
+//             }))
+//         );
+//       } catch (error) {
+//         console.error("Dashboard fetch error:", error);
+//       } finally {
+//         setLoading(false);
+//       }
+//     }
+
+//     fetchDashboardData();
+//   }, []);
+
+//   const statusClasses = (status) => {
 //     switch (status) {
-//       case 'Delivered': return 'bg-green-100 text-green-800';
-//       case 'Shipped': return 'bg-blue-100 text-blue-800';
-//       default: return 'bg-yellow-100 text-yellow-800';
+//       case "Delivered":
+//         return "bg-green-100 text-green-800";
+//       case "Shipped":
+//         return "bg-blue-100 text-blue-800";
+//       default:
+//         return "bg-yellow-100 text-yellow-800";
 //     }
 //   };
 
-//   const formatCurrency = value => `₹${value.toLocaleString('en-IN')}`;
+//   const formatCurrency = (value) => `₹${value.toLocaleString("en-IN")}`;
+
+//   const StatCard = ({ title, value, Icon, color }) => (
+//     <div className={`p-4 rounded-lg shadow text-white ${color}`}>
+//       <div className="flex items-center space-x-4">
+//         <div className="text-3xl">
+//           <Icon />
+//         </div>
+//         <div>
+//           <h2 className="text-sm font-semibold">{title}</h2>
+//           <p className="text-2xl font-bold">{value}</p>
+//         </div>
+//       </div>
+//     </div>
+//   );
+
+//   if (loading) {
+//     return (
+//       <div className="flex justify-center items-center min-h-screen">
+//         <p className="text-xl font-medium text-gray-600">Loading dashboard...</p>
+//       </div>
+//     );
+//   }
 
 //   return (
-//     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
-//       <h1 className="text-3xl font-bold"> Dashboard</h1>
+//     <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
+//       <h1 className="text-2xl md:text-4xl font-bold text-gray-800">
+//         Dashboard
+//       </h1>
 
-//       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-//         <div className="p-4 bg-white rounded-lg shadow border-l-4 border-blue-500">
-//           <h2 className="text-sm font-semibold text-gray-600">Total Users</h2>
-//           <p className="text-2xl font-bold text-gray-800">{stats.totalUsers}</p>
-//         </div>
-//         <div className="p-4 bg-white rounded-lg shadow border-l-4 border-blue-500">
-//           <h2 className="text-sm font-semibold text-gray-600">Total Orders</h2>
-//           <p className="text-2xl font-bold text-gray-800">{stats.totalOrders}</p>
-//         </div>
-//         <div className="p-4 bg-white rounded-lg shadow border-l-4 border-blue-500">
-//           <h2 className="text-sm font-semibold text-gray-600">Revenue</h2>
-//           <p className="text-2xl font-bold text-gray-800">{formatCurrency(stats.revenue)}</p>
-//         </div>
-//         <div className="p-4 bg-white rounded-lg shadow border-l-4 border-blue-500">
-//           <h2 className="text-sm font-semibold text-gray-600">New Users (30d)</h2>
-//           <p className="text-2xl font-bold text-gray-800">{stats.newUsers}</p>
-//         </div>
+//       {/* Stat Cards */}
+//       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+//         <StatCard
+//           title="Total Users"
+//           value={stats.totalUsers}
+//           Icon={FaUser}
+//           color="bg-indigo-500"
+//         />
+//         <StatCard
+//           title="Total Orders"
+//           value={stats.totalOrders}
+//           Icon={FaShoppingCart}
+//           color="bg-pink-500"
+//         />
+//            <StatCard
+//           title="Total Orders"
+//           value={stats.totalPurchaseOrders}
+//           Icon={FaShoppingCart}
+//           color="bg-red-500"
+//         />
+//         <StatCard
+//           title="Revenue"
+//           value={formatCurrency(stats.revenue)}
+//           Icon={FaRupeeSign}
+//           color="bg-green-500"
+//         />
+//         <StatCard
+//           title="New Users (30d)"
+//           value={stats.newUsers}
+//           Icon={FaUserPlus}
+//           color="bg-yellow-500"
+//         />
 //       </div>
 
-//       <div className="bg-white p-6 rounded-lg shadow ">
+//       {/* Monthly Orders Chart */}
+//       <div className="bg-white p-4 md:p-6 rounded-lg shadow">
 //         <h2 className="text-lg font-semibold mb-4">Monthly Orders</h2>
-//         <ResponsiveContainer width="100%" height={300}>
-//           <LineChart data={chartData}>
-//             <XAxis dataKey="month" />
-//             <YAxis />
-//             <Tooltip />
-//             <Line type="monotone" dataKey="orders" stroke="#4F46E5" strokeWidth={2} />
-//           </LineChart>
-//         </ResponsiveContainer>
+//       <ResponsiveContainer width="100%" height={300}>
+//   <LineChart data={chartData}>
+//     <XAxis dataKey="month" />
+//     <YAxis />
+//     <Tooltip />
+//     <Line
+//       type="monotone"
+//       dataKey="sales"
+//       stroke="#4F46E5"
+//       strokeWidth={2}
+//       name="Sales"
+//     />
+//     <Line
+//       type="monotone"
+//       dataKey="purchases"
+//       stroke="#22C55E"
+//       strokeWidth={2}
+//       name="Purchases"
+//     />
+//   </LineChart>
+// </ResponsiveContainer>
+
 //       </div>
 
-//       <div className="bg-white p-6 rounded-lg shadow">
+//       {/* Recent Orders Table */}
+//       <div className="bg-white p-4 md:p-6 rounded-lg shadow">
 //         <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
 //         <div className="overflow-x-auto">
 //           <table className="min-w-full divide-y divide-gray-200">
 //             <thead className="bg-gray-50">
 //               <tr>
-//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Order ID</th>
-//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">User</th>
-//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Amount</th>
-//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Status</th>
-//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Date</th>
+//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">
+//                   Order ID
+//                 </th>
+//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">
+//                   User
+//                 </th>
+//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">
+//                   Amount
+//                 </th>
+//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">
+//                   Status
+//                 </th>
+//                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">
+//                   Date
+//                 </th>
 //               </tr>
 //             </thead>
 //             <tbody className="bg-white divide-y divide-gray-200">
-//               {recentOrders.map(order => (
+//               {recentOrders.map((order) => (
 //                 <tr key={order.id} className="hover:bg-gray-50">
 //                   <td className="px-4 py-2 text-sm text-gray-700">{order.id}</td>
 //                   <td className="px-4 py-2 text-sm text-gray-700">{order.user}</td>
-//                   <td className="px-4 py-2 text-sm font-semibold text-gray-800">{formatCurrency(order.amount)}</td>
+//                   <td className="px-4 py-2 text-sm font-semibold text-gray-800">
+//                     {formatCurrency(order.amount)}
+//                   </td>
 //                   <td className="px-4 py-2 text-sm">
-//                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusClasses(order.status)}`}>
+//                     <span
+//                       className={`px-2 py-1 rounded-full text-xs font-medium ${statusClasses(
+//                         order.status
+//                       )}`}
+//                     >
 //                       {order.status}
 //                     </span>
 //                   </td>
@@ -225,22 +539,5 @@ export default function AdminDashboard() {
 //   );
 // }
 
-// 'use client';
 
-// import CreateAccount from '@/components/Account';
-// import { useState, useEffect } from 'react';
 
-// export default function AdminDashboard() {
-//   const [adminData, setAdminData] = useState(null);
-//   return (
-//     <div>
-//       {/* <h1 className="text-3xl font-bold">User Dashboard</h1> */}
-//       <div className="mt-6">
-      
-//        <CreateAccount />
-       
-//       </div>
- 
-//     </div>
-//   );
-// }

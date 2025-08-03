@@ -679,6 +679,7 @@ import { FaEdit, FaTrash, FaPlus, FaSearch, FaMinus } from "react-icons/fa";
 import CountryStateSearch from "@/components/CountryStateSearch";
 import GroupSearch from "@/components/groupmaster";
 import AccountSearch from "@/components/AccountSearch";
+ import { toast } from "react-toastify";
 
 export default function CustomerManagement() {
   const [view, setView] = useState("list");
@@ -816,28 +817,75 @@ const generateCustomerCode = async () => {
     }));
   };
 
-  const validate = () => {
-    const reqFields = [
-      { field: "customerName", label: "Customer Name" },
-      { field: "customerGroup", label: "Customer Group" },
-      { field: "customerType", label: "Customer Type" },
-      { field: "glAccount", label: "GL Account" },
-      // { field: "emailId", label: "Email ID" },
-      { field: "gstCategory", label: "GST Category" },
-      { field: "pan", label: "PAN" },
-    ];
-    for (let { field, label } of reqFields) {
-      if (
-        !customerDetails[field] ||
-        (field === "glAccount" && !customerDetails.glAccount?._id)
-      ) {
-        alert(`${label} is required`);
-        return false;
-      }
-    }
-    // ... other validations
-    return true;
-  };
+
+const validate = () => {
+  
+  const reqFields = [
+    { field: "customerName", label: "Customer Name" },
+    { field: "customerGroup", label: "Customer Group" },
+    { field: "customerType", label: "Customer Type" },
+    { field: "glAccount", label: "GL Account" },
+    { field: "gstCategory", label: "GST Category" },
+    { field: "gstNumber", label: "GST Number" },
+    { field: "pan", label: "PAN" },
+    { field: "phone", label: "Phone Number" },
+    { field: "emailId", label: "Email ID" },
+  ];
+
+  for (let { field, label } of reqFields) {
+  const value = customerDetails[field];
+
+  if (!value || (field === "glAccount" && !customerDetails.glAccount?._id)) {
+    toast.error(`${label} is required`);
+    return false;
+  }
+
+  if (field === "mobileNumber" && !/^\d{10}$/.test(value)) {
+    toast.error("Mobile Number must be exactly 10 digits");
+    return false;
+  }
+
+  if (field === "emailId" && value && !/^[\w.-]+@[a-zA-Z\d.-]+\.[a-zA-Z]{2,}$/.test(value)) {
+    toast.error("Invalid email format");
+    return false;
+  }
+
+  if (field === "pan" && value && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(value)) {
+    toast.error("Invalid PAN format. Example: ABCDE1234F");
+    return false;
+  }
+
+  if (field === "gstNumber" && value && !/^\d{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z]{1}[0-9A-Z]{1}$/.test(value)) {
+    toast.error("Invalid GST Number. Example: 22ABCDE1234F1Z5");
+    return false;
+  }
+}
+  return true;
+};
+
+
+  // const validate = () => {
+  //   const reqFields = [
+  //     { field: "customerName", label: "Customer Name" },
+  //     { field: "customerGroup", label: "Customer Group" },
+  //     { field: "customerType", label: "Customer Type" },
+  //     { field: "glAccount", label: "GL Account" },
+  //     // { field: "emailId", label: "Email ID" },
+  //     { field: "gstCategory", label: "GST Category" },
+  //     { field: "pan", label: "PAN" },
+  //   ];
+  //   for (let { field, label } of reqFields) {
+  //     if (
+  //       !customerDetails[field] ||
+  //       (field === "glAccount" && !customerDetails.glAccount?._id)
+  //     ) {
+  //       alert(`${label} is required`);
+  //       return false;
+  //     }
+  //   }
+  //   // ... other validations
+  //   return true;
+  // };
 
   // const handleSubmit = async e => {
   //   e.preventDefault();
@@ -911,8 +959,9 @@ const generateCustomerCode = async () => {
       setCustomers(prev => [...prev, res.data.data]);
       
     }
-
+  
     setView("list");
+    resetForm();
   } catch (err) {
     console.error(err);
     alert("Submit failed: " + (err.response?.data?.message || err.message));
@@ -1119,16 +1168,26 @@ const renderFormView = () => (
             className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
-          <input
-            name="mobileNumber"
-            type="text"
-            value={customerDetails.mobileNumber || ""}
-            onChange={handleChange}
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+     <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Mobile Number
+  </label>
+  <input
+    name="mobileNumber"
+    type="text"
+    placeholder="Mobile Number"
+    maxLength={10}
+    value={customerDetails.mobileNumber || ""}
+    onChange={(e) => {
+      const input = e.target.value;
+      if (/^\d{0,10}$/.test(input)) {
+        handleChange(e); // only allow up to 10 digits
+      }
+    }}
+    className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+  />
+</div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
           <input
@@ -1178,6 +1237,7 @@ const renderFormView = () => (
             />
             <input
               value={addr.pin || ""}
+               type="Number"
               onChange={(e) => handleAddressChange("billing", i, "pin", e.target.value)}
               placeholder="PIN"
               className="border p-2 rounded"
@@ -1237,6 +1297,7 @@ const renderFormView = () => (
             />
             <input
               value={addr.pin || ""}
+               type="Number"
               onChange={(e) => handleAddressChange("shipping", i, "pin", e.target.value)}
               placeholder="PIN"
               className="border p-2 rounded"
@@ -1262,25 +1323,36 @@ const renderFormView = () => (
       {/* Other Details */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms In (Day)</label>
           <input
             name="paymentTerms"
+            type="Number"
             value={customerDetails.paymentTerms || ""}
             onChange={handleChange}
             placeholder="Payment Terms"
             className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
-          <input
-            name="gstNumber"
-            value={customerDetails.gstNumber || ""}
-            onChange={handleChange}
-            placeholder="GST Number"
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    GST Number
+  </label>
+  <input
+    name="gstNumber"
+    type="text"
+    placeholder="Enter GST Number"
+    value={customerDetails.gstNumber || ""}
+    onChange={(e) => {
+      const input = e.target.value.toUpperCase();
+      if (/^[A-Z0-9]{0,15}$/.test(input)) {
+        handleChange({ target: { name: "gstNumber", value: input } });
+      }
+    }}
+    maxLength={15}
+    className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+  />
+</div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             GST Category <span className="text-red-500">*</span>
@@ -1290,7 +1362,7 @@ const renderFormView = () => (
             value={customerDetails.gstCategory || ""}
             onChange={handleChange}
             className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
-            required
+           
           >
             <option value="">Select GST Category</option>
             <option value="Registered Regular">Registered Regular</option>
@@ -1305,18 +1377,26 @@ const renderFormView = () => (
             <option value="Input Service Distributor">Input Service Distributor</option>
           </select>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            PAN <span className="text-red-500">*</span>
-          </label>
-          <input
-            name="pan"
-            value={customerDetails.pan || ""}
-            onChange={handleChange}
-            placeholder="PAN"
-            className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+    <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    PAN Number
+  </label>
+  <input
+    name="pan"
+    type="text"
+    placeholder="Enter PAN Number"
+    value={customerDetails.pan || ""}
+    onChange={(e) => {
+      const input = e.target.value.toUpperCase();
+      if (/^[A-Z0-9]{0,10}$/.test(input)) {
+        handleChange({ target: { name: "pan", value: input } });
+      }
+    }}
+    maxLength={10}
+    className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+  />
+</div>
+
         <div>
         
           <AccountSearch

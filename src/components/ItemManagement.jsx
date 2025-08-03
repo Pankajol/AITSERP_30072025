@@ -881,24 +881,49 @@ const generateItemCode = async () => {
   };
 
   // Form validation
-  const validate = () => {
-    const requiredFields = [
-      "itemName",
-      "category",
-      "unitPrice",
-      "quantity",
-      "uom",
-      "itemType"
-    ];
+  // const validate = () => {
+  //   const requiredFields = [
+  //     "itemName",
+  //     "category",
+  //     "unitPrice",
+  //     "quantity",
+  //     "uom",
+  //     "itemType"
+  //   ];
 
-    for (const field of requiredFields) {
-      if (!itemDetails[field]) {
-        alert(`Please fill the required field: ${field}`);
-        return false;
-      }
+  //   for (const field of requiredFields) {
+  //     if (!itemDetails[field]) {
+  //       alert(`Please fill the required field: ${field}`);
+  //       return false;
+  //     }
+  //   }
+  //   return true;
+  // };
+
+
+
+const validate = () => { 
+  const requiredFields = [
+    "itemName",
+    "category",
+    "unitPrice",
+    "quantity",
+    "uom",
+    "itemType"
+  ];
+
+  for (const field of requiredFields) {
+    if (!itemDetails[field]) {
+      const label = field
+        .replace(/([A-Z])/g, " $1") // Convert camelCase to spaced
+        .replace(/^./, str => str.toUpperCase()); // Capitalize first letter
+      toast.error(`Please fill the required field: ${label}`);
+      return false;
     }
-    return true;
-  };
+  }
+
+  return true;
+};
 
   // Form submission
 

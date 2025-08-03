@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import BOM from '@/models/BOM';
+import ItemModels from '@/models/ItemModels';
+import Warehouse from '@/models/warehouseModels';
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 
 // GET /api/bom
