@@ -1,230 +1,89 @@
+
+
 "use client";
-
-// -----------------------------------------------------------------------------
-// Next.js page for importing Sales Invoices from CSV or JSON files
-// -----------------------------------------------------------------------------
-//  • Batch columns are OPTIONAL – default template excludes them.
-//  • Drag‑and‑drop or click upload, preview first 50 rows, POST to backend.
-//  • Downloadable CSV & JSON templates.
-// -----------------------------------------------------------------------------
-
 import React, { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { toast, ToastContainer } from "react-toastify";
+import { useRouter } from "next/navigation";
 import "react-toastify/dist/ReactToastify.css";
 
-export default function ImportSalesInvoicePage() {
-  const router = useRouter();
+export default function ImportTemplate({ modelName, csvHeaders = [], sampleRow = {}, sampleJson = [] }) {
   const [file, setFile] = useState(null);
   const [rows, setRows] = useState([]);
   const [importing, setImporting] = useState(false);
-
-  // ---------------------------------------------------------------------------
-  // CSV/JSON templates (batch‑less by default)
-  // ---------------------------------------------------------------------------
-  const csvHeaders = [
-    "invoiceNumber",
-    "customerCode",
-    "customerName",
-    "contactPerson",
-    "refNumber",
-    "salesEmployee",
-    "orderDate",
-    "expectedDeliveryDate",
-    "remarks",
-    "freight",
-    "rounding",
-    "totalDownPayment",
-    "appliedAmounts",
-    "totalBeforeDiscount",
-    "gstTotal",
-    "grandTotal",
-    "openBalance",
-    "paymentStatus",
-    "itemCode",
-    "itemName",
-    "itemDescription",
-    "quantity",
-    "unitPrice",
-    "discount",
-    "priceAfterDiscount",
-    "totalAmount",
-    "gstAmount",
-    "igstAmount",
-    "warehouseName",
-    "warehouseCode",
-    "taxOption",
-    "managedByBatch" // true/false – leave empty or false for non‑batch
-  ];
-
-  const sampleCsvRow = [
-    "SALE-001",
-    "CUST001",
-    "ABC Ltd.",
-    "John Doe",
-    "REF123",
-    "Emp1",
-    "2025-06-30",
-    "2025-07-05",
-    "First invoice",
-    50,
-    0,
-    0,
-    0,
-    1000,
-    180,
-    1230,
-    1230,
-    "Pending",
-    "ITEM001",
-    "Item A",
-    "Description of item",
-    10,
-    100,
-    0,
-    100,
-    1000,
-    180,
-    0,
-    "Main WH",
-    "WH001",
-    "GST",
-    false
-  ];
+  const router = useRouter();
 
   const downloadCSVTemplate = () => {
-    const csv = Papa.unparse([csvHeaders, sampleCsvRow]);
+    const csv = Papa.unparse([csvHeaders, Object.values(sampleRow)]);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "sales-invoice-template.csv";
+    a.download = `${modelName.toLowerCase()}-template.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const sampleJson = [
-    {
-      invoiceNumber: "SALE-001",
-      customerCode: "CUST001",
-      customerName: "ABC Ltd.",
-      contactPerson: "John Doe",
-      refNumber: "REF123",
-      salesEmployee: "Emp1",
-      orderDate: "2025-06-30T00:00:00.000Z",
-      expectedDeliveryDate: "2025-07-05T00:00:00.000Z",
-      remarks: "First invoice",
-      freight: 50,
-      rounding: 0,
-      totalDownPayment: 0,
-      appliedAmounts: 0,
-      totalBeforeDiscount: 1000,
-      gstTotal: 180,
-      grandTotal: 1230,
-      openBalance: 1230,
-      paymentStatus: "Pending",
-      items: [
-        {
-          itemCode: "ITEM001",
-          itemName: "Item A",
-          itemDescription: "Description of item",
-          quantity: 10,
-          unitPrice: 100,
-          discount: 0,
-          priceAfterDiscount: 100,
-          totalAmount: 1000,
-          gstAmount: 180,
-          igstAmount: 0,
-          warehouseName: "Main WH",
-          warehouseCode: "WH001",
-          taxOption: "GST",
-          managedByBatch: false
-        }
-      ]
-    }
-  ];
-
   const downloadJSONTemplate = () => {
-    const blob = new Blob([JSON.stringify(sampleJson, null, 2)], {
-      type: "application/json;charset=utf-8;",
-    });
+    const blob = new Blob([JSON.stringify(sampleJson, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "sales-invoice-template.json";
+    a.download = `${modelName.toLowerCase()}-template.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  // ---------------------------------------------------------------------------
-  // Handle file upload & parse
-  // ---------------------------------------------------------------------------
-  const handleFile = useCallback((f) => {
-    if (!f) return;
+  const handleFile = useCallback((file) => {
     const reader = new FileReader();
-
     reader.onload = (e) => {
       const text = e.target.result;
-      const trimmed = text.trim();
-      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-        // JSON
+      if (text.trim().startsWith("[")) {
         try {
-          const json = JSON.parse(trimmed);
+          const json = JSON.parse(text);
           setRows(Array.isArray(json) ? json : [json]);
         } catch {
-          toast.error("Invalid JSON file");
-          setRows([]);
+          toast.error("Invalid JSON");
         }
       } else {
-        // CSV
         Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
-          complete: (result) => {
-            if (result.errors.length) {
-              toast.error(`CSV parse error: ${result.errors[0].message}`);
-              setRows([]);
+          complete: (res) => {
+            if (res.errors.length) {
+              toast.error(`CSV error: ${res.errors[0].message}`);
             } else {
-              setRows(result.data);
+              setRows(res.data);
             }
           }
         });
       }
     };
-
-    reader.readAsText(f);
-    setFile(f);
+    reader.readAsText(file);
+    setFile(file);
   }, []);
 
-  const onDrop = (e) => {
-    e.preventDefault();
-    handleFile(e.dataTransfer.files[0]);
-  };
-  const onChoose = (e) => handleFile(e.target.files[0]);
-
-  // ---------------------------------------------------------------------------
-  // Import API call
-  // ---------------------------------------------------------------------------
   const startImport = async () => {
-    if (!rows.length) return toast.warn("No data to import");
+    if (!rows.length) return toast.warning("No data to import");
+
     setImporting(true);
     try {
-      const res = await fetch("/api/importdata/sales-invoice", {
+      const res = await fetch(`/api/importdata/${modelName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoices: rows }),
+        body: JSON.stringify({ data: rows }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success(`${data.count} invoice(s) imported successfully`);
-        setTimeout(() => router.push("/admin/sales-invoice-view"), 1200);
+
+      const result = await res.json();
+      if (res.ok && result.success) {
+        toast.success(`${result.count} record(s) imported successfully`);
+        setTimeout(() => router.push(`/admin/${modelName.toLowerCase()}-view`), 1200);
       } else {
-        toast.error(data.error || "Import failed");
+        toast.error(result.error || "Import failed");
       }
     } catch (err) {
       toast.error(err.message);
@@ -233,62 +92,49 @@ export default function ImportSalesInvoicePage() {
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <ToastContainer position="top-center" />
+      <h1 className="text-2xl font-bold mb-4">Import {modelName}</h1>
 
-      {/* Header & template buttons */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <h1 className="text-3xl font-bold">Import Sales Invoices new</h1>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={downloadCSVTemplate} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">CSV Template</button>
-          <button onClick={downloadJSONTemplate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">JSON Template</button>
-        </div>
+      <div className="flex gap-4 mb-4">
+        <button onClick={downloadCSVTemplate} className="bg-green-600 text-white px-4 py-2 rounded">CSV Template</button>
+        <button onClick={downloadJSONTemplate} className="bg-blue-600 text-white px-4 py-2 rounded">JSON Template</button>
       </div>
 
-      {/* Upload box */}
-      <label onDrop={onDrop} onDragOver={(e) => e.preventDefault()} className="flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50">
-        <input type="file" accept=".csv,application/json" onChange={onChoose} className="hidden" />
-        {!file ? (
-          <p className="text-gray-600 text-center">Drag & drop CSV/JSON here, or click to browse</p>
-        ) : (
-          <p className="text-green-700 font-medium truncate max-w-full">{file.name} selected</p>
-        )}
-      </label>
+      <div
+        onDrop={(e) => {
+          e.preventDefault();
+          handleFile(e.dataTransfer.files[0]);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        className="border-2 border-dashed rounded p-6 text-center cursor-pointer mb-4"
+      >
+        <input type="file" hidden onChange={(e) => handleFile(e.target.files[0])} />
+        {file ? <p className="text-green-600">{file.name} selected</p> : <p>Drag & drop CSV/JSON or click to browse</p>}
+      </div>
 
-      {/* Preview & import */}
       {rows.length > 0 && (
         <>
-          <h2 className="text-xl font-semibold mt-8 mb-2">Preview ({rows.length} rows)</h2>
-          <div className="overflow-auto max-h-72 border rounded">
+          <h2 className="text-lg font-semibold mb-2">Preview ({rows.length} rows)</h2>
+          <div className="overflow-x-auto max-h-64 border rounded">
             <table className="min-w-full text-xs">
-              <thead className="bg-gray-100 sticky top-0">
-                <tr>
-                  {Object.keys(rows[0]).map((h) => (
-                    <th key={h} className="px-2 py-2 border-b whitespace-nowrap text-left">{h}</th>
-                  ))}
-                </tr>
+              <thead className="bg-gray-100">
+                <tr>{Object.keys(rows[0]).map((key) => <th key={key} className="p-2 text-left">{key}</th>)}</tr>
               </thead>
               <tbody>
-                {rows.slice(0, 50).map((row, i) => (
-                  <tr key={i} className={i % 2 ? "bg-gray-50" : ""}>
-                    {Object.keys(rows[0]).map((h) => (
-                      <td key={h} className="px-2 py-1 border-b whitespace-nowrap">{String(row[h] ?? "")}</td>
-                    ))}
+                {rows.slice(0, 50).map((row, idx) => (
+                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    {Object.keys(rows[0]).map((key) => <td key={key} className="p-2">{row[key]}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {rows.length > 50 && <p className="text-xs text-gray-500 mt-1">Showing first 50 rows…</p>}
-
           <button
-            disabled={importing}
             onClick={startImport}
-            className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+            disabled={importing}
+            className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded"
           >
             {importing ? "Importing…" : "Start Import"}
           </button>
@@ -303,29 +149,14 @@ export default function ImportSalesInvoicePage() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 // "use client";
 
 // // -----------------------------------------------------------------------------
-// // Next.js (App Router) page for importing Sales Invoices from CSV or JSON files
+// // Next.js page for importing Sales Invoices from CSV or JSON files
 // // -----------------------------------------------------------------------------
-// // ▸ Downloadable CSV & JSON templates so users can fill data quickly.
-// // ▸ Drag‑and‑drop or click upload; parses with PapaParse.
-// // ▸ Preview first 50 rows; imports via POST /api/import/sales-invoice.
-// // -----------------------------------------------------------------------------
-// // TailwindCSS styling – consistent with the rest of Pankaj's dashboard.
+// //  • Batch columns are OPTIONAL – default template excludes them.
+// //  • Drag‑and‑drop or click upload, preview first 50 rows, POST to backend.
+// //  • Downloadable CSV & JSON templates.
 // // -----------------------------------------------------------------------------
 
 // import React, { useState, useCallback } from "react";
@@ -336,14 +167,12 @@ export default function ImportSalesInvoicePage() {
 
 // export default function ImportSalesInvoicePage() {
 //   const router = useRouter();
-
-//   // Local UI state
 //   const [file, setFile] = useState(null);
-//   const [rows, setRows] = useState([]); // parsed objects
+//   const [rows, setRows] = useState([]);
 //   const [importing, setImporting] = useState(false);
 
 //   // ---------------------------------------------------------------------------
-//   // Template helpers
+//   // CSV/JSON templates (batch‑less by default)
 //   // ---------------------------------------------------------------------------
 //   const csvHeaders = [
 //     "invoiceNumber",
@@ -377,12 +206,7 @@ export default function ImportSalesInvoicePage() {
 //     "warehouseName",
 //     "warehouseCode",
 //     "taxOption",
-//     "managedByBatch",
-//     "manufacturer",
-//     "batchCode",
-//     "expiryDate",
-//     "allocatedQuantity",
-//     "availableQuantity",
+//     "managedByBatch" // true/false – leave empty or false for non‑batch
 //   ];
 
 //   const sampleCsvRow = [
@@ -417,12 +241,7 @@ export default function ImportSalesInvoicePage() {
 //     "Main WH",
 //     "WH001",
 //     "GST",
-//     true,
-//     "ACME",
-//     "BATCH-01",
-//     "2025-12-31",
-//     10,
-//     20,
+//     false
 //   ];
 
 //   const downloadCSVTemplate = () => {
@@ -473,20 +292,10 @@ export default function ImportSalesInvoicePage() {
 //           warehouseName: "Main WH",
 //           warehouseCode: "WH001",
 //           taxOption: "GST",
-//           managedByBatch: true,
-//           manufacturer: "ACME",
-//           batches: [
-//             {
-//               batchCode: "BATCH-01",
-//               expiryDate: "2025-12-31T00:00:00.000Z",
-//               manufacturer: "ACME",
-//               allocatedQuantity: 10,
-//               availableQuantity: 20,
-//             },
-//           ],
-//         },
-//       ],
-//     },
+//           managedByBatch: false
+//         }
+//       ]
+//     }
 //   ];
 
 //   const downloadJSONTemplate = () => {
@@ -534,7 +343,7 @@ export default function ImportSalesInvoicePage() {
 //             } else {
 //               setRows(result.data);
 //             }
-//           },
+//           }
 //         });
 //       }
 //     };
@@ -547,7 +356,6 @@ export default function ImportSalesInvoicePage() {
 //     e.preventDefault();
 //     handleFile(e.dataTransfer.files[0]);
 //   };
-
 //   const onChoose = (e) => handleFile(e.target.files[0]);
 
 //   // ---------------------------------------------------------------------------
@@ -555,10 +363,9 @@ export default function ImportSalesInvoicePage() {
 //   // ---------------------------------------------------------------------------
 //   const startImport = async () => {
 //     if (!rows.length) return toast.warn("No data to import");
-
 //     setImporting(true);
 //     try {
-//       const res = await fetch("/api/sales-invoice", {
+//       const res = await fetch("/api/importdata/sales-invoice", {
 //         method: "POST",
 //         headers: { "Content-Type": "application/json" },
 //         body: JSON.stringify({ invoices: rows }),
@@ -586,35 +393,16 @@ export default function ImportSalesInvoicePage() {
 
 //       {/* Header & template buttons */}
 //       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-//         <h1 className="text-3xl font-bold">Import Sales Invoices</h1>
+//         <h1 className="text-3xl font-bold">Import Sales Invoices new</h1>
 //         <div className="flex flex-wrap gap-3">
-//           <button
-//             onClick={downloadCSVTemplate}
-//             className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm"
-//           >
-//             Download CSV Template
-//           </button>
-//           <button
-//             onClick={downloadJSONTemplate}
-//             className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm"
-//           >
-//             Download JSON Template
-//           </button>
+//           <button onClick={downloadCSVTemplate} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">CSV Template</button>
+//           <button onClick={downloadJSONTemplate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm">JSON Template</button>
 //         </div>
 //       </div>
 
 //       {/* Upload box */}
-//       <label
-//         onDrop={onDrop}
-//         onDragOver={(e) => e.preventDefault()}
-//         className="flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50"
-//       >
-//         <input
-//           type="file"
-//           accept=".csv,application/json"
-//           onChange={onChoose}
-//           className="hidden"
-//         />
+//       <label onDrop={onDrop} onDragOver={(e) => e.preventDefault()} className="flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:bg-gray-50">
+//         <input type="file" accept=".csv,application/json" onChange={onChoose} className="hidden" />
 //         {!file ? (
 //           <p className="text-gray-600 text-center">Drag & drop CSV/JSON here, or click to browse</p>
 //         ) : (
@@ -622,7 +410,7 @@ export default function ImportSalesInvoicePage() {
 //         )}
 //       </label>
 
-//       {/* Preview & import button */}
+//       {/* Preview & import */}
 //       {rows.length > 0 && (
 //         <>
 //           <h2 className="text-xl font-semibold mt-8 mb-2">Preview ({rows.length} rows)</h2>
@@ -631,9 +419,7 @@ export default function ImportSalesInvoicePage() {
 //               <thead className="bg-gray-100 sticky top-0">
 //                 <tr>
 //                   {Object.keys(rows[0]).map((h) => (
-//                     <th key={h} className="px-2 py-2 border-b whitespace-nowrap text-left">
-//                       {h}
-//                     </th>
+//                     <th key={h} className="px-2 py-2 border-b whitespace-nowrap text-left">{h}</th>
 //                   ))}
 //                 </tr>
 //               </thead>
@@ -641,18 +427,14 @@ export default function ImportSalesInvoicePage() {
 //                 {rows.slice(0, 50).map((row, i) => (
 //                   <tr key={i} className={i % 2 ? "bg-gray-50" : ""}>
 //                     {Object.keys(rows[0]).map((h) => (
-//                       <td key={h} className="px-2 py-1 border-b whitespace-nowrap">
-//                         {String(row[h] ?? "")}
-//                       </td>
+//                       <td key={h} className="px-2 py-1 border-b whitespace-nowrap">{String(row[h] ?? "")}</td>
 //                     ))}
 //                   </tr>
 //                 ))}
 //               </tbody>
 //             </table>
 //           </div>
-//           {rows.length > 50 && (
-//             <p className="text-xs text-gray-500 mt-1">Showing first 50 rows…</p>
-//           )}
+//           {rows.length > 50 && <p className="text-xs text-gray-500 mt-1">Showing first 50 rows…</p>}
 
 //           <button
 //             disabled={importing}
@@ -666,3 +448,19 @@ export default function ImportSalesInvoicePage() {
 //     </div>
 //   );
 // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

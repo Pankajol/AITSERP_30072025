@@ -828,7 +828,7 @@ const validate = () => {
     { field: "gstCategory", label: "GST Category" },
     { field: "gstNumber", label: "GST Number" },
     { field: "pan", label: "PAN" },
-    { field: "phone", label: "Phone Number" },
+    { field: "mobileNumber", label: "mobileNumber" },
     { field: "emailId", label: "Email ID" },
   ];
 
