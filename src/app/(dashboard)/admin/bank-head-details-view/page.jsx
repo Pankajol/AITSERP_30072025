@@ -8,7 +8,16 @@ const BankHeadView = () => {
 
   const fetchBankHeads = async () => {
     try {
-      const response = await fetch("/api/bank-head");
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/bank-head",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+
+      );
       const result = await response.json();
       if (result.success) {
         setBankHeads(result.data);

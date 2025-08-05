@@ -9,7 +9,15 @@ const AccountHeadView = () => {
   useEffect(() => {
     const fetchAccountHeads = async () => {
       try {
-        const response = await fetch("/api/account-head");
+        const token = localStorage.getItem("token");
+        const response = await fetch("/api/account-head",
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
         if (!response.ok) {
           throw new Error("Failed to fetch account heads");
         }
