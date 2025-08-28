@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo,useRef } from 'react';
 import Link from 'next/link';
+
+import { useRouter } from "next/navigation";
 import axios from 'axios';
-import { useRouter } from 'next/navigation';
+
 import {
   FaEllipsisV,
   FaEdit,
@@ -270,6 +272,8 @@ function Card({ order, idx, onDelete, onCopy }) {
 function RowMenu({ order, onDelete, onCopy }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const router = useRouter();
 
   /** ✅ Actions Array */
   const actions = [
