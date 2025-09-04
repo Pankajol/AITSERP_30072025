@@ -7,7 +7,7 @@ const StockMovementSchema = new mongoose.Schema({
   warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse', required: true },
   movementType: { 
     type: String, 
-    enum: ['IN', 'OUT', 'TRANSFER', 'RESERVE', 'FULFILL','ON_ORDER'], 
+    enum: ['IN', 'OUT', 'TRANSFER', 'RESERVE', 'FULFILL','ON_ORDER','RETURN','ADJUSTMENT',' STOCK ISSUE','RECEIPT FROM PRODUCTION ORDER'], 
     required: true 
   },
   quantity: { type: Number, required: true },

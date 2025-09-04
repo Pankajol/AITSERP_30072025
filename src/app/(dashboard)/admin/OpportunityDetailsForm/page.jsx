@@ -26,6 +26,7 @@ const OpportunityDetailsForm = () => {
     company: "",
     printLanguage: "",
     opportunityDate: "",
+    requestType: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -79,8 +80,10 @@ const handleSubmit = async (e) => {
         {[
           { label: "Opportunity From", name: "opportunityFrom", type: "text", required: true },
           { label: "Opportunity Type", name: "opportunityType", type: "text", required: true },
-          { label: "Sales Stage", name: "salesStage", type: "text", required: true },
+          { label: "Opportunity Date", name: "opportunityDate", type: "date" },
           { label: "Source", name: "source", type: "text" },
+         
+          { label: "Sales Stage", name: "salesStage", type: "text", required: true },
           { label: "Party", name: "party", type: "text" },
           { label: "Opportunity Owner", name: "opportunityOwner", type: "text" },
           { label: "Expected Closing Date", name: "expectedClosingDate", type: "date", required: true },
@@ -99,7 +102,7 @@ const handleSubmit = async (e) => {
           { label: "Opportunity Amount (INR)", name: "opportunityAmount", type: "number", required: true },
           { label: "Company", name: "company", type: "text" },
           { label: "Print Language", name: "printLanguage", type: "text" },
-          { label: "Opportunity Date", name: "opportunityDate", type: "date" },
+        
         ].map(({ label, name, type, required }) => (
           <div key={name}>
             <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -116,6 +119,22 @@ const handleSubmit = async (e) => {
           </div>
         ))}
       </div>
+
+          <div>
+          <label className="block text-sm font-medium text-gray-700">Request Type</label>
+          <select
+            name="requestType"
+            value={formData.requestType || ""}
+            onChange={handleChange}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+          >
+            <option value="">Select Request Type</option>
+            <option value="Product Enquiry">Product Enquiry</option>
+            <option value="Request for Information">Request for Information</option>
+            <option value="Suggestions">Suggestions</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
       <div className="mt-6 flex justify-end gap-4">
         <button
           type="submit"

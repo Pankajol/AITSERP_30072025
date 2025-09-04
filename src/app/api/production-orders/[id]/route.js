@@ -23,7 +23,7 @@ async function authenticate(req) {
 
   try {
     const user = await verifyJWT(token);
-    return { user };
+    return { user,};
   } catch (error) {
     console.error("JWT verification failed:", error.message);
     return { error: "Invalid token", status: 401 };
@@ -38,11 +38,9 @@ export async function GET(req, { params }) {
   if (error) return NextResponse.json({ error }, { status });
 
   try {
-    const order = await ProductionOrder.findById(params.id)
-
-
-
-          .populate('warehouse', 'warehouseName')
+    const { id } = await params;
+    const order = await ProductionOrder.findById(id)
+      .populate('warehouse', 'warehouseName')
       .populate('items.warehouse', 'warehouseName')
       .populate({
         path: 'bomId',
@@ -65,6 +63,7 @@ export async function GET(req, { params }) {
       // .lean();
 
     if (!order) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
+    console.log("Fetched order:", order);
 
     if (String(order.companyId) !== String(user.companyId)) {
       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });

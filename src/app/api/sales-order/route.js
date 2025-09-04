@@ -56,10 +56,11 @@ export async function POST(req) {
   mongoSession.startTransaction();
 
   try {
-    const token = getTokenFromHeader(req);
+    const token =  getTokenFromHeader(req);
     if (!token) throw new Error("JWT token missing");
 
-    const user = await verifyJWT(token);
+    const user =  verifyJWT(token);
+    console.log("Decoded User:", user);
     if (!user || !isAuthorized(user)) throw new Error('Forbidden');
 
     const { fields, files } = await parseMultipart(req);
@@ -116,52 +117,119 @@ export async function POST(req) {
 
     const [order] = await SalesOrder.create([orderData], { session: mongoSession });
 
-    for (const item of orderData.items) {
-      const itemId = item.item?._id || item.item;
-      const warehouseId = item.warehouse?._id || item.warehouse;
+//     for (const item of orderData.items) {
+//       const itemId = item.item?._id || item.item;
+//       const warehouseId = item.warehouse?._id || item.warehouse;
 
-      if (!itemId || !warehouseId || !Types.ObjectId.isValid(itemId) || !Types.ObjectId.isValid(warehouseId)) {
-        throw new Error(`Invalid Item or Warehouse ID: ${itemId}, ${warehouseId}`);
-      }
+//       if (!itemId || !warehouseId || !Types.ObjectId.isValid(itemId) || !Types.ObjectId.isValid(warehouseId)) {
+//         throw new Error(`Invalid Item or Warehouse ID: ${itemId}, ${warehouseId}`);
+//       }
 
-      const itemObjId = new Types.ObjectId(itemId);
-      const warehouseObjId = new Types.ObjectId(warehouseId);
+//       const itemObjId = new Types.ObjectId(itemId);
+//       const warehouseObjId = new Types.ObjectId(warehouseId);
 
-      let inv = await Inventory.findOne({ item: itemObjId, warehouse: warehouseObjId }).session(mongoSession);
+//      let inv = await Inventory.findOne({ 
+//   companyId: user.companyId, 
+//   item: itemObjId, 
+//   warehouse: warehouseObjId 
+// }).session(mongoSession);
 
-      if (!inv) {
-        [inv] = await Inventory.create(
-          [{ item: itemObjId, warehouse: warehouseObjId, quantity: 0, committed: 0, batches: [] }],
-          { session: mongoSession }
-        );
-      }
+// if (!inv) {
+//   [inv] = await Inventory.create(
+//     [{
+//       companyId: user.companyId,
+//       item: itemObjId,
+//       warehouse: warehouseObjId,
+//       quantity: 0,
+//       committed: 0,
+//       batches: []
+//     }],
+//     { session: mongoSession }
+//   );
+// }
+//       if (!inv) throw new Error(`No inventory for item ${itemId} in warehouse ${warehouseId}`);
 
-      if (item.batches?.length) {
-        for (const alloc of item.batches) {
-          const idx = inv.batches.findIndex(b => b.batchNumber === alloc.batchCode);
-          if (idx === -1) throw new Error(`Batch ${alloc.batchCode} not found`);
-          if (inv.batches[idx].quantity < alloc.allocatedQuantity)
-            throw new Error(`Insufficient quantity in batch ${alloc.batchCode}`);
-        }
-      } else if (inv.quantity < item.quantity) {
-        throw new Error(`Insufficient stock for item ${itemId}`);
-      }
+//       if (item.batches?.length) {
+//         for (const alloc of item.batches) {
+//           const idx = inv.batches.findIndex(b => b.batchNumber === alloc.batchCode);
+//           if (idx === -1) throw new Error(`Batch ${alloc.batchCode} not found`);
+//           if (inv.batches[idx].quantity < alloc.allocatedQuantity)
+//             throw new Error(`Insufficient quantity in batch ${alloc.batchCode}`);
+//         }
+//       } else if (inv.quantity < item.quantity) {
+//         throw new Error(`Insufficient stock for item ${itemId}`);
+//       }
 
-      inv.committed = (inv.committed || 0) + item.quantity;
-      await inv.save({ session: mongoSession });
+//       inv.committed = (inv.committed || 0) + item.quantity;
+//       await inv.save({ session: mongoSession });
 
-      await StockMovement.create([
-        {
-          companyId: user.companyId,
-          item: itemObjId,
-          warehouse: warehouseObjId,
-          movementType: 'RESERVE',
-          quantity: item.quantity,
-          reference: order._id,
-          remarks: 'Sales Order reservation',
-        },
-      ], { session: mongoSession });
-    }
+//       await StockMovement.create([
+//         {
+//           companyId: user.companyId,
+//           item: itemObjId,
+//           warehouse: warehouseObjId,
+//           movementType: 'RESERVE',
+//           quantity: item.quantity,
+//           reference: order._id,
+//           remarks: 'Sales Order reservation',
+//         },
+//       ], { session: mongoSession });
+//     }
+
+
+
+for (const item of orderData.items) {
+  const itemId = item.item?._id || item.item;
+  const warehouseId = item.warehouse?._id || item.warehouse;
+
+  if (!itemId || !warehouseId || !Types.ObjectId.isValid(itemId) || !Types.ObjectId.isValid(warehouseId)) {
+    throw new Error(`Invalid Item or Warehouse ID: ${itemId}, ${warehouseId}`);
+  }
+
+  const itemObjId = new Types.ObjectId(itemId);
+  const warehouseObjId = new Types.ObjectId(warehouseId);
+
+  // Ensure Inventory record exists but don't check stock
+  let inv = await Inventory.findOne({
+    companyId: user.companyId,
+    item: itemObjId,
+    warehouse: warehouseObjId
+  }).session(mongoSession);
+
+  if (!inv) {
+    [inv] = await Inventory.create(
+      [{
+        companyId: user.companyId,
+        item: itemObjId,
+        warehouse: warehouseObjId,
+        quantity: 0,
+        committed: 0,
+        batches: []
+      }],
+      { session: mongoSession }
+    );
+  }
+
+  // ❌ REMOVE stock validation
+  // ❌ REMOVE batch-level checks
+  // ❌ REMOVE insufficient stock error
+
+  // Option A: If you want to "reserve" stock, just increment committed
+  // Option B: If you don’t even want reservation, skip this
+  inv.committed = (inv.committed || 0) + item.quantity;
+  await inv.save({ session: mongoSession });
+
+  await StockMovement.create([{
+    companyId: user.companyId,
+    item: itemObjId,
+    warehouse: warehouseObjId,
+    movementType: 'RESERVE', // or remove this if you don’t want reservation
+    quantity: item.quantity,
+    reference: order._id,
+    remarks: 'Sales Order reservation',
+  }], { session: mongoSession });
+}
+
 
     await mongoSession.commitTransaction();
     mongoSession.endSession();

@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
+import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import dbConnect from "@/lib/db";
-import Lead from "@/models/load";
+import Lead from "@/models/load"; // ✅ make sure file name matches
 
 // GET /api/lead/:id - Fetch a specific lead
-export async function GET(NextResponse, { params }) {
+export async function GET(req, { params }) {
   try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const decodedToken = verifyJWT(token);
+    if (!decodedToken) {
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+    }
+
     await dbConnect();
     const lead = await Lead.findById(params.id);
 
@@ -22,6 +33,16 @@ export async function GET(NextResponse, { params }) {
 // PATCH /api/lead/:id - Update a specific lead
 export async function PATCH(req, { params }) {
   try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const decodedToken = verifyJWT(token);
+    if (!decodedToken) {
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+    }
+
     const data = await req.json();
     await dbConnect();
 
@@ -44,6 +65,16 @@ export async function PATCH(req, { params }) {
 // DELETE /api/lead/:id - Delete a specific lead
 export async function DELETE(req, { params }) {
   try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const decodedToken = verifyJWT(token);
+    if (!decodedToken) {
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+    }
+
     await dbConnect();
     const deletedLead = await Lead.findByIdAndDelete(params.id);
 
@@ -51,7 +82,10 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ message: "Lead not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "Lead deleted successfully" }, { status: 200 });
+    return NextResponse.json(
+      { message: "Lead deleted successfully" },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("DELETE Lead Error:", error);
     return NextResponse.json({ message: "Failed to delete lead" }, { status: 500 });

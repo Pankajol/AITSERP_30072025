@@ -234,6 +234,14 @@ export default function AdminSidebar({ children }) {
             <Item href="/admin/productionorders-list-view" icon={<HiReceiptTax />} label="Production Orders View" close={closeSidebar} />
           </Section>
 
+          {/*------------------------------------- project ------------------------------- */}
+          <Section title="Project" icon={<HiViewGrid />} isOpen={openMenu === 'project'} onToggle={() => toggleMenu('project')}>
+            <Item href="/admin/project/workspaces" icon={<HiOutlineOfficeBuilding />} label="Workspaces" close={closeSidebar} />
+            <Item href="/admin/project/projects" icon={<HiOutlineCube />} label="Projects" close={closeSidebar} />
+            <Item href="/admin/project/tasks/board" icon={<HiPuzzle />} label="Tasks Board" close={closeSidebar} />
+            <Item href="/admin/project/tasks" icon={<HiPuzzle />} label="Tasks List" close={closeSidebar} />
+          </Section>
+
           {/* Logout ------------------------------------------------------ */}
           <div className="pt-4">
             <LogoutButton />

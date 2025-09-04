@@ -1,25 +1,64 @@
 import { NextResponse } from "next/server";
+import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import dbConnect from "@/lib/db";
-import Lead from "@/models/load";
+import Lead from "@/models/load"; 
 
-// POST /api/lead
 export async function POST(req) {
+  await dbConnect();
+
   try {
-    const data = await req.json();
-    await dbConnect();
+    // ✅ Get token
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+    }
 
-    const newLead = new Lead(data);
-    await newLead.save();
+    // ✅ Decode token
+    const decoded = verifyJWT(token);
 
-    return NextResponse.json({ message: "Lead created successfully." }, { status: 201 });
-  } catch (error) {
-    console.error("Error in POST /api/lead:", error);
-    return NextResponse.json({ message: "Failed to create lead." }, { status: 500 });
+    // ✅ Parse request body
+    const body = await req.json();
+
+    // ✅ Create lead with LeadOwner = logged-in user
+    const lead = await Lead.create({
+      ...body,
+      leadOwner: decoded.id,      // logged-in user id
+      companyId: decoded.companyId, // optional if you want to track which company it belongs to
+    });
+
+    return new Response(JSON.stringify(lead), { status: 201 });
+  } catch (err) {
+    console.error("Lead create error:", err);
+    return new Response(JSON.stringify({ message: "Server error" }), { status: 500 });
   }
 }
 
-export async function GET() {
-  await dbConnect();
-  const leads = await Lead.find();
-  return NextResponse.json(leads);
+
+// GET /api/lead
+export async function GET(req) {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify token
+    const user = await verifyJWT(token);
+    if (!user) {
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+    }
+
+    await dbConnect();
+
+    // Only fetch leads owned by logged-in user
+    const leads = await Lead.find({ leadOwner: user.id });
+
+    return NextResponse.json(leads, { status: 200 });
+  } catch (error) {
+    console.error("Error in GET /api/lead:", error);
+    return NextResponse.json(
+      { message: "Failed to fetch leads." },
+      { status: 500 }
+    );
+  }
 }

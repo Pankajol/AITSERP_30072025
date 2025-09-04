@@ -3,17 +3,26 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { jwtDecode } from "jwt-decode";
 
 export default function ProductionOrderView() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
 
   useEffect(() => {
-    if (!id) return;
-    axios.get(`/api/production-orders/${id}`)
-      .then(res => setOrder(res.data))
-      .catch(console.error);
-  }, [id]);
+  const token = localStorage.getItem("token");
+  if (!token) return;
+  if (!id) return;
+
+  axios.get(`/api/production-orders/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },  
+  })
+  .then(res => setOrder(res.data))
+  .catch(console.error);
+}, [id]);
+
 
   if (!order) return <p>Loading...</p>;
 

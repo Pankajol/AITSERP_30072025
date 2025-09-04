@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import Inventory from '@/models/Inventory';
 import ProductionOrder from '@/models/ProductionOrder';
+import StockMovement from '@/models/StockMovement'; // ✅ added
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 
 export async function POST(req, { params }) {
@@ -20,6 +21,7 @@ export async function POST(req, { params }) {
     }
 
     const companyId = user.companyId;
+    const userId = user._id || user.id;
 
     const { productionOrderId } = params;
     const { searchParams } = new URL(req.url);
@@ -77,7 +79,7 @@ export async function POST(req, { params }) {
         destInventory = new Inventory({
           item: itemId,
           warehouse: destinationWarehouse,
-          companyId, // ✅ required field
+          companyId,
           quantity: 0,
           batches: [],
         });
@@ -100,6 +102,31 @@ export async function POST(req, { params }) {
 
       destInventory.quantity += quantity;
       await destInventory.save();
+
+      // ===== Record Stock Movements =====
+      // OUT movement from source
+      await StockMovement.create({
+        companyId,
+        createdBy: userId,
+        item: itemId,
+        warehouse: sourceWarehouse,
+        movementType: 'OUT',
+        quantity,
+        reference: productionOrderId,
+        remarks: `Stock transfer OUT for Production Order ${productionOrderId}`,
+      });
+
+      // IN movement to destination
+      await StockMovement.create({
+        companyId,
+        createdBy: userId,
+        item: itemId,
+        warehouse: destinationWarehouse,
+        movementType: 'IN',
+        quantity,
+        reference: productionOrderId,
+        remarks: `Stock transfer IN for Production Order ${productionOrderId}`,
+      });
     }
 
     // ===== Update Production Order Transfer Status =====
@@ -127,51 +154,35 @@ export async function POST(req, { params }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // import { NextResponse } from 'next/server';
 // import connectDB from '@/lib/db';
 // import Inventory from '@/models/Inventory';
 // import ProductionOrder from '@/models/ProductionOrder';
+// import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 
 // export async function POST(req, { params }) {
 //   try {
 //     await connectDB();
+
+//     // ===== Authenticate User =====
+//     const token = getTokenFromHeader(req);
+//     if (!token) {
+//       return NextResponse.json({ message: 'Unauthorized: No token' }, { status: 401 });
+//     }
+
+//     const user = verifyJWT(token);
+//     if (!user || !user.companyId) {
+//       return NextResponse.json({ message: 'Unauthorized or company ID missing' }, { status: 401 });
+//     }
+
+//     const companyId = user.companyId;
 
 //     const { productionOrderId } = params;
 //     const { searchParams } = new URL(req.url);
 //     const qtyParam = Number(searchParams.get('qty'));
 
 //     const payload = await req.json();
-//     const data = payload.data || payload; // Accept either { data: [...] } or direct array
+//     const data = payload.data || payload;
 //     const avgCostPrice = payload.avgCostPrice || 0;
 
 //     if (!Array.isArray(data) || data.length === 0) {
@@ -195,7 +206,7 @@ export async function POST(req, { params }) {
 //       }
 
 //       // ===== Fetch Source Inventory =====
-//       const sourceInventory = await Inventory.findOne({ item: itemId, warehouse: sourceWarehouse });
+//       const sourceInventory = await Inventory.findOne({ item: itemId, warehouse: sourceWarehouse, companyId });
 
 //       if (!sourceInventory || sourceInventory.quantity < quantity) {
 //         return NextResponse.json({ message: `Insufficient quantity in source warehouse` }, { status: 400 });
@@ -216,12 +227,13 @@ export async function POST(req, { params }) {
 //       await sourceInventory.save();
 
 //       // ===== Update/Add to Destination Inventory =====
-//       let destInventory = await Inventory.findOne({ item: itemId, warehouse: destinationWarehouse });
+//       let destInventory = await Inventory.findOne({ item: itemId, warehouse: destinationWarehouse, companyId });
 
 //       if (!destInventory) {
 //         destInventory = new Inventory({
 //           item: itemId,
 //           warehouse: destinationWarehouse,
+//           companyId, // ✅ required field
 //           quantity: 0,
 //           batches: [],
 //         });
@@ -250,7 +262,7 @@ export async function POST(req, { params }) {
 //     await ProductionOrder.findByIdAndUpdate(
 //       productionOrderId,
 //       {
-//         $set: { status: 'transferred' }, // You can enhance this with partial transfer tracking if needed
+//         $set: { status: 'transferred' },
 //         $inc: { transferqty: qtyParam || 0 },
 //       },
 //       { new: true }
@@ -261,11 +273,46 @@ export async function POST(req, { params }) {
 //       transferred: data.length,
 //       orderId: productionOrderId,
 //     }, { status: 200 });
+
 //   } catch (err) {
 //     console.error('Transfer error:', err);
 //     return NextResponse.json({ message: 'Server error', error: err.message }, { status: 500 });
 //   }
 // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

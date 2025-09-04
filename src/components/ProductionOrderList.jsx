@@ -15,8 +15,15 @@ export default function ProductionOrdersPage() {
   const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
     axios
-      .get("/api/production-orders")
+      .get("/api/production-orders",
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
       .then((res) => setOrders(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));

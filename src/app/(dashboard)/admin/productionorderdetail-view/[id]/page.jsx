@@ -1,7 +1,5 @@
 
 
-
-
 import ProductionOrderView from '@/components/ProductionOrderView';
 
 export default async function Page({ params }) {
