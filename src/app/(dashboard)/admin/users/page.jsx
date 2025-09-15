@@ -13,6 +13,8 @@ const ROLE_OPTIONS = [
   "HR Manager",
   "Support Executive",
   "Production Head",
+  "Project Manager",
+  "Employee",
 ];
 
 export default function UsersPage() {

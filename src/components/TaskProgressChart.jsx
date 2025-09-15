@@ -18,10 +18,10 @@ export default function TaskProgressChart() {
   useEffect(() => {
     const fetchProgress = async () => {
       try {
-        const res = await api.get("/task/tasks");
+        const res = await api.get("/project/tasks");
         const tasks = res.data;
 
-        const completed = tasks.filter((t) => t.status === "done").length;
+        const completed = tasks.filter((t) => t.status === "completed").length;
         const pending = tasks.length - completed;
 
         setData([

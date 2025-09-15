@@ -8,6 +8,16 @@ const TaskSchema = new mongoose.Schema({
   assignees: [{ type: mongoose.Schema.Types.ObjectId, ref: "CompanyUser" }],
   status: { type: String, enum: ["todo", "in-progress", "done"], default: "todo" },
   priority: { type: String, enum: ["low", "medium", "high"], default: "medium" },
+  progress: { type: Number, default: 10 },
+  // project date
+  projectedStartDate: {type: Date},
+  projectedEndDate: {type: Date},
+ 
+  subTasks: [{ type: mongoose.Schema.Types.ObjectId, ref: "SubTask" }],
+ 
+  // actual date
+  startDate: {type: Date},
+  endDate: {type: Date},
   dueDate: Date,
   labels: [String],
 }, { timestamps: true });

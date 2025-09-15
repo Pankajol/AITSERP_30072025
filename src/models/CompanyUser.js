@@ -33,6 +33,8 @@ const CompanyUserSchema = new mongoose.Schema(
         'HR Manager',
         'Support Executive',
         'Production Head',
+        'Project Manager',
+        'Employee',
       ],
       default: ['Sales Manager'],
     },

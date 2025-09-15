@@ -5,7 +5,9 @@ const SECRET = process.env.JWT_SECRET;
 export function signToken(user) {
   return jwt.sign(
     {
-      id: user._id,                                   // user or company _id
+      id: user._id,
+      name: user?.name || user?.fullName || user?.companyName || "Unknown",
+                                   // user or company _id
       email: user.email,
       role: user.role?.name ?? "Company",             // if company this is just "Company"
       type: user.type,                                // "company" | "user"

@@ -18,10 +18,10 @@ export default function TaskTimelineChart() {
   useEffect(() => {
     const fetchTimeline = async () => {
       try {
-        const res = await api.get("/task/tasks");
+        const res = await api.get("/project/tasks");
         const tasks = res.data;
 
-        const completedTasks = tasks.filter((t) => t.status === "done");
+        const completedTasks = tasks.filter((t) => t.status === "completed");
 
         // Group based on view
         const grouped = {};

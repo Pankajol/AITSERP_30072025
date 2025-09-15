@@ -31,6 +31,7 @@ export async function POST(req) {
       {
         id: company._id,
         email: company.email,
+        name: company.name,
         type: 'company',
         companyName: company.companyName,
         companyId: company._id, 

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import CompanyUser from '@/models/CompanyUser';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 const SECRET = process.env.JWT_SECRET;
 
@@ -15,6 +15,8 @@ const VALID_ROLES = [
   'HR Manager',
   'Support Executive',
   'Production Head',
+  'Project Manager',
+  'Employee',
 ];
 
 /* ─── helper: verify JWT and ensure company type ─── */
@@ -22,26 +24,43 @@ function verifyCompany(req) {
   const auth = req.headers.get('authorization') || '';
   const [, token] = auth.split(' ');
   if (!token) throw new Error('Unauthorized');
-  const d = jwt.verify(token, SECRET);
-  if (d.type !== 'company') throw new Error('Forbidden');
-  return d; // { id, email, type: 'company', … }
+  const decoded = jwt.verify(token, SECRET);
+  if (decoded.type !== 'company') throw new Error('Forbidden');
+  return decoded; // { id, companyId, email, roles: [], type: 'company' }
 }
 
 /* ───────── GET  /api/company/users ───────── */
 export async function GET(req) {
   try {
-    const company = verifyCompany(req);
+    const decoded = verifyCompany(req); // ✅ consistent variable name
     await dbConnect();
-    const users = await CompanyUser.find({ companyId: company.id })
+
+    let query = { companyId: decoded.companyId };
+
+    if (decoded.roles?.includes('Admin')) {
+      // Admin → sees all users
+    } else if (decoded.roles?.includes('Project Manager')) {
+      // Project Manager → sees only employees
+      query.roles = 'Employee';
+    } else if (decoded.roles?.includes('Employee')) {
+      // Employee → sees only themselves
+      query._id = decoded.id;
+    } else {
+      // Other roles → fallback: sees all company users
+    }
+
+    const users = await CompanyUser.find(query)
       .select('-password')
       .sort({ createdAt: -1 })
       .lean();
+
     return NextResponse.json(users);
   } catch (e) {
     const status = /Unauthorized|Forbidden/.test(e.message) ? 401 : 500;
     return NextResponse.json({ message: e.message }, { status });
   }
 }
+
 
 /* ───────── POST  /api/company/users ───────── */
 export async function POST(req) {

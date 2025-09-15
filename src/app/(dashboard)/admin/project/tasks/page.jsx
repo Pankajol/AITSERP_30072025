@@ -1,312 +1,13 @@
-"use client";
-import { useEffect, useState } from "react";
-import api from "@/lib/api";
-import Select from "react-select";
-
-export default function TasksPage() {
-  const [tasks, setTasks] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTask, setEditTask] = useState(null);
-
-  // form state
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [assignees, setAssignees] = useState([]); // ✅ always array
-  const [dueDate, setDueDate] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [status, setStatus] = useState("todo");
-
-  // fetch tasks, projects, users
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        }
-        const [tRes, pRes, uRes] = await Promise.all([
-          api.get("/project/tasks"),
-          api.get("/project/projects"),
-          api.get("/company/users"),
-          { headers: { Authorization: `Bearer ${token}` } }
-        ]);
-        console.log("task data", tRes.data);
-        setTasks(tRes.data);
-        setProjects(pRes.data);
-        setUsers(uRes.data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchData();
-  }, []);
-
-  const resetForm = () => {
-    setTitle("");
-    setDescription("");
-    setProjectId("");
-    setAssignees([]); // ✅ reset array
-    setDueDate("");
-    setPriority("medium");
-    setStatus("todo");
-    setEditTask(null);
-  };
-
-  // open modal (new or edit)
-  const openModal = (task = null) => {
-    if (task) {
-      setEditTask(task);
-      setTitle(task.title);
-      setDescription(task.description || "");
-      setProjectId(task.project?._id || "");
-      setAssignees(
-        Array.isArray(task.assignees)
-          ? task.assignees.map((user) => user._id || user)
-          : []
-      );
-      setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
-      setPriority(task.priority);
-      setStatus(task.status);
-    } else {
-      resetForm();
-    }
-    setModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    resetForm();
-  };
-
-  // add or update task
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        title,
-        description,
-        project: projectId,
-        assignees, // ✅ array
-        dueDate,
-        priority,
-        status,
-      };
-
-      if (editTask) {
-        const res = await api.put(`/project/tasks/${editTask._id}`, payload);
-        setTasks((prev) =>
-          prev.map((t) => (t._id === editTask._id ? res.data : t))
-        );
-      } else {
-        const res = await api.post("/project/tasks", payload);
-        setTasks([...tasks, res.data]);
-      }
-      closeModal();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // delete task
-  const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this task?")) return;
-    try {
-      await api.delete(`/project/tasks/${id}`);
-      setTasks(tasks.filter((t) => t._id !== id));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Tasks</h1>
-        <button
-          onClick={() => openModal()}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          + New Task
-        </button>
-      </div>
-
-      {/* Tasks Table */}
-      <table className="w-full border">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="p-2 border">Title</th>
-            <th className="p-2 border">Description</th>
-            <th className="p-2 border">Project</th>
-            <th className="p-2 border">Assignees</th>
-            <th className="p-2 border">Due Date</th>
-            <th className="p-2 border">Priority</th>
-            <th className="p-2 border">Status</th>
-            <th className="p-2 border">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => (
-            <tr key={t._id}>
-              <td className="p-2 border">{t.title}</td>
-              <td className="p-2 border">{t.description || "-"}</td>
-              <td className="p-2 border">{t.project?.name}</td>
-              <td className="p-2 border">
-                {Array.isArray(t.assignees) && t.assignees.length
-                  ? t.assignees.map((u) => (u.name ? u.name : u)).join(", ")
-                  : "-"}
-              </td>
-              <td className="p-2 border">
-                {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "-"}
-              </td>
-              <td className="p-2 border capitalize">{t.priority}</td>
-              <td className="p-2 border capitalize">{t.status}</td>
-              <td className="p-2 border text-center space-x-2">
-                <button
-                  onClick={() => openModal(t)}
-                  className="text-blue-600 hover:underline"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(t._id)}
-                  className="text-red-600 hover:underline"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center">
-          <div className="bg-white rounded-lg p-6 w-[600px] relative">
-            <h2 className="text-xl font-bold mb-4">
-              {editTask ? "Edit Task" : "New Task"}
-            </h2>
-            <form
-              onSubmit={handleSubmit}
-              className="grid grid-cols-4 gap-2 mb-4"
-            >
-              <label className="col-span-2 font-semibold">Title</label>
-              <input
-                type="text"
-                placeholder="Task Title"
-                className="border p-2 rounded col-span-2"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
-
-              <label className="col-span-2 font-semibold">Description</label>
-              <textarea
-                placeholder="Task Description"
-                className="border p-2 rounded col-span-2"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              ></textarea>
-
-              <label className="col-span-2 font-semibold">Project</label>
-              <select
-                className="border p-2 rounded"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                required
-              >
-                <option value="">Select Project</option>
-                {projects.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              <label className="col-span-2 font-semibold">Assignees</label>
-              <div className="col-span-2">
-                <Select
-                  isMulti
-                  options={users.map((u) => ({ value: u._id, label: u.name }))}
-                  value={assignees.map((id) => {
-                    const user = users.find((u) => u._id === id);
-                    return { value: id, label: user?.name || id };
-                  })}
-                  onChange={(selected) =>
-                    setAssignees(selected.map((s) => s.value))
-                  }
-                  placeholder="Search & select users"
-                  className="text-sm"
-                />
-              </div>
-
-              <label className="col-span-2 font-semibold">Due Date</label>
-              <input
-                type="date"
-                className="border p-2 rounded"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-
-              <label className="col-span-2 font-semibold">Priority</label>
-              <select
-                className="border p-2 rounded"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-
-              <label className="col-span-2 font-semibold">Status</label>
-              <select
-                className="border p-2 rounded"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="todo">To Do</option>
-                <option value="in-progress">In Progress</option>
-                <option value="done">Done</option>
-              </select>
-
-              <div className="col-span-2 flex justify-end gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 border rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded"
-                >
-                  {editTask ? "Update" : "Create"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-
-
 // "use client";
 // import { useEffect, useState } from "react";
 // import api from "@/lib/api";
-// import Select from "react-select"; 
+// import axios from "axios";
+// import Select from "react-select";
 
 // export default function TasksPage() {
 //   const [tasks, setTasks] = useState([]);
+//   const [subtasks, setSubtasks] = useState([]);
+//   const [editSubtask, setEditSubtask] = useState(null);
 //   const [projects, setProjects] = useState([]);
 //   const [users, setUsers] = useState([]);
 
@@ -316,28 +17,53 @@ export default function TasksPage() {
 //   // form state
 //   const [title, setTitle] = useState("");
 //   const [description, setDescription] = useState("");
-
-//   const [projectId, setProjectId] = useState([]);
-//   const [assignedTo, setAssignedTo] = useState("");
+//   const [projectId, setProjectId] = useState("");
+//   const [assignees, setAssignees] = useState([]); // ✅ always array
 //   const [dueDate, setDueDate] = useState("");
+//   const [projectedStartDate, setProjectedStartDate] = useState("");
+//   const [projectedEndDate, setProjectedEndDate] = useState("");
+//   const [startDate, setStartDate] = useState("");
+//   const [endDate, setEndDate] = useState("");
 //   const [priority, setPriority] = useState("medium");
 //   const [status, setStatus] = useState("todo");
 
+//   // subtask form state
+//   const [subTitle, setSubTitle] = useState("");
+//   const [subDescription, setSubDescription] = useState("");
+//   const [subAssignees, setSubAssignees] = useState([]); // ✅ always array
+//   const [subDueDate, setSubDueDate] = useState("");
+
+//   const [subPriority, setSubPriority] = useState("medium");
+//   const [subStatus, setSubStatus] = useState("todo");
+//   const [subModalOpen, setSubModalOpen] = useState(false);
+//   const [subEditTask, setSubEditTask] = useState(null);
+
+
+//   // fetch tasks, projects, users
 //   // fetch tasks, projects, users
 //   useEffect(() => {
 //     const fetchData = async () => {
 //       try {
+//         const token = localStorage.getItem("token");
+//         if (token) {
+//           api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+//         }
+
+//         const headers = { Authorization: `Bearer ${token}` };
+
 //         const [tRes, pRes, uRes] = await Promise.all([
-//           api.get("/project/tasks"),
-//           api.get("/project/projects"),
-//           api.get("/company/users"),
+//           api.get("/project/tasks", { headers }),
+//           api.get("/project/projects", { headers }),
+//           api.get("/company/users", { headers }),
 //         ]);
+
 //         console.log("task data", tRes.data);
-//         console.log("project data", pRes.data);
-//         console.log("user data", uRes.data);
 //         setTasks(tRes.data);
 //         setProjects(pRes.data);
-//         setUsers(uRes.data);
+//         const employees = uRes.data.filter((user) =>
+//           user.roles?.includes("Employee")
+//         );
+//         setUsers(employees);
 //       } catch (err) {
 //         console.error(err);
 //       }
@@ -348,9 +74,12 @@ export default function TasksPage() {
 //   const resetForm = () => {
 //     setTitle("");
 //     setDescription("");
-
 //     setProjectId("");
-//     setAssignedTo("");
+//     setAssignees([]); // ✅ reset array
+//     setProjectedStartDate("");
+//     setProjectedEndDate("");
+//     setStartDate("");
+//     setEndDate("");
 //     setDueDate("");
 //     setPriority("medium");
 //     setStatus("todo");
@@ -364,15 +93,19 @@ export default function TasksPage() {
 //       setTitle(task.title);
 //       setDescription(task.description || "");
 //       setProjectId(task.project?._id || "");
-//       setAssignedTo(
-//   Array.isArray(task.assignedTo)
-//     ? task.assignedTo.map((user) => user._id || user) // handles populated objects or raw ids
-//     : task.assignedTo
-//     ? [task.assignedTo._id || task.assignedTo] // if single object or string
-//     : []
-// );
-
-
+//       setAssignees(
+//         Array.isArray(task.assignees)
+//           ? task.assignees.map((user) => user._id || user)
+//           : []
+//       );
+//       setProjectedStartDate(
+//         task.projectedStartDate ? task.projectedStartDate.split("T")[0] : ""
+//       );
+//       setProjectedEndDate(
+//         task.projectedEndDate ? task.projectedEndDate.split("T")[0] : ""
+//       );
+//       setStartDate(task.startDate ? task.startDate.split("T")[0] : "");
+//       setEndDate(task.endDate ? task.endDate.split("T")[0] : "");
 //       setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
 //       setPriority(task.priority);
 //       setStatus(task.status);
@@ -391,31 +124,28 @@ export default function TasksPage() {
 //   const handleSubmit = async (e) => {
 //     e.preventDefault();
 //     try {
+//       const payload = {
+//         title,
+//         description,
+//         project: projectId,
+//         assignees, // ✅ array
+//         projectedStartDate,
+//         projectedEndDate,
+//         startDate,
+//         endDate,
+//         dueDate,
+
+//         priority,
+//         status,
+//       };
+
 //       if (editTask) {
-//         // update
-//         const res = await api.put(`/project/tasks/${editTask._id}`, {
-//           title,
-//           description,
-//           project: projectId,
-//           assignedTo,
-//           dueDate,
-//           priority,
-//           status,
-//         });
+//         const res = await api.put(`/project/tasks/${editTask._id}`, payload);
 //         setTasks((prev) =>
 //           prev.map((t) => (t._id === editTask._id ? res.data : t))
 //         );
 //       } else {
-//         // create
-//         const res = await api.post("/project/tasks", {
-//           title,
-//           description,
-//           project: projectId,
-//           assignedTo,
-//           dueDate,
-//           priority,
-//           status,
-//         });
+//         const res = await api.post("/project/tasks", payload);
 //         setTasks([...tasks, res.data]);
 //       }
 //       closeModal();
@@ -432,6 +162,108 @@ export default function TasksPage() {
 //       setTasks(tasks.filter((t) => t._id !== id));
 //     } catch (err) {
 //       console.error(err);
+//     }
+//   };
+
+//   // subtask functions
+//   const setSubtaskModal = (subtask = null) => {
+//     if (subtask) {
+//       setEditSubtask(subtask);
+//     } else {
+//       setEditSubtask(null);
+//     }
+//     setModalOpen(true);
+//   };
+
+//   // ✅ Open subtask modal (for new or edit)
+//   const openSubtaskModal = (task, subtask = null) => {
+//     if (subtask) {
+//       // Editing existing subtask
+//       setEditSubtask(subtask);
+//       setSubTitle(subtask.title || "");
+//       setSubDescription(subtask.description || "");
+//       setSubAssignees(subtask.assignees?.map((a) => a._id || a) || []);
+//       setSubDueDate(subtask.dueDate ? subtask.dueDate.split("T")[0] : "");
+//       setSubPriority(subtask.priority || "medium");
+//       setSubStatus(subtask.status || "todo");
+//     } else {
+//       // Creating new subtask under a parent task
+//       setEditTask(task); // ✅ parent task is saved
+//       setEditSubtask(null);
+//       setSubTitle("");
+//       setSubDescription("");
+//       setSubAssignees([]);
+//       setSubDueDate("");
+//       setSubPriority("medium");
+//       setSubStatus("todo");
+//     }
+//     setSubtaskModalOpen(true);
+//   };
+
+//   // ✅ Close subtask modal
+//   const closeSubtaskModal = () => {
+//     setSubModalOpen(false);
+//     setEditSubtask(null);
+//   };
+
+//   const handleSubtaskSubmit = async (e) => {
+//     e.preventDefault();
+//     try {
+//       if (editSubtask) {
+//         if (!editSubtask.taskId || !editSubtask._id) {
+//           throw new Error("Invalid subtask data");
+//         }
+
+//         const res = await api.put(
+//           `/project/tasks/${editSubtask.taskId}/subtasks/${editSubtask._id}`,
+//           {
+//             title: subTitle,
+//             description: subDescription,
+//             assignees: subAssignees,
+//             dueDate: subDueDate,
+//             priority: subPriority,
+//             status: subStatus,
+//           }
+//         );
+
+//         setTasks((prev) =>
+//           prev.map((t) =>
+//             t._id === editSubtask.taskId
+//               ? {
+//                   ...t,
+//                   subtasks: t.subtasks.map((s) =>
+//                     s._id === res.data._id ? res.data : s
+//                   ),
+//                 }
+//               : t
+//           )
+//         );
+//       } else {
+//         if (!editTask || !editTask._id) {
+//           throw new Error("No task selected for subtask creation");
+//         }
+
+//         const res = await api.post(`/project/tasks/${editTask._id}/subtasks`, {
+//           title: subTitle,
+//           description: subDescription,
+//           assignees: subAssignees,
+//           dueDate: subDueDate,
+//           priority: subPriority,
+//           status: subStatus,
+//         });
+
+//         setTasks((prev) =>
+//           prev.map((t) =>
+//             t._id === editTask._id
+//               ? { ...t, subtasks: [...(t.subtasks || []), res.data] }
+//               : t
+//           )
+//         );
+//       }
+
+//       closeSubtaskModal();
+//     } catch (err) {
+//       console.error("Subtask Submit Error:", err.message);
 //     }
 //   };
 
@@ -454,7 +286,11 @@ export default function TasksPage() {
 //             <th className="p-2 border">Title</th>
 //             <th className="p-2 border">Description</th>
 //             <th className="p-2 border">Project</th>
-//             <th className="p-2 border">Assigned To</th>
+//             <th className="p-2 border">Assignees</th>
+//             <th className="p-2 border">Projected Start Date</th>
+//             <th className="p-2 border">Projected End Date</th>
+//             <th className="p-2 border">Start Date</th>
+//             <th className="p-2 border">End Date</th>
 //             <th className="p-2 border">Due Date</th>
 //             <th className="p-2 border">Priority</th>
 //             <th className="p-2 border">Status</th>
@@ -468,16 +304,56 @@ export default function TasksPage() {
 //               <td className="p-2 border">{t.description || "-"}</td>
 //               <td className="p-2 border">{t.project?.name}</td>
 //               <td className="p-2 border">
-//                 {t.assignedTo?.length
-//                   ? t.assignedTo.map((u) => u.name).join(", ")
+//                 {Array.isArray(t.assignees) && t.assignees.length
+//                   ? t.assignees.map((u) => (u.name ? u.name : u)).join(", ")
 //                   : "-"}
 //               </td>
+
+//               <td className="p-2 border">
+//                 {t.projectedStartDate
+//                   ? new Date(t.projectedStartDate).toLocaleDateString()
+//                   : "-"}
+//               </td>
+//               <td className="p-2 border">
+//                 {t.projectedEndDate
+//                   ? new Date(t.projectedEndDate).toLocaleDateString()
+//                   : "-"}
+//               </td>
+//               <td className="p-2 border">
+//                 {t.startDate ? new Date(t.startDate).toLocaleDateString() : "-"}
+//               </td>
+//               <td className="p-2 border">
+//                 {t.endDate ? new Date(t.endDate).toLocaleDateString() : "-"}
+//               </td>
+
 //               <td className="p-2 border">
 //                 {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "-"}
 //               </td>
 //               <td className="p-2 border capitalize">{t.priority}</td>
 //               <td className="p-2 border capitalize">{t.status}</td>
+
 //               <td className="p-2 border text-center space-x-2">
+//                 <button
+//                   onClick={() => openSubtaskModal(task)} // new subtask
+//                   className="text-green-600 hover:underline"
+//                 >
+//                   + Add Subtask
+//                 </button>
+
+//                 {task.subtasks?.map((sub) => (
+//                   <div key={sub._id} className="ml-4">
+//                     <span>{sub.title}</span>
+//                     <button
+//                       onClick={() => openSubtaskModal(task, sub)} // edit subtask
+//                       className="ml-2 text-blue-600 hover:underline"
+//                     >
+//                       Edit
+//                     </button>
+//                   </div>
+//                 ))}
+
+//                 {/* edit and delete buttons */}
+
 //                 <button
 //                   onClick={() => openModal(t)}
 //                   className="text-blue-600 hover:underline"
@@ -498,93 +374,274 @@ export default function TasksPage() {
 
 //       {/* Modal */}
 //       {modalOpen && (
-//         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center">
-//           <div className="bg-white rounded-lg p-6 w-[600px] relative">
+//         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center  z-50">
+//           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
 //             <h2 className="text-xl font-bold mb-4">
 //               {editTask ? "Edit Task" : "New Task"}
 //             </h2>
-//             <form
-//               onSubmit={handleSubmit}
-//               className="grid grid-cols-4 gap-2 mb-4"
-//             >
-//               <label className="col-span-2 font-semibold">Title</label>
-//               <input
-//                 type="text"
-//                 placeholder="Task Title"
-//                 className="border p-2 rounded col-span-2"
-//                 value={title}
-//                 onChange={(e) => setTitle(e.target.value)}
-//                 required
-//               />
-//               <label className="col-span-2 font-semibold">Description</label>
-//               <textarea
-//                 placeholder="Task Description"
-//                 className="border p-2 rounded col-span-2"
-//                 value={description}
-//                 onChange={(e) => setDescription(e.target.value)}
-//               ></textarea>
-//               <label className="col-span-2 font-semibold">Project</label>
-//               <select
-//                 className="border p-2 rounded"
-//                 value={projectId}
-//                 onChange={(e) => setProjectId(e.target.value)}
-//                 required
-//               >
-//                 <option value="">Select Project</option>
-//                 {projects.map((p) => (
-//                   <option key={p._id} value={p._id}>
-//                     {p.name}
-//                   </option>
-//                 ))}
-//               </select>
-       
-//   <label className="col-span-2 font-semibold">Assigned To</label>
-//   <div className="col-span-2">
-//     <Select
-//       isMulti
-//       options={users.map((u) => ({ value: u._id, label: u.name }))}
-//       value={assignedTo.map((id) => {
-//         const user = users.find((u) => u._id === id);
-//         return { value: id, label: user?.name || "" };
-//       })}
-//       onChange={(selected) => setAssignedTo(selected.map((s) => s.value))}
-//       placeholder="Search & select users"
-//       className="text-sm"
-//     />
-//   </div>
+//             <form onSubmit={handleSubmit} className="space-y-4">
+//               {/* Title - Full width */}
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Title</label>
+//                 <input
+//                   type="text"
+//                   placeholder="Task Title"
+//                   className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   value={title}
+//                   onChange={(e) => setTitle(e.target.value)}
+//                   required
+//                 />
+//               </div>
 
-//               <label className="col-span-2 font-semibold">Due Date</label>
-//               <input
-//                 type="date"
-//                 className="border p-2 rounded"
-//                 value={dueDate}
-//                 onChange={(e) => setDueDate(e.target.value)}
-//               />
-//               <label className="col-span-2 font-semibold">Priority</label>
-//               <select
-//                 className="border p-2 rounded"
-//                 value={priority}
-//                 onChange={(e) => setPriority(e.target.value)}
-//               >
-//                 <option value="low">Low</option>
-//                 <option value="medium">Medium</option>
-//                 <option value="high">High</option>
-//               </select>
-//               <label className="col-span-2 font-semibold">Status</label>
-//               <select
-//                 className="border p-2 rounded"
-//                 value={status}
-//                 onChange={(e) => setStatus(e.target.value)}
-//               >
-//                 <option value="todo">To Do</option>
-//                 <option value="in-progress">In Progress</option>
-//                 <option value="done">Done</option>
-//               </select>
+//               {/* Description - Full width */}
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Description</label>
+//                 <textarea
+//                   placeholder="Task Description"
+//                   className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   value={description}
+//                   onChange={(e) => setDescription(e.target.value)}
+//                 />
+//               </div>
 
-//               <div className="col-span-2 flex justify-end gap-2 mt-4">
+//               {/* Two-column grid for other fields */}
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                 {/* Project */}
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Project</label>
+//                   <Select
+//                     options={projects.map((p) => ({
+//                       value: p._id,
+//                       label: p.name,
+//                     }))}
+//                     value={projects
+//                       .filter((p) => p._id === projectId)
+//                       .map((p) => ({ value: p._id, label: p.name }))}
+//                     onChange={(selected) => setProjectId(selected?.value || "")}
+//                     placeholder="Search & select project"
+//                     className="text-sm"
+//                     classNamePrefix="select"
+//                     isSearchable
+//                   />
+//                 </div>
+
+//                 {/* Assignees */}
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Assignees</label>
+//                   <Select
+//                     isMulti
+//                     options={users.map((u) => ({
+//                       value: u._id,
+//                       label: u.name,
+//                     }))}
+//                     value={assignees.map((id) => {
+//                       const user = users.find((u) => u._id === id);
+//                       return { value: id, label: user?.name || id };
+//                     })}
+//                     onChange={(selected) =>
+//                       setAssignees(selected.map((s) => s.value))
+//                     }
+//                     placeholder="Search & select users"
+//                     className="text-sm"
+//                     classNamePrefix="select"
+//                   />
+//                 </div>
+
+//                 {/* Dates */}
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Due Date</label>
+//                   <input
+//                     type="date"
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={dueDate}
+//                     onChange={(e) => setDueDate(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">
+//                     Projected Start Date
+//                   </label>
+//                   <input
+//                     type="date"
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={projectedStartDate}
+//                     onChange={(e) => setProjectedStartDate(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">
+//                     Projected End Date
+//                   </label>
+//                   <input
+//                     type="date"
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={projectedEndDate}
+//                     onChange={(e) => setProjectedEndDate(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Start Date</label>
+//                   <input
+//                     type="date"
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={startDate}
+//                     onChange={(e) => setStartDate(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">End Date</label>
+//                   <input
+//                     type="date"
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={endDate}
+//                     onChange={(e) => setEndDate(e.target.value)}
+//                   />
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Priority</label>
+//                   <select
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={priority}
+//                     onChange={(e) => setPriority(e.target.value)}
+//                   >
+//                     <option value="low">Low</option>
+//                     <option value="medium">Medium</option>
+//                     <option value="high">High</option>
+//                   </select>
+//                 </div>
+
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Status</label>
+//                   <select
+//                     className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                     value={status}
+//                     onChange={(e) => setStatus(e.target.value)}
+//                   >
+//                     <option value="todo">To Do</option>
+//                     <option value="in-progress">In Progress</option>
+//                     <option value="done">Done</option>
+//                   </select>
+//                 </div>
+//               </div>
+
+//               {/* Buttons */}
+//               <div className="flex justify-end gap-3 mt-4">
 //                 <button
 //                   type="button"
 //                   onClick={closeModal}
+//                   className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+//                 >
+//                   Cancel
+//                 </button>
+//                 <button
+//                   type="submit"
+//                   className="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+//                 >
+//                   {editTask ? "Update" : "Create"}
+//                 </button>
+//               </div>
+//             </form>
+//           </div>
+//         </div>
+//       )}
+//       {/* Subtask Modal */}
+//       {/* Subtask Modal */}
+//       {subModalOpen && (
+//         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+//           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+//             <h2 className="text-xl font-bold mb-4">
+//               {editSubtask ? "Edit Subtask" : "New Subtask"}
+//             </h2>
+
+//             <form onSubmit={handleSubtaskSubmit} className="space-y-4">
+//               {/* Title */}
+//               <h1>Subtask Title</h1>
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Title </label>
+//                 <input
+//                   type="text"
+//                   className="border p-2 rounded w-full"
+//                   value={subTitle}
+//                   onChange={(e) => setSubTitle(e.target.value)}
+//                   required
+//                 />
+//               </div>
+
+//               {/* Description */}
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Description</label>
+//                 <textarea
+//                   className="border p-2 rounded w-full"
+//                   value={subDescription}
+//                   onChange={(e) => setSubDescription(e.target.value)}
+//                 />
+//               </div>
+
+//               {/* Assignees */}
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Assignees</label>
+//                 <Select
+//                   isMulti
+//                   options={users.map((u) => ({ value: u._id, label: u.name }))}
+//                   value={subAssignees.map((id) => {
+//                     const user = users.find((u) => u._id === id);
+//                     return { value: id, label: user?.name || id };
+//                   })}
+//                   onChange={(selected) =>
+//                     setSubAssignees(selected.map((s) => s.value))
+//                   }
+//                 />
+//               </div>
+
+//               {/* Due Date */}
+//               <div className="flex flex-col">
+//                 <label className="font-semibold mb-1">Due Date</label>
+//                 <input
+//                   type="date"
+//                   className="border p-2 rounded"
+//                   value={subDueDate}
+//                   onChange={(e) => setSubDueDate(e.target.value)}
+//                 />
+//               </div>
+
+//               {/* Priority + Status */}
+//               <div className="grid grid-cols-2 gap-4">
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Priority</label>
+//                   <select
+//                     className="border p-2 rounded"
+//                     value={subPriority}
+//                     onChange={(e) => setSubPriority(e.target.value)}
+//                   >
+//                     <option value="low">Low</option>
+//                     <option value="medium">Medium</option>
+//                     <option value="high">High</option>
+//                   </select>
+//                 </div>
+//                 <div className="flex flex-col">
+//                   <label className="font-semibold mb-1">Status</label>
+//                   <select
+//                     className="border p-2 rounded"
+//                     value={subStatus}
+//                     onChange={(e) => setSubStatus(e.target.value)}
+//                   >
+//                     <option value="todo">To Do</option>
+//                     <option value="in-progress">In Progress</option>
+//                     <option value="done">Done</option>
+//                   </select>
+//                 </div>
+//               </div>
+
+//               {/* Buttons */}
+//               <div className="flex justify-end gap-2 mt-4">
+//                 <button
+//                   type="button"
+//                   onClick={closeSubtaskModal}
 //                   className="px-4 py-2 border rounded"
 //                 >
 //                   Cancel
@@ -593,7 +650,7 @@ export default function TasksPage() {
 //                   type="submit"
 //                   className="px-4 py-2 bg-blue-600 text-white rounded"
 //                 >
-//                   {editTask ? "Update" : "Create"}
+//                   {editSubtask ? "Update" : "Add"}
 //                 </button>
 //               </div>
 //             </form>
@@ -603,3 +660,800 @@ export default function TasksPage() {
 //     </div>
 //   );
 // }
+
+
+
+"use client";
+
+import React from "react";
+import { useEffect, useState } from "react";
+import api from "@/lib/api";
+import Select from "react-select";
+
+export default function TasksPage() {
+  const [tasks, setTasks] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // modals
+  const [modalOpen, setModalOpen] = useState(false);
+  const [subModalOpen, setSubModalOpen] = useState(false);
+
+  // edit state
+  const [editTask, setEditTask] = useState(null);
+  const [editSubtask, setEditSubtask] = useState(null);
+  // expanded task for subtasks
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+
+  // task form
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [assignees, setAssignees] = useState([]);
+  const [dueDate, setDueDate] = useState("");
+  const [projectedStartDate, setProjectedStartDate] = useState("");
+  const [projectedEndDate, setProjectedEndDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [status, setStatus] = useState("todo");
+  const [progress,setProgress] = useState("");
+
+  // subtask form
+  const [subTitle, setSubTitle] = useState("");
+  const [subDescription, setSubDescription] = useState("");
+  const [subAssignees, setSubAssignees] = useState([]);
+  const [projecStarttData, setProjectStartData] = useState("");
+  const [projectEndData, setProjectEndData] = useState("");
+  const [startDateData, setStartDateData] = useState("");
+  const [endDateData, setEndDateData] = useState("");
+  const [progressData, setProgressData] = useState("");
+  const [subDueDate, setSubDueDate] = useState("");
+  const [subPriority, setSubPriority] = useState("medium");
+  const [subStatus, setSubStatus] = useState("todo");
+  const [subProgress, setSubProgress] = useState("");
+
+  // fetch data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+        }
+        const headers = { Authorization: `Bearer ${token}` };
+        const [tRes, pRes, uRes] = await Promise.all([
+          api.get("/project/tasks", { headers }),
+          api.get("/project/projects", { headers }),
+          api.get("/company/users", { headers }),
+        ]);
+
+        setTasks(tRes.data);
+        setProjects(pRes.data);
+        const employees = uRes.data.filter((u) =>
+          u.roles?.includes("Employee")
+        );
+        setUsers(employees);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchData();
+  }, []);
+
+
+    // toggle subtasks
+// toggle subtasks
+const toggleExpand = async (taskId) => {
+  if (expandedTaskId === taskId) {
+    setExpandedTaskId(null); // collapse
+  } else {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // 🔹 fetch subtasks for this task
+      const res = await api.get(`/project/tasks/${taskId}/subtasks`, { headers });
+
+      // 🔹 update this task's subtasks in state
+      setTasks((prev) =>
+        prev.map((t) =>
+          t._id === taskId ? { ...t, subtasks: res.data } : t
+        )
+      );
+
+      setExpandedTaskId(taskId); // expand
+    } catch (err) {
+      console.error("Error fetching subtasks:", err);
+    }
+  }
+};
+
+  // reset task form
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    setProjectId("");
+    setAssignees([]);
+
+    setProjectedStartDate("");
+    setProgress("")
+    setProjectedEndDate("");
+    setStartDate("");
+    setEndDate("");
+    setDueDate("");
+    setPriority("medium");
+    setStatus("todo");
+    setEditTask(null);
+
+  };
+
+  // open/close task modal
+  const openModal = (task = null) => {
+    if (task) {
+      setEditTask(task);
+      setTitle(task.title);
+      setDescription(task.description || "");
+      setProjectId(task.project?._id || "");
+      setAssignees(
+        Array.isArray(task.assignees)
+          ? task.assignees.map((u) => u._id || u)
+          : []
+      );
+      setProjectedStartDate(
+        task.projectedStartDate ? task.projectedStartDate.split("T")[0] : ""
+      );
+      setProjectedEndDate(
+        task.projectedEndDate ? task.projectedEndDate.split("T")[0] : ""
+      );
+      setStartDate(task.startDate ? task.startDate.split("T")[0] : "");
+      setEndDate(task.endDate ? task.endDate.split("T")[0] : "");
+      setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
+      setPriority(task.priority);
+      setStatus(task.status);
+      setProgress(task.progress);
+    } else {
+      resetForm();
+    }
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    resetForm();
+  };
+
+  // create/update task
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const payload = {
+      title,
+      description,
+      project: projectId,
+      assignees,
+
+      projectedStartDate: projectedStartDate ? new Date(projectedStartDate).toISOString() : null,
+  projectedEndDate: projectedEndDate ? new Date(projectedEndDate).toISOString() : null,
+  startDate: startDate ? new Date(startDate).toISOString() : null,
+  endDate: endDate ? new Date(endDate).toISOString() : null,
+  dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+    
+      priority,
+      status,
+      progress,
+    };
+
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}` };
+
+    let res;
+    if (editTask) {
+      res = await api.put(`/project/tasks/${editTask._id}`, payload, { headers });
+      setTasks((prev) =>
+        prev.map((t) => (t._id === editTask._id ? res.data : t))
+      );
+    } else {
+      res = await api.post("/project/tasks", payload, { headers });
+      setTasks((prev) => [...prev, res.data]);
+    }
+
+    closeModal();
+  } catch (err) {
+    console.error("Error saving task:", err);
+  }
+};
+
+
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await api.delete(`/project/tasks/${id}`);
+      setTasks(tasks.filter((t) => t._id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // subtask modal open
+  const openSubtaskModal = (task, subtask = null) => {
+    if (subtask) {
+      setEditSubtask(subtask);
+      setSubTitle(subtask.title || "");
+      setSubDescription(subtask.description || "");
+      setSubAssignees(subtask.assignees?.map((a) => a._id || a) || []);
+      setProjectStartData(subtask.projectedStartDate ? subtask.projectedStartDate.split("T")[0] : "");
+      setProjectEndData(subtask.projectedEndDate ? subtask.projectedEndDate.split("T")[0] : "");
+      setStartDateData(subtask.startDate ? subtask.startDate.split("T")[0] : "");
+      setEndDateData(subtask.endDate ? subtask.endDate.split("T")[0] : "");
+      setProgressData(subtask.progress);
+      setSubDueDate(subtask.dueDate ? subtask.dueDate.split("T")[0] : "");
+      setSubPriority(subtask.priority || "medium");
+      setSubStatus(subtask.status || "todo");
+      setSubProgress(subtask.progress );
+    } else {
+      setEditTask(task);
+      setEditSubtask(null);
+      setSubTitle("");
+      setSubDescription("");
+      setSubAssignees([]);
+      setProjectStartData("");
+      setProjectEndData("");
+      setStartDateData("");
+      setEndDateData("");
+      setProgressData("");
+      setSubDueDate("");
+      setSubPriority("medium");
+      setSubStatus("todo");
+      setSubProgress("");
+    }
+    setSubModalOpen(true);
+  };
+
+  const closeSubtaskModal = () => {
+    setSubModalOpen(false);
+    setEditSubtask(null);
+  };
+
+  const handleSubtaskSubmit = async (e) => {
+    e.preventDefault();
+      const tocken = localStorage.getItem("token");
+        const headers = { Authorization: `Bearer ${tocken}` };
+    try {
+      if (editSubtask) {
+        if (!editSubtask.taskId || !editSubtask._id) {
+          throw new Error("Invalid subtask data");
+        } 
+      
+        const res = await api.put(
+          `/project/tasks/${editSubtask.taskId}/subtasks/${editSubtask._id}`,
+          {
+            title: subTitle,
+            description: subDescription,
+            assignees: subAssignees,
+            projectedStartDate: projecStarttData,
+            projectedEndDate: projectEndData,
+            startDate: startDateData,
+            endDate: endDateData,
+            progress: progressData,
+            dueDate: subDueDate,
+            priority: subPriority,
+            status: subStatus,
+            progress: subProgress,
+          },
+          { headers }
+        );
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === editSubtask.taskId
+              ? {
+                  ...t,
+                  subtasks: t.subtasks.map((s) =>
+                    s._id === res.data._id ? res.data : s
+                  ),
+                }
+              : t
+          )
+        );
+      } else {
+        const res = await api.post(`/project/tasks/${editTask._id}/subtasks`, {
+          title: subTitle,
+          description: subDescription,
+          assignees: subAssignees,
+          projectedStartDate:projectedStartDate,
+          projectedEndDate: projectedEndDate,
+          startDate: startDate,
+          endDate: endDate,
+
+          dueDate: subDueDate,
+          
+          // make the projectede date
+
+          progress: subProgress,
+          priority: subPriority,
+          status: subStatus,
+        },{ headers});
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === editTask._id
+              ? { ...t, subtasks: [...(t.subtasks || []), res.data] }
+              : t
+          )
+        );
+      }
+      closeSubtaskModal();
+    } catch (err) {
+      console.error("Subtask Submit Error:", err.message);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Tasks</h1>
+        <button
+          onClick={() => openModal()}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          + New Task
+        </button>
+      </div>
+
+      {/* Table */}
+      <table className="w-full border">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="p-2 border">Title</th>
+            <th className="p-2 border">Project</th>
+            <th className="p-2 border">Assignees</th>
+            <th className="p-2 border">Due Date</th>
+            <th className="p-2 border">Priority</th>
+            <th className="p-2 border">Status</th>
+            <th className="p-2 border">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.map((t) => (
+            <React.Fragment key={t._id}>
+              {/* Task Row */}
+              <tr
+                className="bg-white hover:bg-gray-50 cursor-pointer"
+                onClick={() => toggleExpand(t._id)}
+              >
+                <td className="p-2 border font-medium">
+                  {t.title}{" "}
+                  {t.subtasks?.length > 0 && (
+                    <span className="text-xs text-blue-600 ml-2">
+                      ({t.subtasks.length} subtasks)
+                    </span>
+                  )}
+                </td>
+                <td className="p-2 border">{t.project?.name}</td>
+                <td className="p-2 border">
+                  {t.assignees?.map((u) => u.name || u).join(", ")}
+                </td>
+                <td className="p-2 border">
+                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "-"}
+                </td>
+                <td className="p-2 border">{t.priority}</td>
+                <td className="p-2 border">{t.status}</td>
+                <td
+                  className="p-2 border space-x-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => openSubtaskModal(t)}
+                    className="text-green-600 hover:underline"
+                  >
+                    + Subtask
+                  </button>
+                  <button
+                    onClick={() => openModal(t)}
+                    className="text-blue-600 hover:underline"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(t._id)}
+                    className="text-red-600 hover:underline"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+
+              {/* Subtasks Row (collapsible) */}
+              {expandedTaskId === t._id && t.subtasks?.length > 0 && (
+                <tr key={`${t._id}-subtasks`}>
+                  <td colSpan="7" className="p-2 bg-gray-50">
+                    <div className="ml-6 space-y-2">
+                      {t.subtasks.map((s) => (
+                        <div
+                          key={s._id}
+                          className="flex justify-between items-center border-b pb-1"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{s.title}</p>
+                            <p className="text-xs text-gray-500">
+                              {s.status} • {s.priority}
+                            </p>
+                          </div>
+                          <div className="space-x-2">
+                            <button
+                              onClick={() => openSubtaskModal(t, s)}
+                              className="text-blue-600 text-sm hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() =>
+                                console.log("Delete subtask", s._id)
+                              }
+                              className="text-red-600 text-sm hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Modals (Task + Subtask) */}
+      {/* Task Modal */}
+      {modalOpen && (
+             <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center  z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">
+              {editTask ? "Edit Task" : "New Task"}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Title - Full width */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Title</label>
+                <input
+                  type="text"
+                  placeholder="Task Title"
+                  className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Description - Full width */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Description</label>
+                <textarea
+                  placeholder="Task Description"
+                  className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Two-column grid for other fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Project */}
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Project</label>
+                  <Select
+                    options={projects.map((p) => ({
+                      value: p._id,
+                      label: p.name,
+                    }))}
+                    value={projects
+                      .filter((p) => p._id === projectId)
+                      .map((p) => ({ value: p._id, label: p.name }))}
+                    onChange={(selected) => setProjectId(selected?.value || "")}
+                    placeholder="Search & select project"
+                    className="text-sm"
+                    classNamePrefix="select"
+                    isSearchable
+                  />
+                </div>
+
+                {/* Assignees */}
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Assignees</label>
+                  <Select
+                    isMulti
+                    options={users.map((u) => ({
+                      value: u._id,
+                      label: u.name,
+                    }))}
+                    value={assignees.map((id) => {
+                      const user = users.find((u) => u._id === id);
+                      return { value: id, label: user?.name || id };
+                    })}
+                    onChange={(selected) =>
+                      setAssignees(selected.map((s) => s.value))
+                    }
+                    placeholder="Search & select users"
+                    className="text-sm"
+                    classNamePrefix="select"
+                  />
+                </div>
+
+                {/* Dates */}
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">
+                    Projected Start Date
+                  </label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={projectedStartDate}
+                    onChange={(e) => setProjectedStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">
+                    Projected End Date
+                  </label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={projectedEndDate}
+                    onChange={(e) => setProjectedEndDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">End Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Priority</label>
+                  <select
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Status</label>
+                  <select
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Progress</label>
+                  <input
+                    type="number"
+                    value={progress}
+                    onChange={(e) => setProgress(e.target.value)}
+                    className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                  />
+                </div>
+              
+
+              </div>
+
+              {/* Buttons */}
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                >
+                  {editTask ? "Update" : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Subtask Modal */}
+      {subModalOpen && (
+         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">
+              {editSubtask ? "Edit Subtask" : "New Subtask"}
+            </h2>
+
+            <form onSubmit={handleSubtaskSubmit} className="space-y-4">
+              {/* Title */}
+              <h1>Subtask Title</h1>
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Title </label>
+                <input
+                  type="text"
+                  className="border p-2 rounded w-full"
+                  value={subTitle}
+                  onChange={(e) => setSubTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Description */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Description</label>
+                <textarea
+                  className="border p-2 rounded w-full"
+                  value={subDescription}
+                  onChange={(e) => setSubDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Assignees */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Assignees</label>
+                <Select
+                  isMulti
+                  options={users.map((u) => ({ value: u._id, label: u.name }))}
+                  value={subAssignees.map((id) => {
+                    const user = users.find((u) => u._id === id);
+                    return { value: id, label: user?.name || id };
+                  })}
+                  onChange={(selected) =>
+                    setSubAssignees(selected.map((s) => s.value))
+                  }
+                />
+              </div>
+              <div className="flex flex-col"> 
+                <label className="font-semibold mb-1">Projected Start Date</label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={projecStarttData}
+                  onChange={(e) => setProjectStartData(e.target.value)}
+                />
+
+              </div>
+              <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> Projected End Date </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={projectEndData}
+                  onChange={(e) => setProjectEndData(e.target.value)}
+                />
+
+              </div>
+                <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> Start Date  </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={startDateData}
+                  onChange={(e) => setStartDateData(e.target.value)}
+                />
+
+              </div>
+              <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> End Date </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={endDateData}
+                  onChange={(e) => setEndDateData(e.target.value)}
+                />
+
+              </div>
+           
+
+              {/* Due Date */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Due Date</label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={subDueDate}
+                  onChange={(e) => setSubDueDate(e.target.value)}
+                />
+              </div>
+
+              {/* Priority + Status */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Priority</label>
+                  <select
+                    className="border p-2 rounded"
+                    value={subPriority}
+                    onChange={(e) => setSubPriority(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Status</label>
+                  <select
+                    className="border p-2 rounded"
+                    value={subStatus}
+                    onChange={(e) => setSubStatus(e.target.value)}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Progress</label>
+                  <input
+                    type="number"
+                    value={subProgress}
+                    onChange={(e) => setSubProgress(e.target.value)}
+                    className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                    />
+              </div>
+            
+
+
+              {/* Buttons */}
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={closeSubtaskModal}
+                  className="px-4 py-2 border rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded"
+                >
+                  {editSubtask ? "Update" : "Add"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

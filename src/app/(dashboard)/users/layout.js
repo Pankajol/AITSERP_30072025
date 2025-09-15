@@ -1,14 +1,5 @@
 'use client';
 
-/* ----------------------------------------------------------------------
-   ROLE‑AWARE SIDEBAR — FINAL, COMPLETE
-   • Supports multi‑role users.
-   • Recognised roles (case‑insensitive):
-       Admin, Sales Manager, Purchase Manager, Inventory Manager,
-       Accounts Manager, HR Manager, Support Executive, Production Head
-   • Renders only the modules a user is allowed to see (or all if Admin).
-   • Fully responsive: drawer on mobile, fixed on desktop.
----------------------------------------------------------------------- */
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -24,6 +15,7 @@ import {
 } from 'react-icons/hi';
 import { SiCivicrm } from 'react-icons/si';
 import { GiStockpiles } from 'react-icons/gi';
+import NotificationBell from '@/components/NotificationBell';
 
 /* ---------- Tiny reusable components ---------- */
 const MenuBtn = ({ isOpen, onToggle, icon, label }) => (
@@ -67,6 +59,9 @@ export default function Sidebar({ children }) {
   }, [router]);
   if (!session) return null;
 
+
+  console.log("data of the session",session);
+
   /* --- roles helper --- */
   const getRoles = (s) => {
     let a = [];
@@ -89,6 +84,8 @@ export default function Sidebar({ children }) {
     stock: has('inventory manager'),
     pay: has('accounts manager'),
     prod: has('production head'),
+    project: has('project manager'),
+    Employee: has('employee'),  
   };
   if (has('admin')) Object.keys(v).forEach((k) => (v[k] = true));
 
@@ -505,317 +502,98 @@ export default function Sidebar({ children }) {
             </div>
           )}
 
+          {/* Project  */}
+          {v.project && (
+            <div>
+              <MenuBtn
+                isOpen={open.menu === 'project'}
+                onToggle={() => toggleMenu('project')}
+                icon={<HiPuzzle />}
+                label="Project"
+              />
+              {open.menu === 'project' && (
+                <div className="ml-6 mt-2 space-y-1">
+                  <Item
+                    href={P('/project/projects')}
+                    icon={<HiOutlineCube />}
+                    label="Project"
+                    close={closeDrawer}
+                  />
+                  <Item
+                    href={P('/project/tasks')}
+                    icon={<HiReceiptTax />}
+                    label="Tasks"
+                    close={closeDrawer}
+                  />
+                  <Item
+                    href={P('/project/tasks/board')}
+                    icon={<HiOutlineCube />}
+                    label="Task Board"
+                    close={closeDrawer}
+                  />
+
+                </div>
+              )}
+            </div>
+          )}
+
+
+           {/* Empolyee */}
+          {v.Employee && (
+            <div>
+              <MenuBtn
+                isOpen={open.menu === 'Tasks'}
+                onToggle={() => toggleMenu('Tasks')}
+                icon={<HiPuzzle />}
+                label="Tasks"
+              />
+              {open.menu === 'Tasks' && (
+                <div className="ml-6 mt-2 space-y-1">
+                  <Item
+                    href={P('/tasks' )}
+                    icon={<HiOutlineCube />}
+                    label="Tasks"
+                    close={closeDrawer}
+                  />
+                  <Item
+                    href={P('/tasks/board' )}
+                    icon={<HiReceiptTax />}
+                    label="Task Board"
+                    close={closeDrawer}
+                  />
+                </div>
+              )}
+            </div>
+                    
+          )}
+
+
+
+
           <div className="pt-4">
             <LogoutButton />
           </div>
         </nav>
       </aside>
+      {/* Navbar in that i want profile and notification */}
+      <header className="fixed top-0  right-0 left-0 md:left-64 bg-white shadow h-14 flex items-center justify-end px-4 z-20">
+        <div className="flex items-center gap-4">
+          
+          <span className="text-sm">Hello, {session?.companyName || session?.email}</span>
+          <img
+            src="/#"
+            alt="Profile"
+            className="w-8 h-8 rounded-full object-cover"
+          />
+          <LogoutButton />
+          <NotificationBell />
+        </div>
+      </header>
+
 
       {/* content */}
-      <main className="flex-1 pt-14 md:pt-0 md:ml-64 p-4">{children}</main>
+      <main className="flex-1  md:pt-20 ">{children}</main>
     </div>
   );
 }
 
-
-// 'use client';
-
-// import { useState, useEffect } from 'react';
-// import Link from 'next/link';
-// import { useRouter } from 'next/navigation';
-// import { jwtDecode } from 'jwt-decode';
-// import LogoutButton from '@/components/LogoutButton';
-
-// import {
-//   HiMenu, HiX, HiHome, HiUsers, HiViewGrid, HiCurrencyDollar, HiChevronDown,
-//   HiChevronRight, HiShoppingCart, HiUserGroup, HiOutlineCube, HiOutlineCreditCard,
-//   HiPuzzle, HiOutlineLibrary, HiGlobeAlt, HiFlag, HiOutlineOfficeBuilding, HiCube,
-//   HiReceiptTax, HiChartSquareBar,
-// } from 'react-icons/hi';
-// import { SiCivicrm } from 'react-icons/si';
-// import { GiStockpiles } from 'react-icons/gi';
-
-// export default function AdminSidebar({ children }) {
-//   const router = useRouter();
-//   const [openMenu, setOpenMenu] = useState(null);
-//   const [openSubmenu, setOpenSubmenu] = useState(null);
-//   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-//   const [session, setSession] = useState(null);
-
-//   // Auth check and session setup
-//   useEffect(() => {
-//     const token = localStorage.getItem('token');
-//     if (!token) return router.push('/');
-//     try {
-//       const decoded = jwtDecode(token);
-//       setSession(decoded);
-//     } catch {
-//       localStorage.removeItem('token');
-//       router.push('/');
-//     }
-//   }, [router]);
-
-//   // Helper: route prefix by role
-//   const PREFIX =
-//     session?.type === 'company' || session?.role === 'Admin' ? '/admin' : '/users';
-//   const P = (p) => `${PREFIX}${p}`; // eg: P('/sales-order-view')
-
-//   const toggleMenu = (key) => {
-//     setOpenMenu((prev) => (prev === key ? null : key));
-//     setOpenSubmenu(null);
-//   };
-//   const toggleSubmenu = (key) => {
-//     setOpenSubmenu((prev) => (prev === key ? null : key));
-//   };
-//   const closeSidebar = () => setIsSidebarOpen(false);
-
-//   if (!session) return null; // don't render until token is decoded
-
-//   return (
-//     <div className="flex min-h-screen bg-gray-100 dark:bg-gray-900">
-//       {/* Mobile Topbar */}
-//       <header className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14 bg-white dark:bg-gray-800 shadow">
-//         <button
-//           aria-label="Open menu"
-//           onClick={() => setIsSidebarOpen(true)}
-//           className="text-2xl text-gray-700 dark:text-gray-200"
-//         >
-//           <HiMenu />
-//         </button>
-//         <h1 className="text-lg font-semibold text-gray-800 dark:text-white">Dashboard</h1>
-//       </header>
-
-//       {/* Backdrop */}
-//       {isSidebarOpen && (
-//         <div
-//           className="fixed inset-0 z-30 bg-black/40 md:hidden"
-//           onClick={closeSidebar}
-//         />
-//       )}
-
-//       {/* Sidebar */}
-//       <aside
-//         className={`fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-gray-700 dark:bg-gray-800 text-white transform transition-transform duration-200 ease-in-out
-//         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-//         md:translate-x-0 md:static`}
-//       >
-//         <div className="md:hidden flex items-center justify-between px-4 h-14">
-//           <h2 className="text-xl font-bold flex items-center gap-2">
-//             <HiHome /> Dashboard
-//           </h2>
-//           <button aria-label="Close menu" onClick={closeSidebar} className="text-2xl">
-//             <HiX />
-//           </button>
-//         </div>
-
-//         <nav className="mt-6 px-2 pb-6 space-y-3">
-//           <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === 'transactionsView'} onToggle={() => toggleMenu('transactionsView')}>
-//             <Submenu
-//               isOpen={openSubmenu === 'tvSales'}
-//               onToggle={() => toggleSubmenu('tvSales')}
-//               icon={<HiShoppingCart />}
-//               label="Sales"
-//             >
-//               <Item href={P('/sales-quotation-view')} icon={<HiChevronDown />} label="Quotation View" close={closeSidebar} />
-//               <Item href={P('/sales-order-view')} icon={<HiChevronRight />} label="Order View" close={closeSidebar} />
-//               <Item href={P('/delivery-view')} icon={<HiOutlineCube />} label="Delivery View" close={closeSidebar} />
-//               <Item href={P('/sales-invoice-view')} icon={<HiOutlineCreditCard />} label="Invoice View" close={closeSidebar} />
-//               <Item href={P('/credit-memo-veiw')} icon={<HiReceiptTax />} label="Credit Memo View" close={closeSidebar} />
-//               <Item href={P('/sales-report')} icon={<HiChartSquareBar />} label="Report" close={closeSidebar} />
-//             </Submenu>
-//           </Section>
-
-//           <Section title="CRM View" icon={<SiCivicrm />} isOpen={openMenu === 'crmView'} onToggle={() => toggleMenu('crmView')}>
-//             <Item href={P('/leads-view')} icon={<HiUserGroup />} label="Lead Generation" close={closeSidebar} />
-//             <Item href={P('/opportunities')} icon={<HiPuzzle />} label="Opportunities" close={closeSidebar} />
-//           </Section>
-
-//           {/* You can add more sections similarly with P('/...') */}
-//           <div className="pt-4">
-//             <LogoutButton />
-//           </div>
-//         </nav>
-//       </aside>
-
-//       {/* Main Content */}
-//       <main className="flex-1 pt-14 md:pt-0 md:ml-64 p-4">{children}</main>
-//     </div>
-//   );
-// }
-
-// /* === Helper Components === */
-// function Section({ title, icon, children, isOpen, onToggle }) {
-//   return (
-//     <div>
-//       <MenuButton isOpen={isOpen} onToggle={onToggle} icon={icon} label={title} />
-//       {isOpen && <div className="ml-6 mt-2 space-y-1">{children}</div>}
-//     </div>
-//   );
-// }
-
-// function MenuButton({ isOpen, onToggle, icon, label }) {
-//   return (
-//     <button
-//       onClick={onToggle}
-//       className="flex items-center justify-between w-full px-4 py-2 rounded hover:bg-gray-600"
-//     >
-//       <div className="flex items-center gap-2">
-//         {icon} {label}
-//       </div>
-//       {isOpen ? <HiChevronDown /> : <HiChevronRight />}
-//     </button>
-//   );
-// }
-
-// function Submenu({ isOpen, onToggle, icon, label, children }) {
-//   return (
-//     <>
-//       <button
-//         onClick={onToggle}
-//         className="flex items-center justify-between w-full px-4 py-2 rounded hover:bg-gray-600"
-//       >
-//         <div className="flex items-center gap-2">
-//           {icon} {label}
-//         </div>
-//         {isOpen ? <HiChevronDown /> : <HiChevronRight />}
-//       </button>
-//       {isOpen && <div className="ml-4 mt-1 space-y-1">{children}</div>}
-//     </>
-//   );
-// }
-
-// function Item({ href, icon, label, close }) {
-//   return (
-//     <Link
-//       href={href}
-//       onClick={close}
-//       className="flex items-center gap-2 px-4 py-2 rounded hover:bg-gray-600"
-//     >
-//       {icon} {label}
-//     </Link>
-//   );
-// }
-
-
-
-
-
-// "use client"
-// import { useState,useEffect } from "react";
-// import Link from "next/link";
-// import { useRouter } from "next/navigation";
-// import {jwtDecode} from "jwt-decode";
-// import LogoutButton from "@/components/LogoutButton";
-
-// export default function UserSidebar({children}) {
-//   const router = useRouter();
-//   const [openMenu, setOpenMenu] = useState(null);
-//   const [user, setUser] = useState(null);
-
-//   const toggleMenu = (menuName) => {
-//     setOpenMenu(openMenu === menuName ? null : menuName);
-//   };
-
-
-//    useEffect(() => {
-//       const token = localStorage.getItem("token");
-//       if (!token) {
-//         router.push("/"); // Redirect to sign-in if no token
-//       } else {
-//         try {
-//           const decodedToken = jwtDecode(token); // Decode token to get user info
-//           setUser(decodedToken); // Set user data
-//         } catch (error) {
-//           console.error("Invalid token", error);
-//           localStorage.removeItem("token");
-//           router.push("/"); // Redirect if token is invalid
-//         }
-//       }
-//     }, [router]);
-
-//   return (
-//     <div className="min-h-screen flex">
-//     <aside className="w-64 bg-gray-900 text-white p-4">
-//       <h2 className="text-xl font-bold">User Panel</h2>
-//       <nav className="mt-4 space-y-2">
-//         {/* Master Dropdown */}
-//         <div className="relative">
-//           <button
-//             onClick={() => toggleMenu("master")}
-//             className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-//           >
-//             Master
-//           </button>
-//           {openMenu === "master" && (
-//             <div className="ml-4 mt-2 space-y-1">
-//               <Link href="/dashboard/admin/master/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 1
-//               </Link>
-//               <Link href="/dashboard/admin/master/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 2
-//               </Link>
-//               <Link href="/dashboard/admin/master/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 3
-//               </Link>
-//             </div>
-//           )}
-//         </div>
-
-//         {/* Transaction Dropdown */}
-//         <div className="relative">
-//           <button
-//             onClick={() => toggleMenu("transaction")}
-//             className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-//           >
-//             Transaction
-//           </button>
-//           {openMenu === "transaction" && (
-//             <div className="ml-4 mt-2 space-y-1">
-//               <Link href="/dashboard/admin/transaction/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 1
-//               </Link>
-//               <Link href="/dashboard/admin/transaction/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 2
-//               </Link>
-//               <Link href="/dashboard/admin/transaction/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 3
-//               </Link>
-//             </div>
-//           )}
-//         </div>
-
-//         {/* Report Dropdown */}
-//         <div className="relative">
-//           <button
-//             onClick={() => toggleMenu("report")}
-//             className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-//           >
-//             Report
-//           </button>
-//           {openMenu === "report" && (
-//             <div className="ml-4 mt-2 space-y-1">
-//               <Link href="/dashboard/admin/report/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 1
-//               </Link>
-//               <Link href="/dashboard/admin/report/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 2
-//               </Link>
-//               <Link href="/dashboard/admin/report/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-//                 Option 3
-//               </Link>
-//             </div>
-//           )}
-//         </div>
-//       </nav>
-//       {/* Logout Button */}
-//       <div className="mt-4">
-//           <LogoutButton />
-//         </div>
-//     </aside>
-//      <main className="flex-1 bg-gray-100 p-8">
-//      {children}
-//    </main>
-//    </div>
-
-//   );
-// }

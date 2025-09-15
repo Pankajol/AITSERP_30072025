@@ -18,7 +18,7 @@ export default function ProjectProgressChart() {
     const fetchProgress = async () => {
       try {
         const pRes = await api.get("/project/projects");
-        const tRes = await api.get("/task/tasks");
+        const tRes = await api.get("/project/tasks");
 
         const allProjects = pRes.data;
         const tasks = tRes.data;
@@ -26,7 +26,7 @@ export default function ProjectProgressChart() {
         const chartData = allProjects.map((proj) => {
           const projTasks = tasks.filter((t) => t.project?._id === proj._id);
           const total = projTasks.length;
-          const completed = projTasks.filter((t) => t.status === "done").length;
+          const completed = projTasks.filter((t) => t.status === "completed").length;
           const pending = total - completed;
 
           return {

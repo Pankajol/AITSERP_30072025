@@ -15,6 +15,8 @@ const VALID_ROLES = [
   'HR Manager',
   'Support Executive',
   'Production Head',
+  'Project Manager',
+  'Employee',
 ];
 
 function verifyCompany(req) {
