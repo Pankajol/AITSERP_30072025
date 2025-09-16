@@ -14,7 +14,7 @@ const TaskSchema = new mongoose.Schema({
   projectedEndDate: {type: Date},
  
   subTasks: [{ type: mongoose.Schema.Types.ObjectId, ref: "SubTask" }],
- 
+   comments: [{ type: mongoose.Schema.Types.ObjectId, ref: "Comment" }],
   // actual date
   startDate: {type: Date},
   endDate: {type: Date},

@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const ProductionOrderSchema = new Schema({
   companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
-  createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  createdBy: { type: Schema.Types.ObjectId, ref: 'CompanyUser' },
   bomId: { type: Schema.Types.ObjectId, ref: 'BOM', required: true },
   type: { type: String, default: 'standard' },
   status: { type: String, default: 'planned' },

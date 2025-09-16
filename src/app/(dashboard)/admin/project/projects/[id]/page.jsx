@@ -15,14 +15,23 @@ async function fetchProject(id) {
   return res.json();
 }
 
-async function fetchSubTask(subTaskId) {
+async function fetchSubTask(taskId) {
   const token = localStorage.getItem("token");
-  const res = await fetch(`/api/project/tasks/${subTaskId}/subtasks`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(`/api/project/tasks/${taskId}/subtasks`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error("Failed to fetch subtasks");
+    const data = await res.json();
+    console.log(`Fetched Subtasks for Task ${taskId}:`, data);
+    return data; // returns an array
+  } catch (err) {
+    console.error("Subtask fetch error:", err);
+    return [];
+  }
 }
+
+
 
 // Helper function to align start date by view mode
 const getViewStartDate = (date, viewMode) => {
@@ -61,118 +70,108 @@ export default function ProjectGanttPage() {
   const [expanded, setExpanded] = useState({});
   const [viewMode, setViewMode] = useState("Week");
 
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      try {
-        const data = await fetchProject(id);
-        const projectTasks = Array.isArray(data)
-          ? data
-          : data.tasks || data.project?.tasks || [];
+ useEffect(() => {
+  if (!id) return;
+  (async () => {
+    try {
+      const data = await fetchProject(id);
+      const projectTasks = Array.isArray(data)
+        ? data
+        : data.tasks || data.project?.tasks || [];
 
-        const formatted = await Promise.all(
-          projectTasks.map(async (t) => {
-            let subTasks = [];
-            if (Array.isArray(t.subTasks) && t.subTasks.length > 0) {
-              subTasks = (
-                await Promise.all(
-                  t.subTasks.map(async (stId) => {
-                    if (typeof stId === "string" || stId?.$oid) {
-                      return await fetchSubTask(stId);
-                    }
-                    return stId;
-                  })
-                )
-              ).filter(Boolean);
-            }
+    const formatted = await Promise.all(
+  projectTasks.map(async (t) => {
+    let subTasks = [];
 
-            const getValidDate = (d) => (d ? new Date(d) : null);
+    // fetch all subtasks by taskId, not individual subtaskId
+    if (t._id) {
+      subTasks = await fetchSubTask(t._id);
+    }
 
-            const taskStart = getValidDate(t.startDate || t.projectedStartDate);
-            const taskEnd = getValidDate(
-              t.endDate || t.projectedEndDate || t.dueDate
-            );
+    const getValidDate = (d) => (d ? new Date(d) : null);
 
-            let calculatedTaskStart = taskStart;
-            let calculatedTaskEnd = taskEnd;
+    const taskStart = getValidDate(t.startDate || t.projectedStartDate);
+    const taskEnd = getValidDate(t.endDate || t.projectedEndDate || t.dueDate);
 
-            if (subTasks.length > 0) {
-              const allStarts = subTasks
-                .map((st) =>
-                  getValidDate(st.startDate || st.projectedStartDate)
-                )
-                .filter(Boolean);
-              const allEnds = subTasks
-                .map((st) =>
-                  getValidDate(st.endDate || st.projectedEndDate || st.dueDate)
-                )
-                .filter(Boolean);
+    let calculatedTaskStart = taskStart;
+    let calculatedTaskEnd = taskEnd;
 
-              if (allStarts.length > 0) {
-                const earliest = new Date(
-                  Math.min(...allStarts.map((d) => d.getTime()))
-                );
-                calculatedTaskStart =
-                  !calculatedTaskStart || earliest < calculatedTaskStart
-                    ? earliest
-                    : calculatedTaskStart;
-              }
-              if (allEnds.length > 0) {
-                const latest = new Date(
-                  Math.max(...allEnds.map((d) => d.getTime()))
-                );
-                calculatedTaskEnd =
-                  !calculatedTaskEnd || latest > calculatedTaskEnd
-                    ? latest
-                    : calculatedTaskEnd;
-              }
-            }
+    if (subTasks.length > 0) {
+      const allStarts = subTasks
+        .map((st) => getValidDate(st.startDate || st.projectedStartDate))
+        .filter(Boolean);
+      const allEnds = subTasks
+        .map((st) => getValidDate(st.endDate || st.projectedEndDate || st.dueDate))
+        .filter(Boolean);
 
-            if (!calculatedTaskStart && !calculatedTaskEnd) {
-              calculatedTaskStart = new Date();
-              calculatedTaskEnd = new Date(calculatedTaskStart);
-              calculatedTaskEnd.setDate(calculatedTaskEnd.getDate() + 1);
-            } else if (!calculatedTaskStart) {
-              calculatedTaskStart = new Date(calculatedTaskEnd);
-              calculatedTaskStart.setDate(calculatedTaskStart.getDate() - 1);
-            } else if (!calculatedTaskEnd) {
-              calculatedTaskEnd = new Date(calculatedTaskStart);
-              calculatedTaskEnd.setDate(calculatedTaskEnd.getDate() + 1);
-            }
-
-            return {
-              id: t._id,
-              name: t.title || "Untitled Task",
-              progress: t.progress ?? 0,
-              start: calculatedTaskStart,
-              end: calculatedTaskEnd,
-              subTasks: subTasks.map((st) => {
-                const stStart = getValidDate(
-                  st.startDate || st.projectedStartDate || calculatedTaskStart
-                );
-                const stEnd = getValidDate(
-                  st.endDate ||
-                    st.projectedEndDate ||
-                    st.dueDate ||
-                    stStart
-                );
-                return {
-                  id: st._id,
-                  name: st.title || "Untitled Subtask",
-                  progress: st.progress ?? 0,
-                  start: stStart,
-                  end: stEnd,
-                };
-              }),
-            };
-          })
-        );
-        setTasks(formatted);
-      } catch (error) {
-        console.error("Failed to fetch project or subtasks:", error);
+      if (allStarts.length > 0) {
+        const earliest = new Date(Math.min(...allStarts.map((d) => d.getTime())));
+        calculatedTaskStart =
+          !calculatedTaskStart || earliest < calculatedTaskStart
+            ? earliest
+            : calculatedTaskStart;
       }
-    })();
-  }, [id]);
+      if (allEnds.length > 0) {
+        const latest = new Date(Math.max(...allEnds.map((d) => d.getTime())));
+        calculatedTaskEnd =
+          !calculatedTaskEnd || latest > calculatedTaskEnd
+            ? latest
+            : calculatedTaskEnd;
+      }
+    }
+
+    if (!calculatedTaskStart && !calculatedTaskEnd) {
+      calculatedTaskStart = new Date();
+      calculatedTaskEnd = new Date(calculatedTaskStart);
+      calculatedTaskEnd.setDate(calculatedTaskEnd.getDate() + 1);
+    } else if (!calculatedTaskStart) {
+      calculatedTaskStart = new Date(calculatedTaskEnd);
+      calculatedTaskStart.setDate(calculatedTaskStart.getDate() - 1);
+    } else if (!calculatedTaskEnd) {
+      calculatedTaskEnd = new Date(calculatedTaskStart);
+      calculatedTaskEnd.setDate(calculatedTaskEnd.getDate() + 1);
+    }
+
+    const mappedSubTasks = subTasks
+      .map((st) => {
+        const stStart = getValidDate(st.startDate || st.projectedStartDate || calculatedTaskStart);
+        const stEnd = getValidDate(st.endDate || st.projectedEndDate || st.dueDate || stStart);
+        return {
+          id: st._id,
+          name: st.title || "Untitled Subtask",
+          progress: st.progress ?? 0,
+          start: stStart,
+          end: stEnd,
+        };
+      })
+      .filter(Boolean);
+
+    const taskObj = {
+      id: t._id,
+      name: t.title || "Untitled Task",
+      progress: t.progress ?? 0,
+      start: calculatedTaskStart,
+      end: calculatedTaskEnd,
+      subTasks: mappedSubTasks,
+    };
+
+    console.log("Formatted Task:", taskObj);
+    return taskObj;
+  })
+);
+
+
+console.log("All Formatted Tasks:", formatted);
+
+
+      setTasks(formatted);
+      console.log("All Tasks:", formatted); // log all tasks after formatting
+    } catch (error) {
+      console.error("Failed to fetch project or subtasks:", error);
+    }
+  })();
+}, [id]);
+
 
   const allDates = tasks
     .flatMap((t) => [

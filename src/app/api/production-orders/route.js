@@ -3,27 +3,34 @@ import connectDB from '@/lib/db';
 import ProductionOrder from '@/models/ProductionOrder';
 import StockMovement from '@/models/StockMovement'; // ✅ added
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
+import BOM from '@/models/BOM';
+import Item from '@/models/ItemModels';
+import Warehouse from '@/models/warehouseModels';
+import CompanyUser from '@/models/CompanyUser';
 
 // ========================= GET =========================
+
 export async function GET(request) {
   await connectDB();
 
   try {
-    // ✅ Extract and verify token
     const token = getTokenFromHeader(request);
-    const user = verifyJWT(token); // decoded payload
+    const user = verifyJWT(token);
 
-    if (!user?.companyId) {
+    console.log("Decoded JWT user:", user); // ✅ debug
+
+    if (!user || !user.companyId) {
       return NextResponse.json(
-        { error: 'Company ID missing in token' },
+        { error: 'Unauthorized - companyId missing in token' },
         { status: 401 }
       );
     }
 
-    // ✅ Fetch company-wise orders
-    const orders = await ProductionOrder.find({ company: user.companyId })
-    
-      .sort('-createdAt');
+    const orders = await ProductionOrder.find({ companyId: user.companyId })
+      .populate("bomId")
+      .populate("warehouse")
+      .populate("items.item")
+      .populate("createdBy");
 
     return NextResponse.json(orders, { status: 200 });
   } catch (err) {
@@ -34,6 +41,8 @@ export async function GET(request) {
     );
   }
 }
+
+
 
 // ========================= POST =========================
 export async function POST(request) {

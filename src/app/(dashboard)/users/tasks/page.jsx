@@ -7,6 +7,7 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [comment, setComment] = useState("");
   const [progress, setProgress] = useState("");
+  const [comments, setComments] = useState([]); // ✅ separate comments state
 
   // Token
   const token =
@@ -20,10 +21,10 @@ export default function TasksPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setTasks(res.data);
+
       // auto-refresh selectedTask
       if (selectedTask) {
         const fresh = res.data.find((t) => t._id === selectedTask._id);
-        console.log(fresh);
         if (fresh) {
           setSelectedTask(fresh);
           setProgress(fresh.progress || 0);
@@ -36,10 +37,21 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasks();
-    // ⏱ auto refresh every 10s
     const interval = setInterval(fetchTasks, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch comments for a task
+  const fetchComments = async (taskId) => {
+    try {
+      const res = await api.get(`/project/tasks/${taskId}/comments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setComments(res.data);
+    } catch (err) {
+      console.error("Error fetching comments:", err);
+    }
+  };
 
   // Update task (status/progress)
   const updateTask = async (id, newStatus, newProgress) => {
@@ -49,7 +61,6 @@ export default function TasksPage() {
         { status: newStatus, progress: newProgress },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       const updated = res.data;
 
       setTasks((prev) =>
@@ -71,17 +82,12 @@ export default function TasksPage() {
     try {
       const res = await api.post(
         `/project/comments`,
-        { text: comment },
+        { taskId: selectedTask._id, text: comment },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       const newComment = res.data;
-
-      setSelectedTask((prev) => ({
-        ...prev,
-        comments: [...(prev.comments || []), newComment],
-      }));
-
+      setComments((prev) => [newComment, ...prev]); // ✅ instantly update
       setComment("");
     } catch (err) {
       console.error("Error adding comment:", err);
@@ -100,6 +106,7 @@ export default function TasksPage() {
             onClick={() => {
               setSelectedTask(task);
               setProgress(task.progress || 0);
+              fetchComments(task._id); // ✅ load comments on open
             }}
             className="p-5 bg-white border rounded-lg shadow hover:shadow-lg flex justify-between items-center cursor-pointer transition"
           >
@@ -139,7 +146,10 @@ export default function TasksPage() {
           <div className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-lg relative animate-fadeIn">
             {/* Close */}
             <button
-              onClick={() => setSelectedTask(null)}
+              onClick={() => {
+                setSelectedTask(null);
+                setComments([]); // clear when closing
+              }}
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 transition"
             >
               ✖
@@ -194,12 +204,13 @@ export default function TasksPage() {
               💬 Comments
             </h3>
             <ul className="mb-3 max-h-40 overflow-y-auto border rounded-lg p-3 bg-gray-50">
-              {(selectedTask.comments || []).length > 0 ? (
-                selectedTask.comments.map((c, i) => (
+              {comments.length > 0 ? (
+                comments.map((c) => (
                   <li
-                    key={i}
+                    key={c._id}
                     className="bg-white p-2 rounded shadow mb-2 text-sm"
                   >
+                    <span className="font-semibold">{c.author?.name}:</span>{" "}
                     {c.text}
                   </li>
                 ))
@@ -230,6 +241,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 /////////////////////////////////////////////////////////////
 
