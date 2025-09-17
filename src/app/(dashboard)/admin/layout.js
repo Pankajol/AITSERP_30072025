@@ -497,8 +497,9 @@ export default function AdminSidebar({ children }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto bg-gray-700 dark:bg-gray-800 text-white transform transition-transform duration-200 ease-in-out
-          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static`}
+         className={`fixed inset-y-0 left-0 z-40 w-64 bg-gray-700 dark:bg-gray-800 text-white transform transition-transform duration-200 ease-in-out
+    ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static
+    h-screen overflow-y-auto`} 
       >
         {/* Mobile Close Button */}
         <div className="md:hidden flex items-center justify-between px-4 h-14">

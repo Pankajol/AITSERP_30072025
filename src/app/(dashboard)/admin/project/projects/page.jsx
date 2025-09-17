@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import Select from "react-select";
 import { useRouter } from "next/navigation";
+import { HiDotsVertical } from "react-icons/hi";
 
 
 export default function ProjectsPage() {
@@ -264,14 +265,14 @@ const handleDelete = async (id) => {
               <td className="p-2 border">{p.priority}</td>
 
               <td className="p-2 border">{p.status}</td>
-              <td className="p-2 border space-x-2">
+              {/* <td className="p-2 border space-x-2">
                 <button
                   onClick={() => openModal(p)}
                   className="bg-blue-500 text-white px-3 py-1 rounded"
                 >
                   Edit
                 </button>
-                {/* view */}
+             
                 <button 
                   onClick={() => alert(JSON.stringify(p, null, 2))}
                 className="bg-green-500 text-white px-3 py-1 rounded">
@@ -283,7 +284,53 @@ const handleDelete = async (id) => {
                 >
                   Delete
                 </button>
+              </td> */}
+
+              {/* Actions dropdown */}
+              <td className="p-2 border" onClick={(e) => e.stopPropagation()}>
+                <div className="relative inline-block text-left">
+                  {/* Trigger button */}
+                  <button
+                    onClick={() =>
+                      setProjects((prev) =>
+                        prev.map((proj) =>
+                          proj._id === p._id
+                            ? { ...proj, menuOpen: !proj.menuOpen }
+                            : { ...proj, menuOpen: false }
+                        )
+                      )
+                    }
+                    className="px-3 py-1 bg-gray-100 border rounded hover:bg-gray-200"
+                  >
+                   <HiDotsVertical />
+                  </button>
+
+                  {/* Dropdown menu */}
+                  {p.menuOpen && (
+                    <div className="absolute right-0 mt-1 w-32 bg-white border rounded shadow-lg z-10">
+                      <button
+                        onClick={() => openModal(p)}
+                        className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-100"
+                      >
+                        Edit
+                      </button>
+                      {/* <button
+                        onClick={() => alert(JSON.stringify(p, null, 2))}
+                        className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100"
+                      >
+                        View
+                      </button> */}
+                      <button
+                        onClick={() => handleDelete(p._id)}
+                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </td>
+
             </tr>
           ))}
         </tbody>

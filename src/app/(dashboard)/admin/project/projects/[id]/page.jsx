@@ -281,8 +281,8 @@ console.log("All Formatted Tasks:", formatted);
           </select>
         </div>
 
-        <div className="flex border rounded-lg shadow-lg bg-white max-h-[600px] overflow-hidden">
-          {/* Left Task Table */}
+        {/* <div className="flex border rounded-lg shadow-lg bg-white max-h-[600px] overflow-hidden">
+      
           <div className="flex-shrink-0 w-80 bg-gray-50 border-r border-gray-200">
             <div className="grid grid-cols-[1fr_80px_80px_80px] h-10 px-2 border-b border-gray-200 bg-gray-100 font-semibold text-gray-700 text-sm sticky top-0 z-20">
               <div className="flex items-center">Task Name</div>
@@ -339,9 +339,8 @@ console.log("All Formatted Tasks:", formatted);
             </div>
           </div>
 
-          {/* Right Chart */}
           <div className="flex-1 relative overflow-x-auto overflow-y-auto">
-            {/* Header */}
+           
             <div
               className="flex h-10 border-b border-gray-200 bg-gray-100 sticky top-0 z-10"
               style={{ minWidth: chartScrollWidth }}
@@ -388,7 +387,7 @@ console.log("All Formatted Tasks:", formatted);
               })}
             </div>
 
-            {/* Grid + Bars */}
+         
             <div className="relative" style={{ minWidth: chartScrollWidth }}>
               {rows.map((r, rowIdx) => {
                 const { left, width } = getBarDimensions(r.start, r.end);
@@ -402,7 +401,7 @@ console.log("All Formatted Tasks:", formatted);
                     className="relative border-b border-gray-100"
                     style={{ height: ROW_HEIGHT }}
                   >
-                    {/* Grid lines */}
+                  
                     {Array.from({ length: columns }).map((_, i) => (
                       <div
                         key={`grid-${rowIdx}-${i}`}
@@ -410,7 +409,7 @@ console.log("All Formatted Tasks:", formatted);
                         style={{ left: i * CELL_WIDTH, width: CELL_WIDTH }}
                       ></div>
                     ))}
-                    {/* Bar */}
+                 
                     <div
                       className={`absolute h-5 rounded-xl shadow-md ${
                         r.isSub
@@ -424,7 +423,7 @@ console.log("All Formatted Tasks:", formatted);
                         style={{ width: progressWidth }}
                       ></div>
                     </div>
-                    {/* Car */}
+                 
                     <div
                       className="absolute text-2xl text-blue-800 transition-all duration-500"
                       style={{
@@ -439,7 +438,152 @@ console.log("All Formatted Tasks:", formatted);
               })}
             </div>
           </div>
+        </div> */}
+
+       <div className="flex border rounded-lg shadow-lg bg-white max-h-[600px] overflow-hidden">
+  {/* Left Task Table */}
+  <div className="flex-shrink-0 w-80 bg-gray-50 border-r border-gray-200">
+    {/* Header */}
+    <div className="grid grid-cols-[1fr_80px_80px_80px] h-10 px-2 border-b border-gray-200 bg-gray-100 font-semibold text-gray-700 text-sm sticky top-0 z-20">
+      <div className="flex items-center">Task Name</div>
+      <div className="flex items-center justify-center border-l border-gray-200">Dur.</div>
+      <div className="flex items-center justify-center border-l border-gray-200">Start</div>
+      <div className="flex items-center justify-center border-l border-gray-200">End</div>
+    </div>
+
+    {/* Rows */}
+    <div className="overflow-y-auto" style={{ height: `calc(100% - ${ROW_HEIGHT}px)` }}>
+      {rows.map((r) => (
+        <div
+          key={r.id + (r.isSub ? "-sub" : "-task")}
+          className={`grid grid-cols-[1fr_80px_80px_80px] items-center px-2 border-b border-gray-200 cursor-pointer transition ${
+            r.isSub ? "text-sm text-gray-600" : "font-medium text-gray-800"
+          }`}
+          style={{ height: ROW_HEIGHT }} // ✅ fixed: use inline style
+          onClick={() => !r.isSub && setExpanded((p) => ({ ...p, [r.id]: !p[r.id] }))}
+        >
+          <div
+            className="flex items-center truncate"
+            style={{ paddingLeft: `${4 + r.level * 20}px` }}
+          >
+            {!r.isSub && (
+              <span className="mr-2 text-xs">
+                {expanded[r.id] ? <FaChevronDown /> : <FaChevronRight />}
+              </span>
+            )}
+            {r.name}
+          </div>
+          <div className="flex items-center justify-center text-xs border-l border-gray-200">
+            {getDuration(r.start, r.end)}
+          </div>
+          <div className="flex items-center justify-center text-xs border-l border-gray-200">
+            {getFormattedDate(r.start)}
+          </div>
+          <div className="flex items-center justify-center text-xs border-l border-gray-200">
+            {getFormattedDate(r.end)}
+          </div>
         </div>
+      ))}
+    </div>
+  </div>
+
+  {/* Right Chart */}
+  <div className="flex-1 relative overflow-x-auto overflow-y-auto">
+    {/* Header */}
+    <div
+      className="flex h-10 border-b border-gray-200 bg-gray-100 sticky top-0 z-10"
+      style={{ minWidth: chartScrollWidth }}
+    >
+      {Array.from({ length: columns }).map((_, i) => {
+        const current = new Date(viewStartDate);
+        current.setDate(viewStartDate.getDate() + i * unitDays);
+
+        let label = "";
+        if (viewMode === "Day") {
+          label = current.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+        } else if (viewMode === "Week") {
+          const weekEnd = new Date(current);
+          weekEnd.setDate(current.getDate() + 6);
+          label = `${current.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+          })} - ${weekEnd.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+          })}`;
+        } else if (viewMode === "Month") {
+          label = current.toLocaleString("default", { month: "short", year: "numeric" });
+        } else if (viewMode === "Quarter") {
+          const quarter = Math.floor(current.getMonth() / 3) + 1;
+          label = `Q${quarter}-${current.getFullYear()}`;
+        }
+
+        return (
+          <div
+            key={`col-${i}`}
+            className="flex items-center justify-center text-xs text-gray-600 border-r border-gray-200 flex-shrink-0"
+            style={{ width: CELL_WIDTH }}
+          >
+            {label}
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Grid + Bars */}
+    <div className="relative" style={{ minWidth: chartScrollWidth }}>
+      {rows.map((r, rowIdx) => {
+        const { left, width } = getBarDimensions(r.start, r.end);
+        const progressWidth = Math.max(0, Math.min(width, (width * r.progress) / 100));
+
+        return (
+          <div
+            key={`${r.id}-${rowIdx}`}
+            className="relative border-b border-gray-100"
+            style={{ height: ROW_HEIGHT }}
+          >
+            {/* Grid lines */}
+            {Array.from({ length: columns }).map((_, i) => (
+              <div
+                key={`grid-${rowIdx}-${i}`}
+                className="absolute top-0 h-full border-r border-gray-200"
+                style={{ left: i * CELL_WIDTH, width: CELL_WIDTH }}
+              ></div>
+            ))}
+
+            {/* Bar */}
+            <div
+              className={`absolute h-5 rounded-xl shadow-md ${
+                r.isSub
+                  ? "bg-gradient-to-r from-purple-400 to-purple-600"
+                  : "bg-gradient-to-r from-blue-400 to-blue-600"
+              }`}
+              style={{ left, width, top: ROW_HEIGHT / 4 }}
+            >
+              <div
+                className="h-full bg-green-500/70 rounded-l-xl"
+                style={{ width: progressWidth }}
+              ></div>
+            </div>
+
+            {/* Car */}
+            <div
+              className="absolute text-2xl text-blue-800 transition-all duration-500"
+              style={{
+                top: ROW_HEIGHT / 4 - 6,
+                left: left + progressWidth - 15,
+              }}
+            >
+              <FaCarSide />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+</div>
+
+        
       </div>
     </div>
   );

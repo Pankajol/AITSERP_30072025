@@ -662,11 +662,9 @@
 // }
 
 
-
 "use client";
 
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import api from "@/lib/api";
 import Select from "react-select";
 
@@ -682,8 +680,13 @@ export default function TasksPage() {
   // edit state
   const [editTask, setEditTask] = useState(null);
   const [editSubtask, setEditSubtask] = useState(null);
+
   // expanded task for subtasks
   const [expandedTaskId, setExpandedTaskId] = useState(null);
+
+  // dropdown menu state
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const menuRef = useRef(null);
 
   // task form
   const [title, setTitle] = useState("");
@@ -697,77 +700,85 @@ export default function TasksPage() {
   const [endDate, setEndDate] = useState("");
   const [priority, setPriority] = useState("medium");
   const [status, setStatus] = useState("todo");
-  const [progress,setProgress] = useState("");
+  const [progress, setProgress] = useState("");
 
   // subtask form
   const [subTitle, setSubTitle] = useState("");
   const [subDescription, setSubDescription] = useState("");
   const [subAssignees, setSubAssignees] = useState([]);
-  const [projecStarttData, setProjectStartData] = useState("");
-  const [projectEndData, setProjectEndData] = useState("");
   const [startDateData, setStartDateData] = useState("");
   const [endDateData, setEndDateData] = useState("");
-  const [progressData, setProgressData] = useState("");
   const [subDueDate, setSubDueDate] = useState("");
   const [subPriority, setSubPriority] = useState("medium");
   const [subStatus, setSubStatus] = useState("todo");
   const [subProgress, setSubProgress] = useState("");
 
   // fetch data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        }
-        const headers = { Authorization: `Bearer ${token}` };
-        const [tRes, pRes, uRes] = await Promise.all([
-          api.get("/project/tasks", { headers }),
-          api.get("/project/projects", { headers }),
-          api.get("/company/users", { headers }),
-        ]);
-
-        setTasks(tRes.data);
-        setProjects(pRes.data);
-        const employees = uRes.data.filter((u) =>
-          u.roles?.includes("Employee")
-        );
-        setUsers(employees);
-      } catch (err) {
-        console.error(err);
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       }
-    };
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const [tRes, pRes, uRes] = await Promise.all([
+        api.get("/project/tasks", { headers }),
+        api.get("/project/projects", { headers }),
+        api.get("/company/users", { headers }),
+      ]);
+
+      setTasks(tRes.data);
+      setProjects(pRes.data);
+      const employees = uRes.data.filter((u) =>
+        u.roles?.includes("Employee")
+      );
+      setUsers(employees);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
-
-    // toggle subtasks
-// toggle subtasks
-const toggleExpand = async (taskId) => {
-  if (expandedTaskId === taskId) {
-    setExpandedTaskId(null); // collapse
-  } else {
-    try {
-      const token = localStorage.getItem("token");
-      const headers = { Authorization: `Bearer ${token}` };
-
-      // 🔹 fetch subtasks for this task
-      const res = await api.get(`/project/tasks/${taskId}/subtasks`, { headers });
-
-      // 🔹 update this task's subtasks in state
-      setTasks((prev) =>
-        prev.map((t) =>
-          t._id === taskId ? { ...t, subtasks: res.data } : t
-        )
-      );
-
-      setExpandedTaskId(taskId); // expand
-    } catch (err) {
-      console.error("Error fetching subtasks:", err);
+  // close dropdown when clicked outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuId(null);
+      }
     }
-  }
-};
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // toggle subtasks
+  const toggleExpand = async (taskId) => {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null); // collapse
+    } else {
+      try {
+        const token = localStorage.getItem("token");
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const res = await api.get(`/project/tasks/${taskId}/subtasks`, {
+          headers,
+        });
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === taskId ? { ...t, subtasks: res.data } : t
+          )
+        );
+
+        setExpandedTaskId(taskId);
+      } catch (err) {
+        console.error("Error fetching subtasks:", err);
+      }
+    }
+  };
 
   // reset task form
   const resetForm = () => {
@@ -775,17 +786,15 @@ const toggleExpand = async (taskId) => {
     setDescription("");
     setProjectId("");
     setAssignees([]);
-
     setProjectedStartDate("");
-    setProgress("")
     setProjectedEndDate("");
     setStartDate("");
     setEndDate("");
     setDueDate("");
     setPriority("medium");
     setStatus("todo");
+    setProgress("");
     setEditTask(null);
-
   };
 
   // open/close task modal
@@ -795,20 +804,12 @@ const toggleExpand = async (taskId) => {
       setTitle(task.title);
       setDescription(task.description || "");
       setProjectId(task.project?._id || "");
-      setAssignees(
-        Array.isArray(task.assignees)
-          ? task.assignees.map((u) => u._id || u)
-          : []
-      );
-      setProjectedStartDate(
-        task.projectedStartDate ? task.projectedStartDate.split("T")[0] : ""
-      );
-      setProjectedEndDate(
-        task.projectedEndDate ? task.projectedEndDate.split("T")[0] : ""
-      );
-      setStartDate(task.startDate ? task.startDate.split("T")[0] : "");
-      setEndDate(task.endDate ? task.endDate.split("T")[0] : "");
-      setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
+      setAssignees(task.assignees?.map((u) => u._id || u) || []);
+      setProjectedStartDate(task.projectedStartDate?.split("T")[0] || "");
+      setProjectedEndDate(task.projectedEndDate?.split("T")[0] || "");
+      setStartDate(task.startDate?.split("T")[0] || "");
+      setEndDate(task.endDate?.split("T")[0] || "");
+      setDueDate(task.dueDate?.split("T")[0] || "");
       setPriority(task.priority);
       setStatus(task.status);
       setProgress(task.progress);
@@ -824,46 +825,43 @@ const toggleExpand = async (taskId) => {
   };
 
   // create/update task
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const payload = {
-      title,
-      description,
-      project: projectId,
-      assignees,
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        title,
+        description,
+        project: projectId,
+        assignees,
+        projectedStartDate: projectedStartDate
+          ? new Date(projectedStartDate).toISOString()
+          : null,
+        projectedEndDate: projectedEndDate
+          ? new Date(projectedEndDate).toISOString()
+          : null,
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        endDate: endDate ? new Date(endDate).toISOString() : null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        priority,
+        status,
+        progress,
+      };
 
-      projectedStartDate: projectedStartDate ? new Date(projectedStartDate).toISOString() : null,
-  projectedEndDate: projectedEndDate ? new Date(projectedEndDate).toISOString() : null,
-  startDate: startDate ? new Date(startDate).toISOString() : null,
-  endDate: endDate ? new Date(endDate).toISOString() : null,
-  dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-    
-      priority,
-      status,
-      progress,
-    };
+      const token = localStorage.getItem("token");
+      const headers = { Authorization: `Bearer ${token}` };
 
-    const token = localStorage.getItem("token");
-    const headers = { Authorization: `Bearer ${token}` };
+      if (editTask) {
+        await api.put(`/project/tasks/${editTask._id}`, payload, { headers });
+      } else {
+        await api.post("/project/tasks", payload, { headers });
+      }
 
-    let res;
-    if (editTask) {
-      res = await api.put(`/project/tasks/${editTask._id}`, payload, { headers });
-      setTasks((prev) =>
-        prev.map((t) => (t._id === editTask._id ? res.data : t))
-      );
-    } else {
-      res = await api.post("/project/tasks", payload, { headers });
-      setTasks((prev) => [...prev, res.data]);
+      await fetchData();
+      closeModal();
+    } catch (err) {
+      console.error("Error saving task:", err);
     }
-
-    closeModal();
-  } catch (err) {
-    console.error("Error saving task:", err);
-  }
-};
-
+  };
 
   const handleDelete = async (id) => {
     if (!confirm("Are you sure you want to delete this task?")) return;
@@ -875,33 +873,27 @@ const handleSubmit = async (e) => {
     }
   };
 
-  // subtask modal open
+  // open/close subtask modal
   const openSubtaskModal = (task, subtask = null) => {
+    setEditTask(task);
     if (subtask) {
       setEditSubtask(subtask);
       setSubTitle(subtask.title || "");
       setSubDescription(subtask.description || "");
       setSubAssignees(subtask.assignees?.map((a) => a._id || a) || []);
-      setProjectStartData(subtask.projectedStartDate ? subtask.projectedStartDate.split("T")[0] : "");
-      setProjectEndData(subtask.projectedEndDate ? subtask.projectedEndDate.split("T")[0] : "");
-      setStartDateData(subtask.startDate ? subtask.startDate.split("T")[0] : "");
-      setEndDateData(subtask.endDate ? subtask.endDate.split("T")[0] : "");
-      setProgressData(subtask.progress);
-      setSubDueDate(subtask.dueDate ? subtask.dueDate.split("T")[0] : "");
+      setStartDateData(subtask.startDate?.split("T")[0] || "");
+      setEndDateData(subtask.endDate?.split("T")[0] || "");
+      setSubDueDate(subtask.dueDate?.split("T")[0] || "");
       setSubPriority(subtask.priority || "medium");
       setSubStatus(subtask.status || "todo");
-      setSubProgress(subtask.progress );
+      setSubProgress(subtask.progress || "");
     } else {
-      setEditTask(task);
       setEditSubtask(null);
       setSubTitle("");
       setSubDescription("");
       setSubAssignees([]);
-      setProjectStartData("");
-      setProjectEndData("");
       setStartDateData("");
       setEndDateData("");
-      setProgressData("");
       setSubDueDate("");
       setSubPriority("medium");
       setSubStatus("todo");
@@ -917,25 +909,19 @@ const handleSubmit = async (e) => {
 
   const handleSubtaskSubmit = async (e) => {
     e.preventDefault();
-      const tocken = localStorage.getItem("token");
-        const headers = { Authorization: `Bearer ${tocken}` };
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}` };
+
     try {
       if (editSubtask) {
-        if (!editSubtask.taskId || !editSubtask._id) {
-          throw new Error("Invalid subtask data");
-        } 
-      
-        const res = await api.put(
-          `/project/tasks/${editSubtask.taskId}/subtasks/${editSubtask._id}`,
+        await api.put(
+          `/project/tasks/${editTask._id}/subtasks/${editSubtask._id}`,
           {
             title: subTitle,
             description: subDescription,
             assignees: subAssignees,
-            projectedStartDate: projecStarttData,
-            projectedEndDate: projectEndData,
             startDate: startDateData,
             endDate: endDateData,
-            progress: progressData,
             dueDate: subDueDate,
             priority: subPriority,
             status: subStatus,
@@ -943,44 +929,24 @@ const handleSubmit = async (e) => {
           },
           { headers }
         );
-        setTasks((prev) =>
-          prev.map((t) =>
-            t._id === editSubtask.taskId
-              ? {
-                  ...t,
-                  subtasks: t.subtasks.map((s) =>
-                    s._id === res.data._id ? res.data : s
-                  ),
-                }
-              : t
-          )
-        );
       } else {
-        const res = await api.post(`/project/tasks/${editTask._id}/subtasks`, {
-          title: subTitle,
-          description: subDescription,
-          assignees: subAssignees,
-          projectedStartDate:projectedStartDate,
-          projectedEndDate: projectedEndDate,
-          startDate: startDate,
-          endDate: endDate,
-
-          dueDate: subDueDate,
-          
-          // make the projectede date
-
-          progress: subProgress,
-          priority: subPriority,
-          status: subStatus,
-        },{ headers});
-        setTasks((prev) =>
-          prev.map((t) =>
-            t._id === editTask._id
-              ? { ...t, subtasks: [...(t.subtasks || []), res.data] }
-              : t
-          )
+        await api.post(
+          `/project/tasks/${editTask._id}/subtasks`,
+          {
+            title: subTitle,
+            description: subDescription,
+            assignees: subAssignees,
+            startDate: startDateData,
+            endDate: endDateData,
+            dueDate: subDueDate,
+            priority: subPriority,
+            status: subStatus,
+            progress: subProgress,
+          },
+          { headers }
         );
       }
+      await fetchData();
       closeSubtaskModal();
     } catch (err) {
       console.error("Subtask Submit Error:", err.message);
@@ -1006,7 +972,8 @@ const handleSubmit = async (e) => {
             <th className="p-2 border">Title</th>
             <th className="p-2 border">Project</th>
             <th className="p-2 border">Assignees</th>
-            <th className="p-2 border">Due Date</th>
+            <th className="p-2 border">Start Date</th>
+            <th className="p-2 border">End Date</th>
             <th className="p-2 border">Priority</th>
             <th className="p-2 border">Status</th>
             <th className="p-2 border">Actions</th>
@@ -1033,33 +1000,64 @@ const handleSubmit = async (e) => {
                   {t.assignees?.map((u) => u.name || u).join(", ")}
                 </td>
                 <td className="p-2 border">
-                  {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "-"}
+                  {t.startDate ? new Date(t.startDate).toLocaleDateString("en-IN") : "-"}
+                </td>
+                
+                <td className="p-2 border">
+                  {t.endDate ? new Date(t.endDate).toLocaleDateString("en-IN") : "-"}
                 </td>
                 <td className="p-2 border">{t.priority}</td>
                 <td className="p-2 border">{t.status}</td>
                 <td
-                  className="p-2 border space-x-2"
-                  onClick={(e) => e.stopPropagation()}
+                className="p-2 border relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() =>
+                    setOpenMenuId(openMenuId === t._id ? null : t._id)
+                  }
+                  className="p-1 rounded hover:bg-gray-200"
                 >
-                  <button
-                    onClick={() => openSubtaskModal(t)}
-                    className="text-green-600 hover:underline"
+                  ⋮
+                </button>
+
+                {openMenuId === t._id && (
+                  <div
+                    ref={menuRef}
+                    className="absolute right-2 mt-1 w-32 bg-white border rounded shadow-md z-10"
                   >
-                    + Subtask
-                  </button>
-                  <button
-                    onClick={() => openModal(t)}
-                    className="text-blue-600 hover:underline"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t._id)}
-                    className="text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </td>
+                    <button
+                      onClick={() => {
+                        openSubtaskModal(t);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-green-600"
+                    >
+                      + Subtask
+                    </button>
+                    <button
+                      onClick={() => {
+                        openModal(t);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-blue-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDelete(t._id);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </td>
+      
+
               </tr>
 
               {/* Subtasks Row (collapsible) */}
@@ -1182,7 +1180,7 @@ const handleSubmit = async (e) => {
                 </div>
 
                 {/* Dates */}
-                <div className="flex flex-col">
+                {/* <div className="flex flex-col">
                   <label className="font-semibold mb-1">Due Date</label>
                   <input
                     type="date"
@@ -1190,9 +1188,9 @@ const handleSubmit = async (e) => {
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                   />
-                </div>
+                </div> */}
 
-                <div className="flex flex-col">
+                {/* <div className="flex flex-col">
                   <label className="font-semibold mb-1">
                     Projected Start Date
                   </label>
@@ -1214,7 +1212,7 @@ const handleSubmit = async (e) => {
                     value={projectedEndDate}
                     onChange={(e) => setProjectedEndDate(e.target.value)}
                   />
-                </div>
+                </div> */}
 
                 <div className="flex flex-col">
                   <label className="font-semibold mb-1">Start Date</label>
@@ -1342,7 +1340,7 @@ const handleSubmit = async (e) => {
                   }
                 />
               </div>
-              <div className="flex flex-col"> 
+              {/* <div className="flex flex-col"> 
                 <label className="font-semibold mb-1">Projected Start Date</label>
                 <input
                   type="date"
@@ -1361,7 +1359,7 @@ const handleSubmit = async (e) => {
                   onChange={(e) => setProjectEndData(e.target.value)}
                 />
 
-              </div>
+              </div> */}
                 <div className="flex flex-col"> 
                 <label className="font-semibold mb-1"> Start Date  </label>
                 <input
@@ -1385,7 +1383,7 @@ const handleSubmit = async (e) => {
            
 
               {/* Due Date */}
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <label className="font-semibold mb-1">Due Date</label>
                 <input
                   type="date"
@@ -1393,7 +1391,7 @@ const handleSubmit = async (e) => {
                   value={subDueDate}
                   onChange={(e) => setSubDueDate(e.target.value)}
                 />
-              </div>
+              </div> */}
 
               {/* Priority + Status */}
               <div className="grid grid-cols-2 gap-4">
@@ -1457,3 +1455,7 @@ const handleSubmit = async (e) => {
     </div>
   );
 }
+
+
+
+
