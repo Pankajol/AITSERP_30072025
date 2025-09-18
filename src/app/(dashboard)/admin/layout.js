@@ -908,7 +908,7 @@ export default function AdminSidebar({ children }) {
               <Item href="/admin/sales-invoice-view" icon={<HiOutlineCreditCard />} label="Invoice View" close={closeSidebar} />
               <Item href="/admin/credit-memo-veiw" icon={<HiReceiptTax />} label="Credit Memo View" close={closeSidebar} />
               <Item href="/admin/sales-report" icon={<HiChartSquareBar />} label="Report" close={closeSidebar} />
-              <Item href="/admin/sales-bord" icon={<HiChartSquareBar />} label="Sales Bord" close={closeSidebar} />
+              <Item href="/admin/sales-board" icon={<HiChartSquareBar />} label="Sales Board" close={closeSidebar} />
             </Submenu>
 
             <Submenu isOpen={!!openSubmenus["tvPurchase"]} onToggle={() => toggleSubmenu("tvPurchase")} icon={<GiStockpiles />} label="Purchase">
@@ -1061,7 +1061,7 @@ export default function AdminSidebar({ children }) {
           <Section title="Production View" icon={<HiOutlineLibrary />} isOpen={openMenu === "ProductionView"} onToggle={() => toggleMenu("ProductionView")}>
             <Item href="/admin/bom-view" icon={<HiOutlineCube />} label="BoM View" close={closeSidebar} />
             <Item href="/admin/productionorders-list-view" icon={<HiReceiptTax />} label="Production Orders View" close={closeSidebar} />
-            <Item href="/admin/production-bord" icon={<HiChartSquareBar />} label="Production Bord" close={closeSidebar} />
+            <Item href="/admin/production-board" icon={<HiChartSquareBar />} label="Production Board" close={closeSidebar} />
           </Section>
 
           {/* Project */}

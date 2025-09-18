@@ -133,6 +133,7 @@ export async function POST(req, context) {
     await ProductionOrder.findOneAndUpdate(
       { _id: productionOrderId, companyId },
       {
+        $set: { status: 'issued form production' },
         $inc: { issuforproductionqty: qtyParam },
         $set: { rate: avgCostPrice },
       }

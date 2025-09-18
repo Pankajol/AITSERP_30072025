@@ -10,6 +10,25 @@ const FullCalendar = dynamic(() => import("@fullcalendar/react"), { ssr: false }
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
+// normalize backend statuses → UI statuses
+const normalizeStatus = (status) => {
+  if (!status) return "Open";
+
+  const s = status.toLowerCase();
+
+  if (s === "draft" || s === "open") return "Open";
+  if (s === "in-progress" || s === "issue for production") return "In-Progress";
+  if (
+    s === "complete" ||
+    s === "transferred" ||
+    s === "recepit from production"
+  )
+    return "Complete";
+
+  // fallback
+  return "Open";
+};
+
 export default function ProductionBoardWithCalendar() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,21 +55,19 @@ export default function ProductionBoardWithCalendar() {
     fetchOrders();
   }, []);
 
-  // group orders by status dynamically
+  // group orders by normalized status
   const getColumns = () => {
     const grouped = {
-      open: orders.filter((o) => o.status === "Open"),
-      "in-progress": orders.filter((o) => o.status === "In-Progress"),
-      "linked-to-production-order": orders.filter(
-        (o) => o.status === "LinkedToProductionOrder"
+      open: orders.filter((o) => normalizeStatus(o.status) === "Open"),
+      "in-progress": orders.filter(
+        (o) => normalizeStatus(o.status) === "In-Progress"
       ),
-      complete: orders.filter((o) => o.status === "Complete"),
+      complete: orders.filter((o) => normalizeStatus(o.status) === "Complete"),
     };
 
     console.log("📊 Column grouping:", {
       open: grouped.open.length,
       "in-progress": grouped["in-progress"].length,
-      "linked-to-production-order": grouped["linked-to-production-order"].length,
       complete: grouped.complete.length,
     });
 
@@ -81,9 +98,6 @@ export default function ProductionBoardWithCalendar() {
       case "in-progress":
         newStatus = "In-Progress";
         break;
-      case "linked-to-production-order":
-        newStatus = "LinkedToProductionOrder";
-        break;
       default:
         newStatus = "Complete";
     }
@@ -107,20 +121,22 @@ export default function ProductionBoardWithCalendar() {
   };
 
   // events for calendar
-  const calendarEvents = orders.map((o) => ({
-    id: o._id,
-    title: `${o.orderNumber || o.documentNumberOrder || o._id} (${o.status})`,
-    start: o.deliveryDate ? new Date(o.deliveryDate) : new Date(),
-    backgroundColor:
-      o.status === "Open"
-        ? "#fca5a5"
-        : o.status === "In-Progress"
-        ? "#facc15"
-        : o.status === "LinkedToProductionOrder"
-        ? "#60a5fa"
-        : "#4ade80",
-    borderColor: "#000",
-  }));
+  const calendarEvents = orders.map((o) => {
+    const normStatus = normalizeStatus(o.status);
+
+    return {
+      id: o._id,
+      title: `${o.productDesc || o.documentNumberOrder || o._id} (${normStatus})`,
+      start: o.deliveryDate ? new Date(o.deliveryDate) : new Date(),
+      backgroundColor:
+        normStatus === "Open"
+          ? "#fca5a5"
+          : normStatus === "In-Progress"
+          ? "#facc15"
+          : "#4ade80",
+      borderColor: "#000",
+    };
+  });
 
   console.log("📅 Calendar events:", calendarEvents);
 
@@ -129,7 +145,6 @@ export default function ProductionBoardWithCalendar() {
   const columnStyles = {
     open: "bg-red-100/40 border-red-300",
     "in-progress": "bg-yellow-100/40 border-yellow-300",
-    "linked-to-production-order": "bg-blue-100/40 border-blue-300",
     complete: "bg-green-100/40 border-green-300",
   };
 
@@ -168,7 +183,7 @@ export default function ProductionBoardWithCalendar() {
       {/* Board View */}
       {view === "board" ? (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {Object.entries(columns).map(([status, items]) => (
               <Droppable key={`col-${status}`} droppableId={status}>
                 {(provided) => (
@@ -195,7 +210,7 @@ export default function ProductionBoardWithCalendar() {
                             className="bg-white shadow-sm rounded-lg p-4 mb-3 border hover:shadow-md transition"
                           >
                             <p className="font-semibold text-gray-800 mb-1">
-                              {order.documentNumberOrder ||
+                              {order.productDesc ||
                                 order.productName ||
                                 order._id}
                             </p>
@@ -204,9 +219,9 @@ export default function ProductionBoardWithCalendar() {
                             </p>
                             <p className="text-xs text-gray-400">
                               Delivery Date:{" "}
-                              {order.deliveryDate
+                              {order.productionDate
                                 ? new Date(
-                                    order.deliveryDate
+                                    order.productionDate
                                   ).toLocaleDateString()
                                 : "N/A"}
                             </p>
@@ -239,4 +254,3 @@ export default function ProductionBoardWithCalendar() {
     </div>
   );
 }
-
