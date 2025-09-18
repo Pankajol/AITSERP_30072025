@@ -21,9 +21,9 @@ export default function ProductionOrdersPage() {
       return;
     }
     axios
-      .get("/api/production-orders",
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      .get("/api/production-orders", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       .then((res) => setOrders(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -39,7 +39,8 @@ export default function ProductionOrdersPage() {
     } else if (type === "issue") {
       balanceQty = order.transferqty - (order.issuforproductionqty || 0);
     } else if (type === "receipt") {
-      balanceQty = order.issuforproductionqty - (order.reciptforproductionqty || 0);
+      balanceQty =
+        order.issuforproductionqty - (order.reciptforproductionqty || 0);
     }
 
     setTransferQty(balanceQty);
@@ -53,9 +54,12 @@ export default function ProductionOrdersPage() {
     if (modalType === "transfer") {
       maxQty = currentOrder.quantity - (currentOrder.transferqty || 0);
     } else if (modalType === "issue") {
-      maxQty = currentOrder.transferqty - (currentOrder.issuforproductionqty || 0);
+      maxQty =
+        currentOrder.transferqty - (currentOrder.issuforproductionqty || 0);
     } else if (modalType === "receipt") {
-      maxQty = currentOrder.issuforproductionqty - (currentOrder.reciptforproductionqty || 0);
+      maxQty =
+        currentOrder.issuforproductionqty -
+        (currentOrder.reciptforproductionqty || 0);
     }
 
     if (transferQty < 1 || transferQty > maxQty) {
@@ -106,10 +110,15 @@ export default function ProductionOrdersPage() {
         return currentOrder.quantity - (currentOrder.transferqty || 0);
       }
       if (modalType === "issue") {
-        return currentOrder.transferqty - (currentOrder.issuforproductionqty || 0);
+        return (
+          currentOrder.transferqty - (currentOrder.issuforproductionqty || 0)
+        );
       }
       if (modalType === "receipt") {
-        return currentOrder.issuforproductionqty - (currentOrder.reciptforproductionqty || 0);
+        return (
+          currentOrder.issuforproductionqty -
+          (currentOrder.reciptforproductionqty || 0)
+        );
       }
       return 0;
     };
@@ -136,10 +145,21 @@ export default function ProductionOrdersPage() {
         <div className="bg-white p-6 rounded shadow w-80">
           {modalType === "transfer" && renderInput("Confirm Stock Transfer")}
           {modalType === "issue" && renderInput("Confirm Issue for Production")}
-          {modalType === "receipt" && renderInput("Confirm Receipt from Production")}
+          {modalType === "receipt" &&
+            renderInput("Confirm Receipt from Production")}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setModalOpen(false)} className="px-3 py-1 bg-gray-200 rounded">Cancel</button>
-            <button onClick={handleModalConfirm} className="px-3 py-1 bg-blue-600 text-white rounded">Confirm</button>
+            <button
+              onClick={() => setModalOpen(false)}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleModalConfirm}
+              className="px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              Confirm
+            </button>
           </div>
         </div>
       </div>
@@ -178,25 +198,48 @@ export default function ProductionOrdersPage() {
             const canReceipt = issue > receipt;
 
             let status = "planned";
-            if (transfer > 0 && issue === 0 && receipt === 0) status = "transferred";
+            if (transfer > 0 && issue === 0 && receipt === 0)
+              status = "transferred";
             else if (issue > 0 && receipt === 0) status = "issued";
-            else if (receipt > 0 && receipt < quantity) status = "partially received";
-            else if (transfer === quantity && issue === quantity && receipt === quantity) status = "closed";
+            else if (receipt > 0 && receipt < quantity)
+              status = "partially received";
+            else if (
+              transfer === quantity &&
+              issue === quantity &&
+              receipt === quantity
+            )
+              status = "closed";
             else status = "partially completed";
 
             return (
               <tr key={o._id} className="hover:bg-gray-50">
                 <td className="border p-2 text-center">{idx + 1}</td>
-                <td className="border p-2">{o.productDesc || o.bomId}</td>
+
+                {/* ✅ Safe rendering */}
+                <td className="border p-2">
+                  {typeof o.productDesc === "string"
+                    ? o.productDesc
+                    : o.productDesc?.name ||
+                      o.productDesc?.code ||
+                      o.bomId?.bomName ||
+                      o.bomId?._id ||
+                      "N/A"}
+                </td>
+
                 <td className="border p-2 text-right">{quantity}</td>
                 <td className="border p-2 text-right">{transfer}</td>
                 <td className="border p-2 text-right">{issue}</td>
                 <td className="border p-2 text-right">{receipt}</td>
-                <td className="border p-2">{new Date(o.productionDate).toLocaleDateString()}</td>
+                <td className="border p-2">
+                  {new Date(o.productionDate).toLocaleDateString()}
+                </td>
                 <td className="border p-2 capitalize">{status}</td>
                 <td className="border p-2 flex items-center gap-2">
                   {status === "planned" ? (
-                    <a href={`/admin/ProductionOrder/${o._id}`} className="text-green-600 flex items-center gap-1">
+                    <a
+                      href={`/admin/ProductionOrder/${o._id}`}
+                      className="text-green-600 flex items-center gap-1"
+                    >
                       <Pencil size={16} /> Update
                     </a>
                   ) : (
@@ -207,16 +250,26 @@ export default function ProductionOrdersPage() {
                     >
                       <option value="">— Actions —</option>
                       <option value="stockTransfer">Stock Transfer</option>
-                      <option value="issueProduction" disabled={!canIssue}>Issue for Production</option>
-                      <option value="receiptProduction" disabled={!canReceipt}>Receipt from Production</option>
+                      <option value="issueProduction" disabled={!canIssue}>
+                        Issue for Production
+                      </option>
+                      <option value="receiptProduction" disabled={!canReceipt}>
+                        Receipt from Production
+                      </option>
                     </select>
                   )}
 
-                  <a href={`/admin/productionorderdetail-view/${o._id}`} className="text-blue-600 flex items-center gap-1">
+                  <a
+                    href={`/admin/productionorderdetail-view/${o._id}`}
+                    className="text-blue-600 flex items-center gap-1"
+                  >
                     <Eye size={16} /> View
                   </a>
 
-                  <button onClick={() => handleDelete(o._id)} className="text-red-600 flex items-center gap-1">
+                  <button
+                    onClick={() => handleDelete(o._id)}
+                    className="text-red-600 flex items-center gap-1"
+                  >
                     <Trash2 size={16} /> Delete
                   </button>
                 </td>
@@ -229,13 +282,6 @@ export default function ProductionOrdersPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
 
 // "use client";
 // import React, { useState, useEffect } from "react";
@@ -306,8 +352,6 @@ export default function ProductionOrdersPage() {
 //   setSelectedAction((prev) => ({ ...prev, [currentOrder._id]: "" }));
 // };
 
-
-
 //   const handleDelete = async (id) => {
 //     if (!confirm("Delete this order?")) return;
 //     try {
@@ -375,7 +419,6 @@ export default function ProductionOrdersPage() {
 //     </div>
 //   );
 // };
-
 
 //   if (loading) return <p>Loading production orders…</p>;
 
