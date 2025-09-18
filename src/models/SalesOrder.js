@@ -91,7 +91,9 @@ const SalesOrderSchema = new mongoose.Schema(
     grandTotal: { type: Number, default: 0 },
     openBalance: { type: Number, default: 0 },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'SalesQuotation' },
-       attachments: [
+    linkedPurchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder'},
+    linkedProductionOrder: { type: Schema.Types.ObjectId, ref: 'ProductionOrder'},
+    attachments: [
       {
         fileName: String,
         fileUrl: String, // e.g., /uploads/somefile.pdf

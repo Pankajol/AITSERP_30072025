@@ -139,7 +139,7 @@ const DebitNoteSchema = new mongoose.Schema({
 
   status:       {                         // now accepts “Received”
     type: String,
-    enum: ['Pending', 'Confirmed', 'Received'],
+   
     default: 'Pending',
   },
 

@@ -79,7 +79,7 @@ const DeliverySchema = new Schema({
 
   fromQuote: { type: Boolean, default: false },
   sourceId: { type: Schema.Types.ObjectId, refPath: "sourceModel" },
-  sourceModel: { type: String, enum: ["SalesOrder", "delivery"], default: "SalesOrder" },
+  sourceModel: { type: String,  default: "SalesOrder" },
 
   attachments: [{
     fileName: { type: String,  },

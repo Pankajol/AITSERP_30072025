@@ -6,8 +6,9 @@ import axios from "axios";
 import ItemSection from "@/components/ItemSection";
 import SupplierSearch from "@/components/SupplierSearch";
 import { Suspense } from "react";
-
+import Select from "react-select";
 import { toast } from "react-toastify";
+import SalesOrderSearch from "@/components/SalesOrderSearch";
 
 const round = (num, decimals = 2) => {
   const n = Number(num);
@@ -124,6 +125,7 @@ const initialState = {
   gstTotal: 0,
   grandTotal: 0,
   openBalance: 0,
+  salesOrder: [],
 };
 
 function formatDateForInput(date) {
@@ -307,6 +309,15 @@ useEffect(() => {
     }));
   }, []);
 
+
+  const handleSalesOrderSelect = useCallback((selectedOrders) => {
+    setFormData((prev) => ({
+      ...prev,
+      salesOrder: selectedOrders.map((o) => o._id),
+    }));
+  }, []);
+
+
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -446,6 +457,84 @@ useEffect(() => {
   ]);
 
   
+// const handleSubmit = async () => {
+//   try {
+//     // ✅ Validate supplier
+//     if (!formData.supplierName || !formData.supplierCode) {
+//       toast.error("Please select a valid supplier");
+//       return;
+//     }
+
+//     // ✅ Validate items
+//     if (!formData.items.length || formData.items.every((item) => !item.itemName)) {
+//       toast.error("Please add at least one valid item");
+//       return;
+//     }
+
+//     if (formData.items.some((it) => Number(it.quantity) <= 0)) {
+//       toast.error("Quantity must be at least 1 for every item.");
+//       return;
+//     }
+
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("Unauthorized! Please log in.");
+//       return;
+//     }
+
+//     setLoading(true);
+
+//     // ✅ Build Payload
+//     const payload = {
+//       ...formData,
+//       existingFiles: existingFiles || [],
+//       removedFiles: removedFiles || [],
+//       copySource: formData.copySource || null, // ✅ If copied from another doc
+//     };
+
+//     const formDataToSend = new FormData();
+//     formDataToSend.append("orderData", JSON.stringify(payload));
+
+//     // ✅ Use correct state for new files (attachments)
+//     if (attachments?.length > 0) {
+//       attachments.forEach((file) => {
+//         if (!["image/jpeg", "image/png", "application/pdf"].includes(file.type)) {
+//           toast.error(`File type not allowed: ${file.name}`);
+//           return;
+//         }
+//         formDataToSend.append("attachments", file);
+//       });
+//     }
+
+//     const url = editId ? `/api/purchase-order/${editId}` : `/api/purchase-order`;
+//     const method = editId ? "put" : "post";
+
+//     const response = await axios({
+//       url,
+//       method,
+//       headers: { Authorization: `Bearer ${token}` },
+//       data: formDataToSend,
+//     });
+
+//     toast.success(response.data.message || "Purchase Order saved successfully!");
+//     resetForm();
+//     router.push("/admin/purchase-order-view");
+//   } catch (error) {
+//     console.error("Error saving purchase order:", error);
+//     toast.error(
+//       `Failed to ${editId ? "update" : "create"} purchase order: ${
+//         error.response?.data?.error || error.message
+//       }`
+//     );
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
+
+
+
+
 const handleSubmit = async () => {
   try {
     // ✅ Validate supplier
@@ -465,6 +554,12 @@ const handleSubmit = async () => {
       return;
     }
 
+    // ✅ Validate linked Sales Orders
+    if (!formData.salesOrder || formData.salesOrder.length === 0) {
+      toast.error("Please link at least one Sales Order");
+      return;
+    }
+
     const token = localStorage.getItem("token");
     if (!token) {
       toast.error("Unauthorized! Please log in.");
@@ -473,9 +568,10 @@ const handleSubmit = async () => {
 
     setLoading(true);
 
-    // ✅ Build Payload
+    // ✅ Build Payload (Sales Orders included here)
     const payload = {
       ...formData,
+      salesOrder: formData.salesOrder, // already an array of IDs from handleSalesOrderSelect
       existingFiles: existingFiles || [],
       removedFiles: removedFiles || [],
       copySource: formData.copySource || null, // ✅ If copied from another doc
@@ -539,6 +635,7 @@ const resetForm = () => {
     totalBeforeDiscount: 0,
     gstTotal: 0,
     grandTotal: 0,
+    salesOrder: [],
   });
   setExistingFiles([]);
   setRemovedFiles([]);
@@ -586,6 +683,15 @@ const resetForm = () => {
               }
             />
           </div>
+
+          <div>
+            <label className="block mb-2 font-medium">Sales Order</label>
+            <SalesOrderSearch
+              onSelectSalesOrder={handleSalesOrderSelect}
+              initialSalesOrder={formData.salesOrder}
+            />
+          </div>
+          
           <div>
             <label className="block mb-2 font-medium">Supplier Code</label>
             <input

@@ -3,6 +3,7 @@ import connectDB from '@/lib/db';
 import ProductionOrder from '@/models/ProductionOrder';
 import StockMovement from '@/models/StockMovement'; // ✅ added
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
+import salesOrder from '@/models/SalesOrder';
 import BOM from '@/models/BOM';
 import Item from '@/models/ItemModels';
 import Warehouse from '@/models/warehouseModels';
@@ -86,6 +87,14 @@ export async function POST(request) {
         });
       }
     }
+    // ✅ Update SalesOrder status if linked
+    if (saved.salesOrder && Array.isArray(saved.salesOrder)) {
+      await salesOrder.updateMany(
+        { _id: { $in: saved.salesOrder }, companyId: user.companyId },
+        { $set: { status: 'LinkedToProductionOrder' } }
+      );
+    }
+    
 
     return NextResponse.json(saved, { status: 201 });
   } catch (err) {

@@ -80,7 +80,7 @@ export async function POST(req, contextPromise) {
         createdBy: decoded.id,
         item,
         warehouse,
-        movementType: "RECEIPT FROM PRODUCTION ORDER",
+        movementType: "RECEIPT_FROM_PRODUCTION_ORDER",
         quantity: totalQuantity,
         reference: receipt._id.toString(),
         remarks: `Receipt from Production Order ${orderId}`,

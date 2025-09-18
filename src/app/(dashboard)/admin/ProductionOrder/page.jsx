@@ -8,6 +8,7 @@ import axios from "axios";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "react-toastify";
+import SalesOrderSearch from "@/components/SalesOrderSearch";
 
 function ProductionOrderPage() {
   const searchParams = useSearchParams();
@@ -23,12 +24,13 @@ function ProductionOrderPage() {
 
   const [selectedBomId, setSelectedBomId] = useState("");
   const [type, setType] = useState("");
-  const [status, setStatus] = useState("Draft");
+  const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [warehouse, setWarehouse] = useState("");
   const [productDesc, setProductDesc] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [productionDate, setProductionDate] = useState("");
+  const [salesOrder, setSalesOrder] = useState([]);
 
 
   const typeOptions = [
@@ -97,10 +99,12 @@ function ProductionOrderPage() {
         setSelectedBomId(o.bomId);
         setType(o.type);
         setStatus(o.status);
+        setSalesOrder(o.salesOrder || []);
         setWarehouse(o.warehouse);
         setProductDesc(o.productDesc);
         setPriority(o.priority);
         setQuantity(o.quantity);
+
         setBomItems(
           o.items.map((it) => ({
             id: uuidv4(),
@@ -170,6 +174,12 @@ const statusOptions = [
     );
   };
 
+
+  const handleSalesOrderSelect = (selectedOrders) => {
+    setSalesOrder(selectedOrders);
+  };
+
+
   const handleWarehouseChange = (rowId, val) => {
     setBomItems(prev =>
       prev.map(item =>
@@ -217,6 +227,7 @@ const handleSaveProductionOrder = async () => {
       priority,
       productionDate,
       quantity,
+      salesOrder,
       items: bomItems.map(it => ({
         item: it.item,
         itemCode: it.itemCode,
@@ -273,6 +284,14 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
             ))}
           </select>
         </div>
+            <SalesOrderSearch
+                      onSelectSalesOrder={handleSalesOrderSelect}
+                      selectedSalesOrders={salesOrder}
+                      
+                    />
+
+
+
         {/* Type */}
         <div>
           <label className="block text-sm font-medium">Type</label>

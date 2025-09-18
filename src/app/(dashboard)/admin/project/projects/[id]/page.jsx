@@ -553,10 +553,10 @@ console.log("All Formatted Tasks:", formatted);
 
             {/* Bar */}
             <div
-              className={`absolute h-5 rounded-xl shadow-md ${
+              className={`absolute h-2 rounded-xl shadow-md ${
                 r.isSub
-                  ? "bg-gradient-to-r from-purple-400 to-purple-600"
-                  : "bg-gradient-to-r from-blue-400 to-blue-600"
+                  ? "bg-gradient-to-r from-gray-200 to-gray-400"
+                  : "bg-gradient-to-r from-gray-200 to-gray-400"
               }`}
               style={{ left, width, top: ROW_HEIGHT / 4 }}
             >

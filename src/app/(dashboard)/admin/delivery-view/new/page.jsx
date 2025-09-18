@@ -620,9 +620,125 @@ function DeliveryForm() {
 
 
   /* ------------------------------------------------ Submit */
+// const handleSubmit = async () => {
+//   try {
+//     // Client-side authentication check
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("Authentication required. Please log in.");
+//       router.push("/login");
+//       return;
+//     }
+
+//     // Basic form validation
+//     if (!formData.customerName || !formData.refNumber || formData.items.length === 0) {
+//       toast.error("Please fill in Customer Name, Delivery Number, and add at least one item.");
+//       return;
+//     }
+
+//     // Validate items and batch allocations
+//     for (const item of formData.items) {
+//       if (!item.item || !item.warehouse) {
+//         toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item and Warehouse selection.`);
+//         return;
+//       }
+//       if (!item.itemCode || !item.itemName || item.quantity <= 0 || item.unitPrice <= 0) {
+//         toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item Code, Item Name, Quantity (>0), and Unit Price (>0).`);
+//         return;
+//       }
+//       if (item.managedByBatch) {
+//           const allocatedTotal = item.batches.reduce((sum, batch) => sum + (Number(batch.allocatedQuantity) || 0), 0);
+//           if (allocatedTotal !== item.quantity) {
+//               toast.error(`Item '${item.itemName}' requires total allocated batch quantity (${allocatedTotal}) to match item quantity (${item.quantity}). Please re-allocate batches.`);
+//               return;
+//           }
+//           if (item.batches.length === 0 && item.quantity > 0) {
+//               toast.error(`Item '${item.itemName}' is batch-managed but no batches are allocated.`);
+//               return;
+//           }
+//       }
+//     }
+
+//     // Ensure deliveryDate is set
+//     if (!formData.deliveryDate) {
+//       formData.deliveryDate = new Date().toISOString().slice(0, 10); // Default to current date
+//       toast.info("Delivery Date defaulted to today.");
+//     }
+//     if (!formData.deliveryType) {
+//       formData.deliveryType = "Sales"; // Default if not provided
+//     }
+ 
+
+//     const dataToSend = new FormData();
+//     // Prepare main form data for API, excluding attachments to send separately
+//     const formDataForApi = { ...formData };
+    
+//     dataToSend.append("deliveryData", JSON.stringify(formDataForApi));
+
+//     // Append newly selected files (from the file input)
+//     attachments.forEach((file) => {
+//       dataToSend.append("newAttachments", file); // Key 'newAttachments' matches backend expectation
+//     });
+
+//     // Append metadata for existing files that were NOT removed.
+//     const retainedExistingFiles = existingFiles.filter(
+//       (file) => !removedFiles.some(removed => removed.publicId === file.publicId || removed.fileUrl === file.fileUrl)
+//     );
+//     if (retainedExistingFiles.length > 0) {
+//       dataToSend.append("existingFiles", JSON.stringify(retainedExistingFiles));
+//     }
+
+//     // Append IDs of files to be removed (primarily for PUT/edit operations)
+//     if (removedFiles.length > 0) {
+//       dataToSend.append("removedAttachmentIds", JSON.stringify(removedFiles.map(f => f.publicId || f.fileUrl)));
+//     }
+
+
+//     const url = editId
+//       ? `/api/sales-delivery/${editId}`
+//       : "/api/sales-delivery";
+
+//     const method = editId ? "put" : "post";
+
+//     const res = await axios({
+//       method,
+//       url,
+//       data: dataToSend,
+//       headers: {
+//         Authorization: `Bearer ${token}`, // Pass the JWT token
+//         "Content-Type": "multipart/form-data", // Crucial header for file uploads
+//       },
+//     });
+
+//     if (res.data.success) {
+//       toast.success(editId ? "Delivery updated successfully" : "Delivery created successfully");
+//       // Reset form on successful creation
+//       if (!editId) {
+//         setFormData(initialDeliveryState);
+//         setAttachments([]);
+//         setExistingFiles([]);
+//         setRemovedFiles([]);
+//       } else {
+//         // Update existing files state with the fresh list from the backend response
+//         setExistingFiles(res.data.delivery?.attachments || []);
+//         setRemovedFiles([]);
+//         setAttachments([]);
+//       }
+//       router.push("/admin/delivery-view");
+//     } else {
+//       throw new Error(res.data.message || "Unknown error");
+//     }
+//   } catch (err) {
+//     console.error("❌ Error saving delivery:", err.response?.data?.message || err.message);
+//     toast.error(err.response?.data?.message || "Save failed");
+//   }
+// };
+
+
+
+
 const handleSubmit = async () => {
   try {
-    // Client-side authentication check
     const token = localStorage.getItem("token");
     if (!token) {
       toast.error("Authentication required. Please log in.");
@@ -630,109 +746,64 @@ const handleSubmit = async () => {
       return;
     }
 
-    // Basic form validation
     if (!formData.customerName || !formData.refNumber || formData.items.length === 0) {
       toast.error("Please fill in Customer Name, Delivery Number, and add at least one item.");
       return;
     }
 
-    // Validate items and batch allocations
+    // Validate batches
     for (const item of formData.items) {
-      if (!item.item || !item.warehouse) {
-        toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item and Warehouse selection.`);
-        return;
-      }
-      if (!item.itemCode || !item.itemName || item.quantity <= 0 || item.unitPrice <= 0) {
-        toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item Code, Item Name, Quantity (>0), and Unit Price (>0).`);
-        return;
-      }
+      if (!item.item || !item.warehouse) throw new Error(`Invalid Item/Warehouse for ${item.itemName}`);
+      if (item.quantity <= 0 || item.unitPrice <= 0) throw new Error(`Invalid Quantity/Price for ${item.itemName}`);
       if (item.managedByBatch) {
-          const allocatedTotal = item.batches.reduce((sum, batch) => sum + (Number(batch.allocatedQuantity) || 0), 0);
-          if (allocatedTotal !== item.quantity) {
-              toast.error(`Item '${item.itemName}' requires total allocated batch quantity (${allocatedTotal}) to match item quantity (${item.quantity}). Please re-allocate batches.`);
-              return;
-          }
-          if (item.batches.length === 0 && item.quantity > 0) {
-              toast.error(`Item '${item.itemName}' is batch-managed but no batches are allocated.`);
-              return;
-          }
+        const allocatedTotal = item.batches.reduce((sum, b) => sum + (Number(b.allocatedQuantity) || 0), 0);
+        if (allocatedTotal !== item.quantity) throw new Error(`Allocated batches must equal item quantity for ${item.itemName}`);
       }
     }
 
-    // Ensure deliveryDate is set
-    if (!formData.deliveryDate) {
-      formData.deliveryDate = new Date().toISOString().slice(0, 10); // Default to current date
-      toast.info("Delivery Date defaulted to today.");
-    }
-    if (!formData.deliveryType) {
-      formData.deliveryType = "Sales"; // Default if not provided
-    }
- 
+    formData.deliveryDate ||= new Date().toISOString().slice(0, 10);
+    formData.deliveryType ||= "Sales";
+
+    // Ensure sourceModel is correct
+    if (formData.sourceId) formData.sourceModel = "salesorder";
 
     const dataToSend = new FormData();
-    // Prepare main form data for API, excluding attachments to send separately
-    const formDataForApi = { ...formData };
-    
-    dataToSend.append("deliveryData", JSON.stringify(formDataForApi));
+    dataToSend.append("deliveryData", JSON.stringify(formData));
 
-    // Append newly selected files (from the file input)
-    attachments.forEach((file) => {
-      dataToSend.append("newAttachments", file); // Key 'newAttachments' matches backend expectation
-    });
+    attachments.forEach(file => dataToSend.append("newAttachments", file));
 
-    // Append metadata for existing files that were NOT removed.
-    const retainedExistingFiles = existingFiles.filter(
-      (file) => !removedFiles.some(removed => removed.publicId === file.publicId || removed.fileUrl === file.fileUrl)
+    const retainedFiles = existingFiles.filter(
+      f => !removedFiles.some(r => r.publicId === f.publicId)
     );
-    if (retainedExistingFiles.length > 0) {
-      dataToSend.append("existingFiles", JSON.stringify(retainedExistingFiles));
-    }
+    if (retainedFiles.length) dataToSend.append("existingFiles", JSON.stringify(retainedFiles));
+    if (removedFiles.length) dataToSend.append("removedAttachmentIds", JSON.stringify(removedFiles.map(f => f.publicId)));
 
-    // Append IDs of files to be removed (primarily for PUT/edit operations)
-    if (removedFiles.length > 0) {
-      dataToSend.append("removedAttachmentIds", JSON.stringify(removedFiles.map(f => f.publicId || f.fileUrl)));
-    }
-
-
-    const url = editId
-      ? `/api/sales-delivery/${editId}`
-      : "/api/sales-delivery";
-
+    const url = editId ? `/api/sales-delivery/${editId}` : "/api/sales-delivery";
     const method = editId ? "put" : "post";
 
-    const res = await axios({
-      method,
-      url,
-      data: dataToSend,
-      headers: {
-        Authorization: `Bearer ${token}`, // Pass the JWT token
-        "Content-Type": "multipart/form-data", // Crucial header for file uploads
-      },
-    });
+    const res = await axios({ method, url, data: dataToSend, headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" } });
 
     if (res.data.success) {
       toast.success(editId ? "Delivery updated successfully" : "Delivery created successfully");
-      // Reset form on successful creation
       if (!editId) {
         setFormData(initialDeliveryState);
         setAttachments([]);
         setExistingFiles([]);
         setRemovedFiles([]);
       } else {
-        // Update existing files state with the fresh list from the backend response
         setExistingFiles(res.data.delivery?.attachments || []);
         setRemovedFiles([]);
         setAttachments([]);
       }
       router.push("/admin/delivery-view");
-    } else {
-      throw new Error(res.data.message || "Unknown error");
-    }
+    } else throw new Error(res.data.message || "Unknown error");
+
   } catch (err) {
-    console.error("❌ Error saving delivery:", err.response?.data?.message || err.message);
-    toast.error(err.response?.data?.message || "Save failed");
+    console.error("❌ Error saving delivery:", err.message);
+    toast.error(err.message || "Save failed");
   }
 };
+
 
 
   /* ------------------------------------------------ Render */

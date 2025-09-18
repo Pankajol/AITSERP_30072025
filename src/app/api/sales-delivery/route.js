@@ -64,21 +64,21 @@ export async function POST(req) {
 
     delete deliveryData._id;
     if (Array.isArray(deliveryData.items)) {
-      deliveryData.items = deliveryData.items.map((item) => {
+      deliveryData.items = deliveryData.items.map(item => {
         delete item._id;
         return item;
       });
     }
 
-    // 🔼 Handle file uploads
-    const newFiles = Array.isArray(files.newFiles)
-      ? files.newFiles
-      : files.newFiles
-      ? [files.newFiles]
+    // ---------------- Handle File Uploads ----------------
+    const newFiles = Array.isArray(files.newAttachments)
+      ? files.newAttachments
+      : files.newAttachments
+      ? [files.newAttachments]
       : [];
 
     const uploadedFiles = await Promise.all(
-      newFiles.map(async (file) => {
+      newFiles.map(async file => {
         const result = await cloudinary.uploader.upload(file.filepath, {
           folder: "deliveries",
           resource_type: "auto",
@@ -97,7 +97,7 @@ export async function POST(req) {
       ...uploadedFiles,
     ];
 
-    // 📌 Generate documentNumberDelivery
+    // ---------------- Generate Document Number ----------------
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
@@ -125,32 +125,25 @@ export async function POST(req) {
     const paddedSeq = String(counter.seq).padStart(5, "0");
     deliveryData.documentNumberDelivery = `SALES-DEL/${financialYear}/${paddedSeq}`;
 
-    // 🧾 Create delivery
+    // ---------------- Create Delivery ----------------
     const [delivery] = await Delivery.create([deliveryData], { session });
 
     const isCopied = !!deliveryData.sourceId;
     const sourceModel = (deliveryData.sourceModel || "salesorder").toLowerCase();
-    const isSODelivery = isCopied && sourceModel === "salesorder";
 
-    // 🏷️ Update inventory
+    // ---------------- Update Inventory ----------------
     for (const item of deliveryData.items) {
       const inventoryDoc = await Inventory.findOne({
         item: new Types.ObjectId(item.item),
         warehouse: new Types.ObjectId(item.warehouse),
       }).session(session);
 
-      if (!inventoryDoc) {
-        throw new Error(`No inventory record for item ${item.item} in warehouse ${item.warehouse}`);
-      }
+      if (!inventoryDoc) throw new Error(`No inventory record for item ${item.item}`);
 
       if (item.batches?.length > 0) {
         for (const allocated of item.batches) {
-          const batchIndex = inventoryDoc.batches.findIndex(
-            (b) => b.batchNumber === allocated.batchCode
-          );
-          if (batchIndex === -1) {
-            throw new Error(`Batch ${allocated.batchCode} not found`);
-          }
+          const batchIndex = inventoryDoc.batches.findIndex(b => b.batchNumber === allocated.batchCode);
+          if (batchIndex === -1) throw new Error(`Batch ${allocated.batchCode} not found`);
           if (inventoryDoc.batches[batchIndex].quantity < allocated.allocatedQuantity) {
             throw new Error(`Insufficient stock in batch ${allocated.batchCode}`);
           }
@@ -164,45 +157,65 @@ export async function POST(req) {
 
       inventoryDoc.quantity -= item.quantity;
       inventoryDoc.committed = Math.max((inventoryDoc.committed || 0) - item.quantity, 0);
-
       await inventoryDoc.save({ session });
 
       await StockMovement.create(
-        [
-          {
-            companyId: user.companyId,
-            item: item.item,
-            warehouse: item.warehouse,
-            movementType: "OUT",
-            quantity: item.quantity,
-            reference: delivery._id,
-            remarks: isSODelivery ? "Sales Order Delivery" : "Delivery",
-          },
-        ],
+        [{
+          companyId: user.companyId,
+          item: item.item,
+          warehouse: item.warehouse,
+          movementType: "OUT",
+          quantity: item.quantity,
+          reference: delivery._id,
+          remarks: sourceModel === "salesorder" ? "Sales Order Delivery" : "Delivery",
+        }],
         { session }
       );
     }
 
-    // 🗂️ Update source document
-    if (isCopied) {
-      if (sourceModel === "salesorder") {
-        await SalesOrder.findByIdAndUpdate(deliveryData.sourceId, { status: "Delivered" }, { session });
-      } else if (sourceModel === "salesinvoice") {
-        await SalesInvoice.findByIdAndUpdate(deliveryData.sourceId, { status: "Delivered" }, { session });
+    // ---------------- Update Source Document (SO / SI) ----------------
+    if (isCopied && sourceModel === "salesorder") {
+      const so = await SalesOrder.findById(deliveryData.sourceId).session(session);
+      if (!so) throw new Error("Sales Order not found");
+
+      // Update delivered quantities
+      for (const soItem of so.items) {
+        const deliveredItem = deliveryData.items.find(i => i.item.toString() === soItem.item.toString());
+        if (deliveredItem) {
+          soItem.deliveredQuantity = (soItem.deliveredQuantity || 0) + deliveredItem.quantity;
+        }
       }
+
+      // Update status
+      const allDelivered = so.items.every(i => i.deliveredQuantity >= i.quantity);
+      const anyDelivered = so.items.some(i => i.deliveredQuantity > 0);
+      so.status = allDelivered ? "Complete" : anyDelivered ? "Partially Complete" : "Pending";
+
+      await so.save({ session });
+    }
+
+    // Handle multiple linked sales orders (optional)
+    if (Array.isArray(deliveryData.salesOrder) && deliveryData.salesOrder.length > 0) {
+      await SalesOrder.updateMany(
+        { _id: { $in: deliveryData.salesOrder }, companyId: user.companyId },
+        {
+          $set: {
+            linkedPurchaseOrder: delivery._id,
+            status: "completed",
+          },
+        },
+        { session }
+      );
     }
 
     await session.commitTransaction();
     session.endSession();
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Delivery processed successfully",
-        deliveryId: delivery._id,
-      }),
+      JSON.stringify({ success: true, message: "Delivery processed successfully", deliveryId: delivery._id }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
@@ -216,6 +229,63 @@ export async function POST(req) {
 
 
 
+// ---------------- GET HANDLER ----------------
+// export async function GET(req) {
+//   await dbConnect();
+
+//   try {
+//     const token = getTokenFromHeader(req);
+//     if (!token)
+//       return new Response(JSON.stringify({ message: "Unauthorized" }), {
+//         status: 401,
+//         headers: { "Content-Type": "application/json" },
+//       });
+
+//     const user = verifyJWT(token);
+//     if (!user)
+//       return new Response(JSON.stringify({ message: "Unauthorized" }), {
+//         status: 401,
+//         headers: { "Content-Type": "application/json" },
+//       });
+
+//     const deliveries = await Delivery.find({ companyId: user.companyId }).lean();
+
+//     // Fetch related Sales Orders
+//     const soIds = deliveries
+//       .filter(d => d.sourceId && d.sourceModel === "salesorder")
+//       .map(d => mongoose.Types.ObjectId(d.sourceId));
+
+//     let salesOrdersMap = {};
+//     if (soIds.length > 0) {
+//       const salesOrders = await SalesOrder.find({ _id: { $in: soIds } }).lean();
+//       salesOrdersMap = salesOrders.reduce((acc, so) => {
+//         acc[so._id.toString()] = so;
+//         return acc;
+//       }, {});
+//     }
+
+//     const deliveriesWithSO = deliveries.map(d => ({
+//       ...d,
+//       salesOrder: d.sourceId && d.sourceModel === "salesorder"
+//         ? salesOrdersMap[d.sourceId] || null
+//         : null,
+//     }));
+
+//     return new Response(
+//       JSON.stringify({ success: true, data: deliveriesWithSO }),
+//       { status: 200, headers: { "Content-Type": "application/json" } }
+//     );
+//   } catch (error) {
+//     console.error("Error fetching deliveries:", error);
+//     return new Response(
+//       JSON.stringify({ success: false, message: error.message }),
+//       { status: 500, headers: { "Content-Type": "application/json" } }
+//     );
+//   }
+// }
+
+
+
 // import mongoose from "mongoose";
 // import formidable from "formidable";
 // import { Readable } from "stream";
@@ -225,6 +295,7 @@ export async function POST(req) {
 // import StockMovement from "@/models/StockMovement";
 // import SalesOrder from "@/models/SalesOrder";
 // import SalesInvoice from "@/models/SalesInvoice";
+// import Counter from "@/models/Counter";
 // import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 // import { v2 as cloudinary } from "cloudinary";
 
@@ -238,7 +309,7 @@ export async function POST(req) {
 
 // const { Types } = mongoose;
 
-// // ✅ Convert Next.js request to Node.js stream
+// // Convert Next.js Request to Node.js req for formidable
 // async function toNodeReq(request) {
 //   const buf = Buffer.from(await request.arrayBuffer());
 //   const nodeReq = new Readable({
@@ -253,7 +324,7 @@ export async function POST(req) {
 //   return nodeReq;
 // }
 
-// // ✅ Parse multipart form
+// // Parse multipart/form-data
 // async function parseMultipart(request) {
 //   const nodeReq = await toNodeReq(request);
 //   const form = formidable({ multiples: true, keepExtensions: true });
@@ -268,22 +339,21 @@ export async function POST(req) {
 //   session.startTransaction();
 
 //   try {
-//     // ✅ JWT Auth
+//     // ✅ Auth
 //     const token = getTokenFromHeader(req);
 //     if (!token) throw new Error("JWT token missing");
 //     const user = await verifyJWT(token);
 //     if (!user) throw new Error("Unauthorized");
 
+//     // ✅ Parse form data
 //     const { fields, files } = await parseMultipart(req);
 //     const deliveryData = JSON.parse(fields.deliveryData || "{}");
 
-//     // ✅ Ensure required fields
 //     deliveryData.deliveryDate = deliveryData.deliveryDate || new Date();
 //     deliveryData.deliveryType = deliveryData.deliveryType || "Sales";
 //     deliveryData.companyId = user.companyId;
 //     if (user.type === "user") deliveryData.createdBy = user.id;
 
-//     // ✅ Clean unwanted fields
 //     delete deliveryData._id;
 //     if (Array.isArray(deliveryData.items)) {
 //       deliveryData.items = deliveryData.items.map((item) => {
@@ -319,54 +389,68 @@ export async function POST(req) {
 //       ...uploadedFiles,
 //     ];
 
-//     // ✅ Create delivery
+//     // ✅ Generate document number
+//     const now = new Date();
+//     const currentYear = now.getFullYear();
+//     const currentMonth = now.getMonth() + 1;
+//     let fyStart = currentYear;
+//     let fyEnd = currentYear + 1;
+//     if (currentMonth < 4) {
+//       fyStart = currentYear - 1;
+//       fyEnd = currentYear;
+//     }
+//     const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+//     const counterKey = "Sales Delivery";
+
+//     let counter = await Counter.findOne({ id: counterKey, companyId: user.companyId }).session(session);
+//     if (!counter) {
+//       const [created] = await Counter.create(
+//         [{ id: counterKey, companyId: user.companyId, seq: 1 }],
+//         { session }
+//       );
+//       counter = created;
+//     } else {
+//       counter.seq += 1;
+//       await counter.save({ session });
+//     }
+
+//     const paddedSeq = String(counter.seq).padStart(5, "0");
+//     deliveryData.documentNumberDelivery = `SALES-DEL/${financialYear}/${paddedSeq}`;
+
+//     // ✅ Create Delivery
 //     const [delivery] = await Delivery.create([deliveryData], { session });
 
-//     // ✅ Check if copied from Sales Order
 //     const isCopied = !!deliveryData.sourceId;
 //     const sourceModel = (deliveryData.sourceModel || "salesorder").toLowerCase();
 //     const isSODelivery = isCopied && sourceModel === "salesorder";
 
-//     // ✅ Update Inventory & Stock Movement
+//     // ✅ Update inventory & create stock movement
 //     for (const item of deliveryData.items) {
 //       const inventoryDoc = await Inventory.findOne({
 //         item: new Types.ObjectId(item.item),
 //         warehouse: new Types.ObjectId(item.warehouse),
 //       }).session(session);
 
-//       if (!inventoryDoc) {
-//         throw new Error(`No inventory record for item ${item.item} in warehouse ${item.warehouse}`);
-//       }
+//       if (!inventoryDoc) throw new Error(`No inventory record for item ${item.item} in warehouse ${item.warehouse}`);
 
-//       // ✅ Reduce batch quantities
+//       // Batch allocation
 //       if (item.batches?.length > 0) {
 //         for (const allocated of item.batches) {
 //           const batchIndex = inventoryDoc.batches.findIndex(
 //             (b) => b.batchNumber === allocated.batchCode
 //           );
-//           if (batchIndex === -1) {
-//             throw new Error(`Batch ${allocated.batchCode} not found`);
-//           }
-//           if (inventoryDoc.batches[batchIndex].quantity < allocated.allocatedQuantity) {
+//           if (batchIndex === -1) throw new Error(`Batch ${allocated.batchCode} not found`);
+//           if (inventoryDoc.batches[batchIndex].quantity < allocated.allocatedQuantity)
 //             throw new Error(`Insufficient stock in batch ${allocated.batchCode}`);
-//           }
 //           inventoryDoc.batches[batchIndex].quantity -= allocated.allocatedQuantity;
 //         }
 //       }
 
-//       // ✅ Reduce overall stock
-//       if (inventoryDoc.quantity < item.quantity) {
-//         throw new Error(`Insufficient stock for item ${item.item}`);
-//       }
+//       if (inventoryDoc.quantity < item.quantity) throw new Error(`Insufficient stock for item ${item.item}`);
 //       inventoryDoc.quantity -= item.quantity;
-
-//       // ✅ Reduce committed stock
 //       inventoryDoc.committed = Math.max((inventoryDoc.committed || 0) - item.quantity, 0);
-
-//       // ✅ Save inventory update
 //       await inventoryDoc.save({ session });
 
-//       // ✅ Log stock movement with companyId
 //       await StockMovement.create(
 //         [
 //           {
@@ -383,10 +467,37 @@ export async function POST(req) {
 //       );
 //     }
 
-//     // ✅ Update Source Document if copied
+//     // ✅ Update source document status (Sales Order or Invoice)
 //     if (isCopied) {
 //       if (sourceModel === "salesorder") {
-//         await SalesOrder.findByIdAndUpdate(deliveryData.sourceId, { status: "Delivered" }, { session });
+//         const so = await SalesOrder.findById(deliveryData.sourceId).session(session);
+//         if (so) {
+//           let allDelivered = true;
+//           let anyDelivered = false;
+
+//           // Fetch all deliveries linked to this SO
+//           const allDeliveries = await Delivery.find({
+//             sourceId: so._id,
+//             sourceModel: "salesorder",
+//             companyId: user.companyId,
+//           }).session(session);
+
+//           for (const soItem of so.items) {
+//             let totalDelivered = 0;
+//             for (const del of allDeliveries) {
+//               const itemDel = del.items.find(
+//                 (i) => i.item.toString() === soItem.item.toString()
+//               );
+//               if (itemDel) totalDelivered += itemDel.quantity;
+//             }
+
+//             if (totalDelivered > 0) anyDelivered = true;
+//             if (totalDelivered < soItem.quantity) allDelivered = false;
+//           }
+
+//           so.status = allDelivered ? "Complete" : anyDelivered ? "Partially Complete" : so.status;
+//           await so.save({ session });
+//         }
 //       } else if (sourceModel === "salesinvoice") {
 //         await SalesInvoice.findByIdAndUpdate(deliveryData.sourceId, { status: "Delivered" }, { session });
 //       }
@@ -406,12 +517,18 @@ export async function POST(req) {
 //   } catch (error) {
 //     await session.abortTransaction();
 //     session.endSession();
+//     console.error("Delivery creation failed:", error);
 //     return new Response(
 //       JSON.stringify({ success: false, message: error.message }),
 //       { status: 500, headers: { "Content-Type": "application/json" } }
 //     );
 //   }
 // }
+
+
+
+
+
 
 
 

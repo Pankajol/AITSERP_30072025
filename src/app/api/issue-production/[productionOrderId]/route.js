@@ -119,7 +119,7 @@ export async function POST(req, context) {
         createdBy: userId,
         item: itemId,
         warehouse: sourceWarehouse,
-        movementType: 'STOCK ISSUE', // ✅ issuing to production
+        movementType: 'STOCK_ISSUE', // ✅ issuing to production
         quantity,
         reference: productionOrderId,
         remarks: `Issued for Production Order ${productionOrderId}`,

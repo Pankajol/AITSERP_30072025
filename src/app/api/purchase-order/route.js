@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import dbConnect from "@/lib/db";
 import PurchaseOrder from "@/models/PurchaseOrder";
+import SalesOrder from "@/models/SalesOrder";
 import PurchaseQuotation from "@/models/PurchaseQuotationModel";
 import Inventory from "@/models/Inventory";
 import StockMovement from "@/models/StockMovement";
@@ -19,23 +20,27 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// ✅ POST: Create Purchase Order
 export async function POST(req) {
   await dbConnect();
   const session = await mongoose.startSession();
 
   try {
     const token = getTokenFromHeader(req);
-    if (!token)
+    if (!token) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
 
     const decoded = verifyJWT(token);
-    if (!decoded?.companyId)
+    if (!decoded?.companyId) {
       return NextResponse.json({ success: false, error: "Invalid company ID" }, { status: 401 });
+    }
 
     const formData = await req.formData();
     const rawData = formData.get("orderData");
-    if (!rawData)
+    if (!rawData) {
       return NextResponse.json({ success: false, error: "Missing order data" }, { status: 400 });
+    }
 
     let orderData;
     try {
@@ -44,11 +49,13 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: "Invalid JSON in orderData" }, { status: 400 });
     }
 
+    // Clean + add required fields
     delete orderData._id;
     orderData.companyId = decoded.companyId;
     orderData.createdBy = decoded.id;
     orderData.orderStatus = "Open";
 
+    // ✅ Handle file uploads
     const files = formData.getAll("attachments");
     const uploadedFiles = [];
 
@@ -71,12 +78,12 @@ export async function POST(req) {
 
     const existingFiles = orderData.existingFiles || [];
     const removedFiles = orderData.removedFiles || [];
-
     orderData.attachments = [
-      ...existingFiles.filter(f => !removedFiles.some(r => r.cloudinaryId === f.cloudinaryId)),
+      ...existingFiles.filter((f) => !removedFiles.some((r) => r.cloudinaryId === f.cloudinaryId)),
       ...uploadedFiles,
     ];
 
+    // ✅ If linked to Purchase Quotation
     if (orderData.sourcePurchaseQuotationId) {
       const pq = await PurchaseQuotation.findById(orderData.sourcePurchaseQuotationId);
       if (pq) {
@@ -86,12 +93,15 @@ export async function POST(req) {
       }
     }
 
+    // ✅ Validate items
     if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
       return NextResponse.json({ success: false, error: "At least one item is required" }, { status: 422 });
     }
 
-    const companyId = orderData.companyId;
+    // ✅ Transaction starts
+    session.startTransaction();
 
+    // Generate Financial Year based Document Number
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
@@ -106,16 +116,10 @@ export async function POST(req) {
     const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
     const key = `PurchaseOrder`;
 
-    // ✅ Corrected Safe Counter Logic
-    session.startTransaction();
-
-    let counter = await Counter.findOne({ id: key, companyId }).session(session);
-
+    // Safe Counter Increment
+    let counter = await Counter.findOne({ id: key, companyId: decoded.companyId }).session(session);
     if (!counter) {
-      const created = await Counter.create(
-        [{ id: key, companyId, seq: 1 }],
-        { session }
-      );
+      const created = await Counter.create([{ id: key, companyId: decoded.companyId, seq: 1 }], { session });
       counter = created[0];
     } else {
       counter.seq += 1;
@@ -126,15 +130,27 @@ export async function POST(req) {
     const documentNumberPurchaseOrder = `PURCH-ORD/${financialYear}/${paddedSeq}`;
     orderData.documentNumberPurchaseOrder = documentNumberPurchaseOrder;
 
+    // ✅ Create Purchase Order
     const [purchaseOrder] = await PurchaseOrder.create([orderData], { session });
 
+    // ✅ Update linked Sales Orders (AFTER PO created)
+    if (Array.isArray(orderData.salesOrder) && orderData.salesOrder.length > 0) {
+      await SalesOrder.updateMany(
+        { _id: { $in: orderData.salesOrder }, companyId: decoded.companyId },
+        {
+          $set: {
+            linkedPurchaseOrder: purchaseOrder._id,
+            status: "LinkedToPurchaseOrder",
+          },
+        },
+        { session }
+      );
+    }
+
+    // ✅ Update Inventory + StockMovement
     for (const item of purchaseOrder.items) {
       await Inventory.updateOne(
-        {
-          item: item.item,
-          warehouse: item.warehouse,
-          companyId: decoded.companyId,
-        },
+        { item: item.item, warehouse: item.warehouse, companyId: decoded.companyId },
         { $inc: { onOrder: item.quantity || 0 } },
         { upsert: true, session }
       );
@@ -160,34 +176,32 @@ export async function POST(req) {
     await session.commitTransaction();
     session.endSession();
 
-    return NextResponse.json({
-      success: true,
-      message: "Purchase Order created successfully",
-      data: purchaseOrder,
-    }, { status: 201 });
-
+    return NextResponse.json(
+      { success: true, message: "Purchase Order created successfully", data: purchaseOrder },
+      { status: 201 }
+    );
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Purchase Order Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
+// ✅ GET: Fetch Purchase Orders
 export async function GET(req) {
   try {
     await dbConnect();
 
     const token = getTokenFromHeader(req);
-    if (!token)
+    if (!token) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
 
     const decoded = verifyJWT(token);
-    if (!decoded)
+    if (!decoded) {
       return NextResponse.json({ success: false, error: "Invalid token" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
@@ -203,13 +217,9 @@ export async function GET(req) {
       .sort({ createdAt: -1 });
 
     return NextResponse.json({ success: true, data: orders }, { status: 200 });
-
   } catch (error) {
     console.error("GET /api/purchase-order error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
@@ -219,6 +229,7 @@ export async function GET(req) {
 // import mongoose from "mongoose";
 // import dbConnect from "@/lib/db";
 // import PurchaseOrder from "@/models/PurchaseOrder";
+// import SalesOrder from "@/models/SalesOrder";
 // import PurchaseQuotation from "@/models/PurchaseQuotationModel";
 // import Inventory from "@/models/Inventory";
 // import StockMovement from "@/models/StockMovement";
@@ -227,9 +238,9 @@ export async function GET(req) {
 // import Supplier from "@/models/SupplierModels";
 // import ItemModels from "@/models/ItemModels";
 // import Counter from "@/models/Counter";
+
 // export const config = { api: { bodyParser: false } };
 
-// // ✅ Configure Cloudinary
 // cloudinary.config({
 //   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 //   api_key: process.env.CLOUDINARY_API_KEY,
@@ -243,45 +254,32 @@ export async function GET(req) {
 //   try {
 //     const token = getTokenFromHeader(req);
 //     if (!token)
-//       return NextResponse.json(
-//         { success: false, error: "Unauthorized" },
-//         { status: 401 }
-//       );
+//       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
 //     const decoded = verifyJWT(token);
 //     if (!decoded?.companyId)
-//       return NextResponse.json(
-//         { success: false, error: "Invalid company ID" },
-//         { status: 401 }
-//       );
+//       return NextResponse.json({ success: false, error: "Invalid company ID" }, { status: 401 });
 
 //     const formData = await req.formData();
 //     const rawData = formData.get("orderData");
 //     if (!rawData)
-//       return NextResponse.json(
-//         { success: false, error: "Missing order data" },
-//         { status: 400 }
-//       );
+//       return NextResponse.json({ success: false, error: "Missing order data" }, { status: 400 });
 
 //     let orderData;
 //     try {
 //       orderData = JSON.parse(rawData);
 //     } catch (err) {
-//       return NextResponse.json(
-//         { success: false, error: "Invalid JSON in orderData" },
-//         { status: 400 }
-//       );
+//       return NextResponse.json({ success: false, error: "Invalid JSON in orderData" }, { status: 400 });
 //     }
 
-//     // ✅ Clean data
 //     delete orderData._id;
 //     orderData.companyId = decoded.companyId;
 //     orderData.createdBy = decoded.id;
 //     orderData.orderStatus = "Open";
 
-//     // ✅ Handle File Upload (Attachments)
 //     const files = formData.getAll("attachments");
 //     const uploadedFiles = [];
+
 //     for (const file of files) {
 //       const buffer = await file.arrayBuffer();
 //       const uploadRes = await new Promise((resolve, reject) => {
@@ -299,80 +297,67 @@ export async function GET(req) {
 //       });
 //     }
 
-//     // ✅ Merge existing and new attachments
 //     const existingFiles = orderData.existingFiles || [];
 //     const removedFiles = orderData.removedFiles || [];
+
 //     orderData.attachments = [
-//       ...existingFiles.filter(
-//         (f) => !removedFiles.some((r) => r.cloudinaryId === f.cloudinaryId)
-//       ),
+//       ...existingFiles.filter(f => !removedFiles.some(r => r.cloudinaryId === f.cloudinaryId)),
 //       ...uploadedFiles,
 //     ];
 
-//     // ✅ If copied from Quotation
 //     if (orderData.sourcePurchaseQuotationId) {
-//       const pq = await PurchaseQuotation.findById(
-//         orderData.sourcePurchaseQuotationId
-//       );
+//       const pq = await PurchaseQuotation.findById(orderData.sourcePurchaseQuotationId);
 //       if (pq) {
 //         orderData.supplier = orderData.supplier || pq.supplier;
 //         orderData.items = orderData.items?.length ? orderData.items : pq.items;
-//         await PurchaseQuotation.updateOne(
-//           { _id: pq._id },
-//           { status: "ConvertedToOrder" }
-//         );
+//         await PurchaseQuotation.updateOne({ _id: pq._id }, { status: "ConvertedToOrder" });
 //       }
 //     }
 
-//     // ✅ Validate Items
 //     if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
-//       return NextResponse.json(
-//         { success: false, error: "At least one item is required" },
-//         { status: 422 }
-//       );
+//       return NextResponse.json({ success: false, error: "At least one item is required" }, { status: 422 });
 //     }
 
-//     const companyId = orderData.companyId;
 
-//     const key = `PurchaseOrder_${companyId}`;
+
+//     const companyId = orderData.companyId;
 
 //     const now = new Date();
 //     const currentYear = now.getFullYear();
 //     const currentMonth = now.getMonth() + 1;
-
 //     let fyStart = currentYear;
 //     let fyEnd = currentYear + 1;
+
 //     if (currentMonth < 4) {
 //       fyStart = currentYear - 1;
 //       fyEnd = currentYear;
 //     }
 
 //     const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+//     const key = `PurchaseOrder`;
 
-//     // Counter update
-//     const counter = await Counter.findOneAndUpdate(
-//       { id: key, companyId },
-//       {
-//         $inc: { seq: 1 },
-//         $setOnInsert: { seq: 1, companyId, id: key },
-//       },
-//       { new: true, upsert: true, session } // Use session if in a transaction
-//     );
+//     // ✅ Corrected Safe Counter Logic
+//     session.startTransaction();
 
-//     // Generate the PO number
+//     let counter = await Counter.findOne({ id: key, companyId }).session(session);
+
+//     if (!counter) {
+//       const created = await Counter.create(
+//         [{ id: key, companyId, seq: 1 }],
+//         { session }
+//       );
+//       counter = created[0];
+//     } else {
+//       counter.seq += 1;
+//       await counter.save({ session });
+//     }
+
 //     const paddedSeq = String(counter.seq).padStart(5, "0");
 //     const documentNumberPurchaseOrder = `PURCH-ORD/${financialYear}/${paddedSeq}`;
-
-//     // Attach it to order data
 //     orderData.documentNumberPurchaseOrder = documentNumberPurchaseOrder;
 
-//     // ✅ Save in DB with Transaction
-//     session.startTransaction();
-//     const [purchaseOrder] = await PurchaseOrder.create([orderData], {
-//       session,
-//     });
+//     const [purchaseOrder] = await PurchaseOrder.create([orderData], { session });
 
-//     // ✅ Stock Impact: Increase onOrder qty & log StockMovement
 //     for (const item of purchaseOrder.items) {
 //       await Inventory.updateOne(
 //         {
@@ -405,14 +390,12 @@ export async function GET(req) {
 //     await session.commitTransaction();
 //     session.endSession();
 
-//     return NextResponse.json(
-//       {
-//         success: true,
-//         message: "Purchase Order created successfully",
-//         data: purchaseOrder,
-//       },
-//       { status: 201 }
-//     );
+//     return NextResponse.json({
+//       success: true,
+//       message: "Purchase Order created successfully",
+//       data: purchaseOrder,
+//     }, { status: 201 });
+
 //   } catch (error) {
 //     await session.abortTransaction();
 //     session.endSession();
@@ -428,44 +411,29 @@ export async function GET(req) {
 //   try {
 //     await dbConnect();
 
-//     // ✅ Authentication
 //     const token = getTokenFromHeader(req);
 //     if (!token)
-//       return NextResponse.json(
-//         { success: false, error: "Unauthorized" },
-//         { status: 401 }
-//       );
+//       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
 //     const decoded = verifyJWT(token);
 //     if (!decoded)
-//       return NextResponse.json(
-//         { success: false, error: "Invalid token" },
-//         { status: 401 }
-//       );
-//     const user = await verifyJWT(token);
-//     if (!user) {
-//       return NextResponse.json(
-//         { success: false, message: "Unauthorized: Invalid token" },
-//         { status: 401 }
-//       );
-//     }
-//     // ✅ Parse filters (optional)
+//       return NextResponse.json({ success: false, error: "Invalid token" }, { status: 401 });
+
 //     const { searchParams } = new URL(req.url);
 //     const status = searchParams.get("status");
 //     const supplier = searchParams.get("supplier");
 
-//     // const query = {};
-//     const query = { companyId: user.companyId };
+//     const query = { companyId: decoded.companyId };
 //     if (status) query.orderStatus = status;
 //     if (supplier) query.supplier = supplier;
 
-//     // ✅ Fetch data
 //     const orders = await PurchaseOrder.find(query)
 //       .populate("supplier", "supplierName supplierCode contactPerson")
 //       .populate("items.item", "itemName itemCode")
 //       .sort({ createdAt: -1 });
 
 //     return NextResponse.json({ success: true, data: orders }, { status: 200 });
+
 //   } catch (error) {
 //     console.error("GET /api/purchase-order error:", error);
 //     return NextResponse.json(
@@ -474,3 +442,4 @@ export async function GET(req) {
 //     );
 //   }
 // }
+
