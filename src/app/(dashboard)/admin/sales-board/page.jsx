@@ -37,39 +37,42 @@ export default function SalesBoardWithCalendar() {
 
   console.log("Fetched Orders:", orders);
 
-  // group orders by status
-  const getColumns = () => ({
-    open: orders.filter((o) => o.status === "Open"),
-    "in-progress": orders.filter((o) => o.status === "LinkedToPurchaseOrder")|| orders.filter((o) => o.status === "LinkedToProductionOrder"),
-    	Complete: orders.filter((o) => o.status === "Complete"),
-  });
+// group orders by status
+const getColumns = () => ({
+  open: orders.filter((o) => o.status === "Open"),
+  "in-progress": orders.filter(
+    (o) => o.status === "LinkedToPurchaseOrder" || o.status === "LinkedToProductionOrder"
+  ),
+  complete: orders.filter((o) => o.status === "Complete"),
+});
 
-  // drag & drop handler
-  const handleDragEnd = async (result) => {
-    if (!result.destination) return;
-    const { source, destination, draggableId } = result;
+// drag & drop handler
+const handleDragEnd = async (result) => {
+  if (!result.destination) return;
+  const { source, destination, draggableId } = result;
 
-    if (source.droppableId === destination.droppableId) return;
+  if (source.droppableId === destination.droppableId) return;
 
-    const newStatus =
-      destination.droppableId === "open"
-        ? "Open"
-        : destination.droppableId === "in-progress"
-        ? "In-Progress"
-        : "	Complete";
+  const newStatus =
+    destination.droppableId === "open"
+      ? "Open"
+      : destination.droppableId === "in-progress"
+      ? "LinkedToProductionOrder" // 👈 Default when dragged into In-Progress
+      : "Complete";
 
-    try {
-      await api.put(`/sales-order/${draggableId}`, { status: newStatus });
+  try {
+    await api.put(`/sales-order/${draggableId}`, { status: newStatus });
 
-      setOrders((prev) =>
-        prev.map((o) =>
-          o._id === draggableId ? { ...o, status: newStatus } : o
-        )
-      );
-    } catch (err) {
-      console.error("Error updating status:", err);
-    }
-  };
+    setOrders((prev) =>
+      prev.map((o) =>
+        o._id === draggableId ? { ...o, status: newStatus } : o
+      )
+    );
+  } catch (err) {
+    console.error("Error updating status:", err);
+  }
+};
+
 
   // events for calendar
   const calendarEvents = orders.map((o) => ({

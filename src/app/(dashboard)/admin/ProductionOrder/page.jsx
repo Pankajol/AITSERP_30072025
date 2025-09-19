@@ -1,11 +1,8 @@
 "use client";
-import { Suspense } from "react";
-import { useEffect, useState, } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Select from "react-select";
-import { useRouter } from "next/navigation";
-import router from "next/router";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
-import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "react-toastify";
 import SalesOrderSearch from "@/components/SalesOrderSearch";
@@ -14,17 +11,18 @@ function ProductionOrderPage() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
   const router = useRouter();
-  const [selectedOption, setSelectedOption] = useState(null);
 
-
+  // State
+  const [token, setToken] = useState(null);
   const [boms, setBoms] = useState([]);
   const [allItems, setAllItems] = useState([]);
   const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [bomItems, setBomItems] = useState([]);
+  const [selectedOption, setSelectedOption] = useState(null);
 
   const [selectedBomId, setSelectedBomId] = useState("");
-  const [type, setType] = useState("");
-  const [status, setStatus] = useState("");
+  const [type, setType] = useState("manufacture");
+  const [status, setStatus] = useState("Open");
   const [priority, setPriority] = useState("");
   const [warehouse, setWarehouse] = useState("");
   const [productDesc, setProductDesc] = useState("");
@@ -32,68 +30,52 @@ function ProductionOrderPage() {
   const [productionDate, setProductionDate] = useState("");
   const [salesOrder, setSalesOrder] = useState([]);
 
-
+  // Options
   const typeOptions = [
     { label: "Manufacture", value: "manufacture" },
     { label: "Subcontract", value: "subcontract" },
   ];
+  const statusOptions = [
+    { value: "Open", label: "Open" },
+    { value: "In Progress", label: "In Progress" },
+    { value: "Completed", label: "Completed" },
+  ];
 
-  // Client-side only logic for token
-  const [token, setToken] = useState(null);
-
+  // Load token
   useEffect(() => {
     const tk = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     setToken(tk);
   }, []);
 
+  // Fetch BOMs, Items, Warehouses
   useEffect(() => {
     if (!token) return;
 
- axios
-  .get("/api/bom", {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  .then((res) => {
-    const data = Array.isArray(res.data) ? res.data : res.data.data;
-    setBoms(data);
-  })
-  .catch((err) => toast.error("Failed to fetch BOMs"));
+    axios
+      .get("/api/bom", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setBoms(Array.isArray(res.data) ? res.data : res.data.data))
+      .catch(() => toast.error("Failed to fetch BOMs"));
 
+    axios
+      .get("/api/items", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setAllItems(Array.isArray(res.data) ? res.data : res.data.data))
+      .catch(() => toast.error("Failed to fetch Items"));
 
-   axios
-  .get("/api/items", {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  .then((res) => {
-    const data = Array.isArray(res.data) ? res.data : res.data.data;
-    setAllItems(data);
-  })
-  .catch((err) => toast.error("Failed to fetch Items"));
-
-
-   axios
-  .get("/api/warehouse", {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  .then((res) => {
-    const data = Array.isArray(res.data) ? res.data : res.data.data;
-    const options = data.map((w) => ({
-      value: w._id,
-      label: w.warehouseName,
-    }));
-    setWarehouseOptions(options);
-  })
-  .catch((err) => toast.error("Failed to fetch Warehouses"));
-
+    axios
+      .get("/api/warehouse", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        const data = Array.isArray(res.data) ? res.data : res.data.data;
+        setWarehouseOptions(data.map((w) => ({ value: w._id, label: w.warehouseName })));
+      })
+      .catch(() => toast.error("Failed to fetch Warehouses"));
   }, [token]);
 
+  // Fetch Production Order if editing
   useEffect(() => {
     if (!id || !token) return;
 
     axios
-      .get(`/api/production-orders/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      .get(`/api/production-orders/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         const o = res.data;
         setSelectedBomId(o.bomId);
@@ -104,7 +86,6 @@ function ProductionOrderPage() {
         setProductDesc(o.productDesc);
         setPriority(o.priority);
         setQuantity(o.quantity);
-
         setBomItems(
           o.items.map((it) => ({
             id: uuidv4(),
@@ -118,20 +99,15 @@ function ProductionOrderPage() {
           }))
         );
       })
-      .catch((err) => toast.error("Failed to fetch Production Order"));
+      .catch(() => toast.error("Failed to fetch Production Order"));
   }, [id, token]);
 
-
-
-
-
+  // Fetch BOM details when creating new order
   useEffect(() => {
-    if (!selectedBomId || id || !token) return;
+    if (!selectedBomId || !token || id) return; // only for new order
 
     axios
-      .get(`/api/bom/${selectedBomId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      .get(`/api/bom/${selectedBomId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         const items = res.data.items.map((it) => ({
           id: uuidv4(),
@@ -143,55 +119,39 @@ function ProductionOrderPage() {
           requiredQty: it.quantity * quantity,
           warehouse: it.warehouse || "",
         }));
-
         setBomItems(items);
         setProductDesc(res.data.productDesc || "");
         setWarehouse(res.data.warehouse || "");
       })
-      .catch((err) => toast.error("Failed to fetch BOM details"));
+      .catch(() => toast.error("Failed to fetch BOM details"));
   }, [selectedBomId, quantity, id, token]);
 
-const statusOptions = [
-  { value: "Open", label: "Open" },
-  { value: "In Progress", label: "In Progress" },
-  { value: "Completed", label: "Completed" },
-];
-
-  const itemOptions = allItems.map(it => ({
+  const itemOptions = allItems.map((it) => ({
     value: it._id,
     label: `${it.itemCode} - ${it.itemName}`,
     data: it,
   }));
 
+  // Handlers
   const handleQuantityChange = (rowId, val) => {
     const qty = Number(val);
-    setBomItems(prev =>
-      prev.map(item =>
-        item.id === rowId
-          ? { ...item, quantity: qty, requiredQty: qty * quantity }
-          : item
+    setBomItems((prev) =>
+      prev.map((item) =>
+        item.id === rowId ? { ...item, quantity: qty, requiredQty: qty * quantity } : item
       )
     );
   };
 
-
-  const handleSalesOrderSelect = (selectedOrders) => {
-    setSalesOrder(selectedOrders);
-  };
-
+  const handleSalesOrderSelect = (selectedOrders) => setSalesOrder(selectedOrders);
 
   const handleWarehouseChange = (rowId, val) => {
-    setBomItems(prev =>
-      prev.map(item =>
-        item.id === rowId ? { ...item, warehouse: val } : item
-      )
-    );
+    setBomItems((prev) => prev.map((item) => (item.id === rowId ? { ...item, warehouse: val } : item)));
   };
 
   const handleAddItem = () => {
     if (!selectedOption) return;
     const it = selectedOption.data;
-    setBomItems(prev => [
+    setBomItems((prev) => [
       ...prev,
       {
         id: uuidv4(),
@@ -207,66 +167,62 @@ const statusOptions = [
     setSelectedOption(null);
   };
 
-  const handleRemoveItem = rowId => {
-    setBomItems(prev => prev.filter(item => item.id !== rowId));
+  const handleRemoveItem = (rowId) => setBomItems((prev) => prev.filter((item) => item.id !== rowId));
+
+  const handleSaveProductionOrder = async () => {
+    try {
+      if (!token) {
+        toast.error("No token found. Please login again.");
+        return;
+      }
+
+      const payload = {
+        bomId: selectedBomId,
+        type,
+        status,
+        warehouse,
+        productDesc,
+        priority,
+        productionDate,
+        quantity,
+        salesOrder,
+        items: bomItems.map((it) => ({
+          item: it.item,
+          itemCode: it.itemCode,
+          itemName: it.itemName,
+          unitQty: it.unitQty,
+          quantity: it.quantity,
+          requiredQty: it.requiredQty,
+          warehouse: it.warehouse?._id || it.warehouse || "",
+        })),
+      };
+
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
+      if (id) {
+        await axios.put(`/api/production-orders/${id}`, payload, config);
+        toast.success("Production Order updated!");
+      } else {
+        await axios.post("/api/production-orders", payload, config);
+        toast.success("Production Order created!");
+      }
+
+      router.push("/admin/productionorders-list-view");
+    } catch (err) {
+      console.error("Error saving Production Order:", err);
+      toast.error("Error saving Production Order");
+    }
   };
 
-const handleSaveProductionOrder = async () => {
-  try {
-    const token = localStorage.getItem("token");
-    const decodedToken = JSON.parse(atob(token.split(".")[1]));
-    const companyId = decodedToken?.companyId;
+  const selectedItem = itemOptions.find((opt) => opt.value === selectedOption?.value);
 
-    const payload = {
-      companyId,
-      bomId: selectedBomId,
-      type,
-      status,
-      warehouse,
-      productDesc,
-      priority,
-      productionDate,
-      quantity,
-      salesOrder,
-      items: bomItems.map(it => ({
-        item: it.item,
-        itemCode: it.itemCode,
-        itemName: it.itemName,
-        unitQty: it.unitQty,
-        quantity: it.quantity,
-        requiredQty: it.requiredQty,
-        warehouse: it.warehouse?._id || it.warehouse || "",
-      })),
-    };
-
-    const config = {
-      headers: { Authorization: `Bearer ${token}` },
-    };
-
-    if (id) {
-      await axios.put(`/api/production-orders/${id}`, payload, config);
-      alert("Production Order updated!");
-    } else {
-      await axios.post("/api/production-orders", payload, config);
-      alert("Production Order created!");
-    }
-
-    router.push("/admin/productionorders-list-view");
-  } catch (err) {
-    console.error("Error saving Production Order:", err);
-    alert("Error saving Production Order");
-  }
-};
-
-
-const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value);
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded">
       <h2 className="text-2xl font-semibold mb-4">
         {id ? "Edit Production Order" : "New Production Order"}
       </h2>
 
-      {/* Order Fields */}
+      {/* Fields */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {/* BOM */}
         <div>
@@ -274,23 +230,22 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
           <select
             className="w-full border p-2 rounded"
             value={selectedBomId}
-            onChange={e => setSelectedBomId(e.target.value)}
+            onChange={(e) => setSelectedBomId(e.target.value)}
           >
             <option value="">-- choose --</option>
-            {boms.map(b => (
-            <option key={b._id} value={b._id}>
-  {(b.productNo?.itemName || "") + " - " + (b.productDesc || "")}
-</option>
+            {boms.map((b) => (
+              <option key={b._id} value={b._id}>
+                {(b.productNo?.itemName || "") + " - " + (b.productDesc || "")}
+              </option>
             ))}
           </select>
         </div>
-            <SalesOrderSearch
-                      onSelectSalesOrder={handleSalesOrderSelect}
-                      selectedSalesOrders={salesOrder}
-                      
-                    />
 
-
+        {/* Sales Order */}
+        <SalesOrderSearch
+          onSelectSalesOrder={handleSalesOrderSelect}
+          selectedSalesOrders={salesOrder}
+        />
 
         {/* Type */}
         <div>
@@ -298,65 +253,69 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
           <select
             className="w-full border p-2 rounded"
             value={type}
-            onChange={e => setType(e.target.value)}
+            onChange={(e) => setType(e.target.value)}
           >
-            {typeOptions.map(opt => (
+            {typeOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
           </select>
         </div>
+
         {/* Status */}
         <div>
           <label className="block text-sm font-medium">Status</label>
           <select
             className="w-full border p-2 rounded"
             value={status}
-            onChange={e => setStatus(e.target.value)}
+            onChange={(e) => setStatus(e.target.value)}
           >
-            {statusOptions.map(opt => (
+            {statusOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
           </select>
         </div>
+
         {/* Warehouse */}
         <div>
           <label className="block text-sm font-medium">Warehouse</label>
-       <select
-  className="w-full border p-2 rounded"
-  value={warehouse}
-  onChange={(e) => setWarehouse(e.target.value)}
->
-  <option value="">-- select warehouse --</option>
-  {warehouseOptions.map((opt) => (
-    <option key={opt.value} value={opt.value}>
-      {opt.label}
-    </option>
-  ))}
-</select>
-
+          <select
+            className="w-full border p-2 rounded"
+            value={warehouse}
+            onChange={(e) => setWarehouse(e.target.value)}
+          >
+            <option value="">-- select warehouse --</option>
+            {warehouseOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
+
         {/* Product Desc */}
         <div>
           <label className="block text-sm font-medium">Product Description</label>
           <input
             className="w-full border p-2 rounded"
             value={productDesc}
-            onChange={e => setProductDesc(e.target.value)}
+            onChange={(e) => setProductDesc(e.target.value)}
           />
         </div>
+
         {/* Priority */}
         <div>
           <label className="block text-sm font-medium">Priority</label>
           <input
             className="w-full border p-2 rounded"
             value={priority}
-            onChange={e => setPriority(e.target.value)}
+            onChange={(e) => setPriority(e.target.value)}
           />
         </div>
+
         {/* Quantity */}
         <div>
           <label className="block text-sm font-medium">Planned Quantity</label>
@@ -365,9 +324,10 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
             className="w-full border p-2 rounded"
             value={quantity}
             min={1}
-            onChange={e => setQuantity(Number(e.target.value))}
+            onChange={(e) => setQuantity(Number(e.target.value))}
           />
         </div>
+
         {/* Date */}
         <div>
           <label className="block text-sm font-medium">Production Date</label>
@@ -375,7 +335,7 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
             type="date"
             className="w-full border p-2 rounded"
             value={productionDate}
-            onChange={e => setProductionDate(e.target.value)}
+            onChange={(e) => setProductionDate(e.target.value)}
           />
         </div>
       </div>
@@ -385,13 +345,13 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
         <label className="block text-sm font-medium mb-1">Add Item</label>
         <div className="flex gap-2">
           <div className="grow">
-          <Select
-  options={itemOptions}
-  value={selectedItem}
-  onChange={setSelectedOption}
-  isClearable
-  placeholder="Search and select item..."
-/>
+            <Select
+              options={itemOptions}
+              value={selectedItem}
+              onChange={setSelectedOption}
+              isClearable
+              placeholder="Search and select item..."
+            />
           </div>
           <button
             className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -424,26 +384,23 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
                   type="number"
                   className="border p-1 w-full"
                   value={item.quantity}
-                  onChange={(e) =>
-                    handleQuantityChange(item.id, e.target.value)
-                  }
+                  onChange={(e) => handleQuantityChange(item.id, e.target.value)}
                 />
               </td>
               <td className="border p-2">{item.requiredQty}</td>
               <td className="border p-2">
-               <select
-  className="w-full border p-1"
-  value={item.warehouse?._id || item.warehouse || ""}
-  onChange={(e) => handleWarehouseChange(item.id, e.target.value)}
->
-  <option value="">-- select --</option>
-  {warehouseOptions.map((opt) => (
-    <option key={opt.value} value={opt.value}>
-      {opt.label}
-    </option>
-  ))}
-</select>
-
+                <select
+                  className="w-full border p-1"
+                  value={item.warehouse?._id || item.warehouse || ""}
+                  onChange={(e) => handleWarehouseChange(item.id, e.target.value)}
+                >
+                  <option value="">-- select --</option>
+                  {warehouseOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td className="border p-2 text-center">
                 <button
@@ -470,7 +427,6 @@ const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value
   );
 }
 
-
 export default function Page() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -478,6 +434,496 @@ export default function Page() {
     </Suspense>
   );
 }
+
+
+
+
+
+
+// "use client";
+// import { Suspense } from "react";
+// import { useEffect, useState, } from "react";
+// import Select from "react-select";
+// import { useRouter } from "next/navigation";
+// import router from "next/router";
+// import axios from "axios";
+// import { useSearchParams } from "next/navigation";
+// import { v4 as uuidv4 } from "uuid";
+// import { toast } from "react-toastify";
+// import SalesOrderSearch from "@/components/SalesOrderSearch";
+
+
+// function ProductionOrderPage() {
+//   const searchParams = useSearchParams();
+//   const id = searchParams.get("id");
+//   const router = useRouter();
+//   const [selectedOption, setSelectedOption] = useState(null);
+
+
+//   const [boms, setBoms] = useState([]);
+//   const [allItems, setAllItems] = useState([]);
+//   const [warehouseOptions, setWarehouseOptions] = useState([]);
+//   const [bomItems, setBomItems] = useState([]);
+
+//   const [selectedBomId, setSelectedBomId] = useState("");
+//   const [type, setType] = useState("");
+//   const [status, setStatus] = useState("");
+//   const [priority, setPriority] = useState("");
+//   const [warehouse, setWarehouse] = useState("");
+//   const [productDesc, setProductDesc] = useState("");
+//   const [quantity, setQuantity] = useState(1);
+//   const [productionDate, setProductionDate] = useState("");
+//   const [salesOrder, setSalesOrder] = useState([]);
+
+
+//   const typeOptions = [
+//     { label: "Manufacture", value: "manufacture" },
+//     { label: "Subcontract", value: "subcontract" },
+//   ];
+
+//   // Client-side only logic for token
+//   const [token, setToken] = useState(null);
+
+//   useEffect(() => {
+//     const tk = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+//     setToken(tk);
+//   }, []);
+
+//   useEffect(() => {
+//     if (!token) return;
+
+//  axios
+//   .get("/api/bom", {
+//     headers: { Authorization: `Bearer ${token}` },
+//   })
+//   .then((res) => {
+//     const data = Array.isArray(res.data) ? res.data : res.data.data;
+//     setBoms(data);
+//   })
+//   .catch((err) => toast.error("Failed to fetch BOMs"));
+
+
+//    axios
+//   .get("/api/items", {
+//     headers: { Authorization: `Bearer ${token}` },
+//   })
+//   .then((res) => {
+//     const data = Array.isArray(res.data) ? res.data : res.data.data;
+//     setAllItems(data);
+//   })
+//   .catch((err) => toast.error("Failed to fetch Items"));
+
+
+//    axios
+//   .get("/api/warehouse", {
+//     headers: { Authorization: `Bearer ${token}` },
+//   })
+//   .then((res) => {
+//     const data = Array.isArray(res.data) ? res.data : res.data.data;
+//     const options = data.map((w) => ({
+//       value: w._id,
+//       label: w.warehouseName,
+//     }));
+//     setWarehouseOptions(options);
+//   })
+//   .catch((err) => toast.error("Failed to fetch Warehouses"));
+
+//   }, [token]);
+
+//   useEffect(() => {
+//     if (!id || !token) return;
+
+//     axios
+//       .get(`/api/production-orders/${id}`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       })
+//       .then((res) => {
+//         const o = res.data;
+//         setSelectedBomId(o.bomId);
+//         setType(o.type);
+//         setStatus(o.status);
+//         setSalesOrder(o.salesOrder || []);
+//         setWarehouse(o.warehouse);
+//         setProductDesc(o.productDesc);
+//         setPriority(o.priority);
+//         setQuantity(o.quantity);
+
+//         setBomItems(
+//           o.items.map((it) => ({
+//             id: uuidv4(),
+//             item: it.item,
+//             itemCode: it.itemCode,
+//             itemName: it.itemName,
+//             unitQty: it.unitQty,
+//             quantity: it.quantity,
+//             requiredQty: it.requiredQty,
+//             warehouse: it.warehouse,
+//           }))
+//         );
+//       })
+//       .catch((err) => toast.error("Failed to fetch Production Order"));
+//   }, [id, token]);
+
+
+
+
+
+//   useEffect(() => {
+//     if (!selectedBomId || id || !token) return;
+
+//     axios
+//       .get(`/api/bom/${selectedBomId}`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       })
+//       .then((res) => {
+//         const items = res.data.items.map((it) => ({
+//           id: uuidv4(),
+//           item: it.item,
+//           itemCode: it.itemCode,
+//           itemName: it.itemName,
+//           unitQty: it.quantity,
+//           quantity: it.quantity,
+//           requiredQty: it.quantity * quantity,
+//           warehouse: it.warehouse || "",
+//         }));
+
+//         setBomItems(items);
+//         setProductDesc(res.data.productDesc || "");
+//         setWarehouse(res.data.warehouse || "");
+//       })
+//       .catch((err) => toast.error("Failed to fetch BOM details"));
+//   }, [selectedBomId, quantity, id, token]);
+
+// const statusOptions = [
+//   { value: "Open", label: "Open" },
+//   { value: "In Progress", label: "In Progress" },
+//   { value: "Completed", label: "Completed" },
+// ];
+
+//   const itemOptions = allItems.map(it => ({
+//     value: it._id,
+//     label: `${it.itemCode} - ${it.itemName}`,
+//     data: it,
+//   }));
+
+//   const handleQuantityChange = (rowId, val) => {
+//     const qty = Number(val);
+//     setBomItems(prev =>
+//       prev.map(item =>
+//         item.id === rowId
+//           ? { ...item, quantity: qty, requiredQty: qty * quantity }
+//           : item
+//       )
+//     );
+//   };
+
+
+//   const handleSalesOrderSelect = (selectedOrders) => {
+//     setSalesOrder(selectedOrders);
+//   };
+
+
+//   const handleWarehouseChange = (rowId, val) => {
+//     setBomItems(prev =>
+//       prev.map(item =>
+//         item.id === rowId ? { ...item, warehouse: val } : item
+//       )
+//     );
+//   };
+
+//   const handleAddItem = () => {
+//     if (!selectedOption) return;
+//     const it = selectedOption.data;
+//     setBomItems(prev => [
+//       ...prev,
+//       {
+//         id: uuidv4(),
+//         item: it._id,
+//         itemCode: it.itemCode,
+//         itemName: it.itemName,
+//         unitQty: 1,
+//         quantity: 1,
+//         requiredQty: 1 * quantity,
+//         warehouse: it.warehouse,
+//       },
+//     ]);
+//     setSelectedOption(null);
+//   };
+
+//   const handleRemoveItem = rowId => {
+//     setBomItems(prev => prev.filter(item => item.id !== rowId));
+//   };
+
+// const handleSaveProductionOrder = async () => {
+//   try {
+//     const token = localStorage.getItem("token");
+//     const decodedToken = JSON.parse(atob(token.split(".")[1]));
+//     const companyId = decodedToken?.companyId;
+
+//     const payload = {
+//       companyId,
+//       bomId: selectedBomId,
+//       type,
+//       status,
+//       warehouse,
+//       productDesc,
+//       priority,
+//       productionDate,
+//       quantity,
+//       salesOrder,
+//       items: bomItems.map(it => ({
+//         item: it.item,
+//         itemCode: it.itemCode,
+//         itemName: it.itemName,
+//         unitQty: it.unitQty,
+//         quantity: it.quantity,
+//         requiredQty: it.requiredQty,
+//         warehouse: it.warehouse?._id || it.warehouse || "",
+//       })),
+//     };
+
+//     const config = {
+//       headers: { Authorization: `Bearer ${token}` },
+//     };
+
+//     if (id) {
+//       await axios.put(`/api/production-orders/${id}`, payload, config);
+//       // alert("Production Order updated!");
+//       toast.success("Production Order updated!");
+//     } else {
+//       await axios.post("/api/production-orders", payload, config);
+//       // alert("Production Order created!");
+//       toast.success("Production Order created!");
+//     }
+
+//     router.push("/admin/productionorders-list-view");
+//   } catch (err) {
+//     console.error("Error saving Production Order:", err);
+//     // alert("Error saving Production Order");
+//     toast.error("Error saving Production Order");
+//   }
+// };
+
+
+// const selectedItem = itemOptions.find(opt => opt.value === selectedOption?.value);
+//   return (
+//     <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded">
+//       <h2 className="text-2xl font-semibold mb-4">
+//         {id ? "Edit Production Order" : "New Production Order"}
+//       </h2>
+
+//       {/* Order Fields */}
+//       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+//         {/* BOM */}
+//         <div>
+//           <label className="block text-sm font-medium">Select BOM</label>
+//           <select
+//             className="w-full border p-2 rounded"
+//             value={selectedBomId}
+//             onChange={e => setSelectedBomId(e.target.value)}
+//           >
+//             <option value="">-- choose --</option>
+//             {boms.map(b => (
+//             <option key={b._id} value={b._id}>
+//   {(b.productNo?.itemName || "") + " - " + (b.productDesc || "")}
+// </option>
+//             ))}
+//           </select>
+//         </div>
+//             <SalesOrderSearch
+//                       onSelectSalesOrder={handleSalesOrderSelect}
+//                       selectedSalesOrders={salesOrder}
+                      
+//                     />
+
+
+
+//         {/* Type */}
+//         <div>
+//           <label className="block text-sm font-medium">Type</label>
+//           <select
+//             className="w-full border p-2 rounded"
+//             value={type}
+//             onChange={e => setType(e.target.value)}
+//           >
+//             {typeOptions.map(opt => (
+//               <option key={opt.value} value={opt.value}>
+//                 {opt.label}
+//               </option>
+//             ))}
+//           </select>
+//         </div>
+//         {/* Status */}
+//         <div>
+//           <label className="block text-sm font-medium">Status</label>
+//           <select
+//             className="w-full border p-2 rounded"
+//             value={status}
+//             onChange={e => setStatus(e.target.value)}
+//           >
+//             {statusOptions.map(opt => (
+//               <option key={opt.value} value={opt.value}>
+//                 {opt.label}
+//               </option>
+//             ))}
+//           </select>
+//         </div>
+//         {/* Warehouse */}
+//         <div>
+//           <label className="block text-sm font-medium">Warehouse</label>
+//        <select
+//   className="w-full border p-2 rounded"
+//   value={warehouse}
+//   onChange={(e) => setWarehouse(e.target.value)}
+// >
+//   <option value="">-- select warehouse --</option>
+//   {warehouseOptions.map((opt) => (
+//     <option key={opt.value} value={opt.value}>
+//       {opt.label}
+//     </option>
+//   ))}
+// </select>
+
+//         </div>
+//         {/* Product Desc */}
+//         <div>
+//           <label className="block text-sm font-medium">Product Description</label>
+//           <input
+//             className="w-full border p-2 rounded"
+//             value={productDesc}
+//             onChange={e => setProductDesc(e.target.value)}
+//           />
+//         </div>
+//         {/* Priority */}
+//         <div>
+//           <label className="block text-sm font-medium">Priority</label>
+//           <input
+//             className="w-full border p-2 rounded"
+//             value={priority}
+//             onChange={e => setPriority(e.target.value)}
+//           />
+//         </div>
+//         {/* Quantity */}
+//         <div>
+//           <label className="block text-sm font-medium">Planned Quantity</label>
+//           <input
+//             type="number"
+//             className="w-full border p-2 rounded"
+//             value={quantity}
+//             min={1}
+//             onChange={e => setQuantity(Number(e.target.value))}
+//           />
+//         </div>
+//         {/* Date */}
+//         <div>
+//           <label className="block text-sm font-medium">Production Date</label>
+//           <input
+//             type="date"
+//             className="w-full border p-2 rounded"
+//             value={productionDate}
+//             onChange={e => setProductionDate(e.target.value)}
+//           />
+//         </div>
+//       </div>
+
+//       {/* Add Item */}
+//       <div className="mb-6">
+//         <label className="block text-sm font-medium mb-1">Add Item</label>
+//         <div className="flex gap-2">
+//           <div className="grow">
+//           <Select
+//   options={itemOptions}
+//   value={selectedItem}
+//   onChange={setSelectedOption}
+//   isClearable
+//   placeholder="Search and select item..."
+// />
+//           </div>
+//           <button
+//             className="bg-blue-600 text-white px-4 py-2 rounded"
+//             onClick={handleAddItem}
+//           >
+//             Add
+//           </button>
+//         </div>
+//       </div>
+
+//       {/* Items Table */}
+//       <table className="w-full table-auto border-collapse border text-sm mb-6">
+//         <thead className="bg-gray-100">
+//           <tr>
+//             <th className="border p-2">Item Code</th>
+//             <th className="border p-2">Item Name</th>
+//             <th className="border p-2">Unit Qty</th>
+//             <th className="border p-2">Req. Qty</th>
+//             <th className="border p-2">SO Warehouse</th>
+//             <th className="border p-2">Action</th>
+//           </tr>
+//         </thead>
+//         <tbody>
+//           {bomItems.map((item) => (
+//             <tr key={item.id}>
+//               <td className="border p-2">{item.itemCode}</td>
+//               <td className="border p-2">{item.itemName}</td>
+//               <td className="border p-2">
+//                 <input
+//                   type="number"
+//                   className="border p-1 w-full"
+//                   value={item.quantity}
+//                   onChange={(e) =>
+//                     handleQuantityChange(item.id, e.target.value)
+//                   }
+//                 />
+//               </td>
+//               <td className="border p-2">{item.requiredQty}</td>
+//               <td className="border p-2">
+//                <select
+//   className="w-full border p-1"
+//   value={item.warehouse?._id || item.warehouse || ""}
+//   onChange={(e) => handleWarehouseChange(item.id, e.target.value)}
+// >
+//   <option value="">-- select --</option>
+//   {warehouseOptions.map((opt) => (
+//     <option key={opt.value} value={opt.value}>
+//       {opt.label}
+//     </option>
+//   ))}
+// </select>
+
+//               </td>
+//               <td className="border p-2 text-center">
+//                 <button
+//                   onClick={() => handleRemoveItem(item.id)}
+//                   className="text-red-500 hover:text-red-700"
+//                 >
+//                   Remove
+//                 </button>
+//               </td>
+//             </tr>
+//           ))}
+//         </tbody>
+//       </table>
+
+//       <div className="flex justify-end">
+//         <button
+//           className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+//           onClick={handleSaveProductionOrder}
+//         >
+//           {id ? "Update Order" : "Create Order"}
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
+
+
+// export default function Page() {
+//   return (
+//     <Suspense fallback={<div>Loading...</div>}>
+//       <ProductionOrderPage />
+//     </Suspense>
+//   );
+// }
 
 
 

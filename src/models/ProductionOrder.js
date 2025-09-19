@@ -6,6 +6,7 @@ const ProductionOrderSchema = new Schema({
   createdBy: { type: Schema.Types.ObjectId, ref: 'CompanyUser' },
   bomId: { type: Schema.Types.ObjectId, ref: 'BOM', required: true },
   type: { type: String, default: 'standard' },
+  salesOrder: [{ type: Schema.Types.ObjectId, ref: 'SalesOrder' }],
   status: { type: String, default: 'planned' },
   warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
   productDesc: String,

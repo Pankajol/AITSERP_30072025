@@ -227,10 +227,10 @@ export default function InventoryView() {
               <th className="p-2 text-left">Item Code</th>
               <th className="p-2 text-left">Item Name</th>
               <th className="p-2 text-left">Warehouse</th>
-              <th className="p-2 text-left">Quantity</th>
-              <th className="p-2 text-left">Committed</th>
-              <th className="p-2 text-left">On Order</th>
-              <th className="p-2 text-left">Unit Price</th>
+              <th className="p-2 text-left">Stock Quantity</th>
+              <th className="p-2 text-left">SO Quantity</th>
+              <th className="p-2 text-left">PO Quantity</th>
+              {/* <th className="p-2 text-left">Unit Price</th> */}
             </tr>
           </thead>
           <tbody>
@@ -250,7 +250,7 @@ export default function InventoryView() {
                     <td className="p-2">{inv.quantity}</td>
                     <td className="p-2">{inv.committed}</td>
                     <td className="p-2">{inv.onOrder}</td>
-                    <td className="p-2">{inv.unitPrice}</td>
+                    {/* <td className="p-2">{inv.unitPrice}</td> */}
                   </tr>
                 );
               })

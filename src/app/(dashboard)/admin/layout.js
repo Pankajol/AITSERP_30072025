@@ -926,6 +926,13 @@ export default function AdminSidebar({ children }) {
             <Item href="/admin/users" icon={<HiUserGroup />} label="User" close={closeSidebar} />
           </Section>
 
+          {/* task */}
+          <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
+            <Item href="/admin/tasks" icon={<HiUserGroup />} label="Tasks" close={closeSidebar} />
+            {/* <Item href="/admin/task-board" icon={<HiUserGroup />} label="Task Board" close={closeSidebar} /> */}
+            <Item href="/admin/tasks/board" icon={<HiPuzzle />} label="Tasks Board" close={closeSidebar} />
+          </Section>
+
           {/* CRM-View */}
           <Section title="CRM-View" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
             <Item href="/admin/leads-view" icon={<HiUserGroup />} label="Lead Generation" close={closeSidebar} />
