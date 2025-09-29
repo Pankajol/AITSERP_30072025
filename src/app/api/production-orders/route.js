@@ -189,10 +189,10 @@ export async function GET(request) {
     }
 
     const orders = await ProductionOrder.find({ companyId: user.companyId })
-      .populate("bomId")
-      .populate("warehouse")
-      .populate("items.item")
-      .populate("createdBy");
+      // .populate("bomId")
+      // .populate("warehouse")
+      // .populate("items.item")
+      // .populate("createdBy");
 
     return NextResponse.json(orders, { status: 200 });
   } catch (err) {

@@ -296,6 +296,12 @@ export default function SupplierManagement() {
     emailId: "",
     mobileNumber: "",
     contactPersonName: "",
+   
+    contactNumber: "",
+    alternateContactNumber: "",
+     udyamNumber: "",
+    incorporated: "",
+    valid: false,
 
     billingAddresses: [
       { address1: "", address2: "", city: "", state: "", country: "", pin: "" },
@@ -346,19 +352,104 @@ export default function SupplierManagement() {
     fetchSuppliers();
   }, []);
 
+  // const verifyUdyam = async () => {
+  //   try {
+  //     const token = localStorage.getItem("token"); // or however you store it
 
-  const verifyUdyam = async () => {
-  const res = await fetch("/api/udyam", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ udyamNumber: "UDYAM-MH-19-0253751" }),
-  });
+  //     const res = await fetch("/api/udyam", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${token}`,   // 🔑 send token
+  //       },
+  //       body: JSON.stringify({ udyamNumber: "UDYAM-MH-19-0253751" }),
+  //     });
 
-  const data = await res.json();
-  console.log(data);
-};
+  //     console.log("Raw response:", res);
 
+  //     const data = await res.json();
+  //     console.log("Parsed response:", data);
 
+  //     // ✅ extract supplier details
+  //     const supplierDetails = data?.data?.udyamName || null;
+  //     console.log("Supplier Name:", supplierDetails);
+
+  //     // if you’re in React:
+  //     // setSupplierDetails(supplierDetails);
+
+  //   } catch (err) {
+  //     console.error("verifyUdyam error:", err);
+  //   }
+  // };
+
+  const verifyUdyam = async (e) => {
+    e.preventDefault(); // prevent form reload on button click
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Unauthorized: Please log in again");
+        return;
+      }
+
+      const res = await fetch("/api/udyam", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ udyamNumber: supplierDetails.udyamNumber }),
+      });
+
+      const data = await res.json();
+      console.log("Udyam API Response:", data);
+
+      if (data.success && data.data) {
+        const udyam = data.data;
+
+        setSupplierDetails((prev) => ({
+          ...prev,
+          supplierName: udyam.entity || prev.supplierName,
+          supplierType: udyam.type || prev.supplierType,
+          mobileNumber:
+            udyam.officialAddress?.maskedMobile || prev.mobileNumber,
+
+          emailId: udyam.officialAddress?.maskedEmail || prev.emailId,
+          gstNumber: udyam.gstNumber || prev.gstNumber,
+          gstCategory: udyam.gstCategory || prev.gstCategory,
+          pan: udyam.pan || prev.pan,
+          bankName: udyam.bankName || prev.bankName,
+          branch: udyam.branch || prev.branch,
+          bankAccountNumber: udyam.bankAccountNumber || prev.bankAccountNumber,
+          ifscCode: udyam.ifscCode || prev.ifscCode,
+          supplierType: udyam.type || prev.supplierType,
+          supplierCategory: udyam.majorActivity?.join(", ") || prev.supplierCategory,
+          incorporated: udyam.incorporated || prev.incorporated,
+          valid: udyam.valid ?? prev.valid,
+          billingAddresses: [
+            {
+              address1: `${udyam.officialAddress?.unitNumber || ""}, ${
+                udyam.officialAddress?.building || ""
+              }`,
+              address2: `${udyam.officialAddress?.road || ""}, ${
+                udyam.officialAddress?.villageOrTown || ""
+              }`,
+              city: udyam.officialAddress?.city || "",
+              state: udyam.officialAddress?.state || "",
+              country: "India",
+              pin: udyam.officialAddress?.zip || "",
+            },
+          ],
+        }));
+
+        toast.success("Udyam details fetched successfully!");
+      } else {
+        toast.error(data.message || "Failed to verify Udyam number");
+      }
+    } catch (err) {
+      console.error("verifyUdyam error:", err);
+      toast.error("Error verifying Udyam");
+    }
+  };
 
   const generateSupplierCode = async () => {
     try {
@@ -499,18 +590,6 @@ export default function SupplierManagement() {
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
-
-  // const validate = () => {
-  //   const errs = {};
-  //   if (!supplierDetails.supplierName) errs.supplierName = "Supplier Name is required";
-  //   if (!supplierDetails.supplierType) errs.supplierType = "Supplier Type is required";
-  //   if (!supplierDetails.supplierGroup) errs.supplierGroup = "Supplier Group is required";
-  //   if (!supplierDetails.pan) errs.pan = "PAN is required";
-  //   if (!supplierDetails.gstCategory) errs.gstCategory = "GST Category is required";
-  //   if (!supplierDetails.glAccount || !supplierDetails.glAccount._id) errs.glAccount = "GL Account is required";
-  //   setErrors(errs);
-  //   return Object.keys(errs).length === 0;
-  // };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -671,6 +750,65 @@ export default function SupplierManagement() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
+            {/* uddyam */}
+            <input
+              name="udyamNumber"
+              value={supplierDetails.udyamNumber || ""}
+              onChange={(e) =>
+                setSupplierDetails((prev) => ({
+                  ...prev,
+                  udyamNumber: e.target.value,
+                }))
+              }
+              placeholder="Udyam Number"
+              className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 mb-2"
+            />
+            {getFieldError("udyamNumber")}
+          </div>
+            <div>
+              <button
+                onClick={verifyUdyam}
+                className="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+              >
+                <FaSearch className="mr-2" /> Verify Udyam
+              </button>
+            </div>
+        
+        </div>
+        {/* Incorporated Date */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Incorporated Date
+            </label>
+            <input
+              name="incorporated"
+              value={supplierDetails.incorporated}
+              onChange={handleChange}
+              placeholder="Incorporated Date"
+              className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+           {/* Udyam Validity this vaild ture false like  this i want fetch if the the from the udyam  */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Valid
+            </label>
+            <select
+              name="valid"
+              value={supplierDetails.valid}
+              onChange={handleChange}
+              className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={null}>Select</option>
+              <option value={true}>True</option>
+              <option value={false}>False</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Code
             </label>
@@ -695,28 +833,7 @@ export default function SupplierManagement() {
             {getFieldError("supplierName")}
           </div>
         </div>
-
-
-        <div>
-       {/* uddyam */}
-       <input
-          name="udyamNumber"
-          value={supplierDetails.udyamNumber || ""}
-          onChange={(e) => setSupplierDetails((prev) => ({ ...prev, udyamNumber: e.target.value }))}
-          placeholder="Udyam Number"  
-          className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 mb-2"
-        />
-        {getFieldError("udyamNumber")}
-        
-
-        <button
-          onClick={verifyUdyam}
-          className="inline-flex items-center text-blue-600 mb-6"
-        >
-          <FaPlus className="mr-1" /> Verify Udyam
-        </button> 
-
-        </div>
+      
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
@@ -801,6 +918,47 @@ export default function SupplierManagement() {
             />
           </div>
         </div>
+
+        <div className="grid sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Contact Number
+            </label>
+            <input
+              name="contactNumber"
+              type="text"
+              placeholder="Contact Number"
+              maxLength={10}
+              value={supplierDetails.contactNumber || ""}
+              onChange={(e) => {
+                const input = e.target.value;
+                if (/^\d{0,10}$/.test(input)) {
+                  handleChange(e); // only allow up to 10 digits
+                }
+              }}
+              className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Alternate Contact Number
+            </label>
+            <input
+              name="alternateContactNumber"
+              type="text"
+              placeholder="Alternate Contact Number"
+              maxLength={10}
+              value={supplierDetails.alternateContactNumber || ""}      
+              onChange={(e) => {
+                const input = e.target.value;
+                if (/^\d{0,10}$/.test(input)) {
+                  handleChange(e); // only allow up to 10 digits
+                }
+              }}
+              className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          </div>
 
         <h3 className="text-lg font-semibold">Billing Addresses</h3>
         {supplierDetails.billingAddresses.map((addr, i) => (

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Cog, Key } from "lucide-react"; 
 
 // --- Helper: Basic JWT Decoder (replaces external library) ---
 const jwtDecode = (token) => {
@@ -415,16 +416,37 @@ export default function Sidebar({ children }) {
 
       <div className="flex-1 ml-64 flex flex-col">
          <header className="fixed top-0 right-0 left-0 md:left-64 bg-white dark:bg-gray-800 shadow h-14 flex items-center justify-end px-6 z-10">
-            <div className="flex items-center gap-4">
-              <NotificationBell />
-              <span className="text-sm hidden sm:inline">Hello, {session?.name || session?.email}</span>
-              <img
-                src={`https://i.pravatar.cc/150?u=${session?.email}`}
-                alt="Profile"
-                className="w-8 h-8 rounded-full object-cover"
+      <div className="flex items-center gap-4">
+        <span className="text-sm hidden sm:inline">
+          Hello, {session?.name || session?.email}
+        </span>
+        <img
+          src={`https://i.pravatar.cc/150?u=${session?.email}`}
+          alt="Profile"
+          className="w-8 h-8 rounded-full object-cover"
+        />
+        <div className="relative">
+          <MenuBtn
+            isOpen={open.menu === "settings"}
+            onToggle={() => toggleMenu("settings")}
+            icon={<Cog className="w-5 h-5" />}   // ✅ fixed
+            label=""
+          />
+          {open.menu === "settings" && (
+            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-lg z-20">
+              <Item
+                href={P("/change-password")}
+                icon={<Key className="w-5 h-5" />}   // ✅ fixed
+                label="Change Password"
+                close={() => setOpen((o) => ({ ...o, menu: null }))}
               />
+              <LogoutButton />
             </div>
-          </header>
+          )}
+        </div>
+        <NotificationBell />
+      </div>
+    </header>
         <main className="flex-1 overflow-y-auto p-4">
           {children}
         </main>

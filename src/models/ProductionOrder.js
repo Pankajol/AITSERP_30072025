@@ -3,12 +3,14 @@ const { Schema } = mongoose;
 
 const ProductionOrderSchema = new Schema({
   companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
-  createdBy: { type: Schema.Types.ObjectId, ref: 'CompanyUser' },
+  createdBy: { type: Schema.Types.ObjectId, ref: 'companyUser' },
   bomId: { type: Schema.Types.ObjectId, ref: 'BOM', required: true },
   type: { type: String, default: 'standard' },
   salesOrder: [{ type: Schema.Types.ObjectId, ref: 'SalesOrder' }],
   status: { type: String, default: 'planned' },
-  warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
+  warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse' },
+
+ 
   productDesc: String,
   priority: String,
   productionDate: Date,
@@ -27,7 +29,7 @@ const ProductionOrderSchema = new Schema({
       unitQty: Number,
       quantity: Number,
       requiredQty: Number,
-      warehouse: { type: Schema.Types.ObjectId, ref: 'Warehouse' },
+      warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse' },
     
     }
   ],

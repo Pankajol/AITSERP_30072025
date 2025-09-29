@@ -31,8 +31,8 @@ const SupplierSchema = new mongoose.Schema({
   },
   supplierType: {
     type: String,
-    required: [true, "Supplier type is required"],
-    enum: ["Manufacturer", "Distributor", "Retailer", "Service Provider","Wholesaler", "Other"],
+ 
+  
     trim: true
   },
   supplierGroup: {
@@ -54,8 +54,24 @@ const SupplierSchema = new mongoose.Schema({
   },
   mobileNumber: {
     type: String,
-    match: [/^[0-9]{10}$/, "Invalid mobile number format"]
+   
   },
+  valid: { type: Boolean, default: false },
+  incorporated: { type: String, trim: true },
+  udyamNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+  
+  },
+  contactNumber: {
+    type: String,
+    match: [/^[0-9]{10}$/, "Invalid contact number format"]
+  },
+  alternateContactNumber: {
+    type: String,
+    match: [/^[0-9]{10}$/, "Invalid alternate contact number format"]
+  },  
   contactPersonName: { type: String, trim: true },
 
   billingAddresses: {
