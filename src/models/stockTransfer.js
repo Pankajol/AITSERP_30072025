@@ -11,6 +11,13 @@ const batchSchema = new mongoose.Schema({
     ref: "Warehouse",
     required: true,
   },
+
+  bin:{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Bin",
+  
+  },
+  
   destinationWarehouse: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Warehouse",

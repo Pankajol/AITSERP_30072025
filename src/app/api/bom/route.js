@@ -24,7 +24,7 @@ export async function GET(req) {
     // ✅ Find BOMs by company
     const boms = await BOM.find({ companyId: user.companyId })
         // if item is ref
-    .populate('productNo',"itemName")     // if productNo is ref
+    .populate('productNo',"itemName itemCode")     // if productNo is ref
     .populate('warehouse','warehouseName')     // if warehouse is ref
     .sort('-createdAt');
 

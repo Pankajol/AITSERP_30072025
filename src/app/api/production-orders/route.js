@@ -1,19 +1,9 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import ProductionOrder from '@/models/ProductionOrder';
-import StockMovement from '@/models/StockMovement'; // ✅ added
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 import salesOrder from '@/models/SalesOrder';
 import BOM from '@/models/BOM';
-import Item from '@/models/ItemModels';
-import Warehouse from '@/models/warehouseModels';
-import CompanyUser from '@/models/CompanyUser';
-
-
-
-
-
-
 
 export async function POST(request) {
   await connectDB();
@@ -36,30 +26,20 @@ export async function POST(request) {
     data.companyId = user.companyId;
     data.createdBy = user._id || user.id;
 
+    // Make warehouse optional
+    if (!data.warehouse) data.warehouse = null;
+
+    // Ensure items array exists and sanitize item warehouses
+    if (Array.isArray(data.items)) {
+      data.items = data.items.map((it) => ({
+        ...it,
+        warehouse: it.warehouse || null,
+      }));
+    }
+
+    // ✅ Save Production Order with BOM items
     const order = new ProductionOrder(data);
     const saved = await order.save();
-
-    // ✅ Record stock movements for BOM items (consumption)
-    if (saved.bomId) {
-      const bomDoc = await BOM.findById(saved.bomId).populate("items.item");
-
-      if (bomDoc && Array.isArray(bomDoc.items)) {
-        for (const bomItem of bomDoc.items) {
-          const { item, quantity, warehouse } = bomItem;
-
-          await StockMovement.create({
-            companyId: user.companyId,
-            createdBy: user._id || user.id,
-            item,
-            warehouse,
-            movementType: "OUT",
-            quantity: quantity, // planned consumption for production
-            reference: saved._id.toString(),
-            remarks: `Raw material consumption for Production Order ${saved._id}`,
-          });
-        }
-      }
-    }
 
     // ✅ Update SalesOrder status if linked
     if (saved.salesOrder) {
@@ -67,19 +47,15 @@ export async function POST(request) {
         ? saved.salesOrder
         : [saved.salesOrder];
 
-      console.log("Sales Orders to update:", salesOrdersToUpdate);
-
-      const res = await salesOrder.updateMany(
+      await salesOrder.updateMany(
         { _id: { $in: salesOrdersToUpdate }, companyId: user.companyId },
         {
           $set: {
             status: "LinkedToProductionOrder",
-            linkedProductionOrder: saved._id, // 👈 link back to the ProductionOrder
+            linkedProductionOrder: saved._id, // link back to the ProductionOrder
           },
         }
       );
-
-      console.log("SalesOrder update result:", res);
     }
 
     return NextResponse.json(saved, { status: 201 });
@@ -91,6 +67,104 @@ export async function POST(request) {
     );
   }
 }
+
+
+
+
+
+// import { NextResponse } from 'next/server';
+// import connectDB from '@/lib/db';
+// import ProductionOrder from '@/models/ProductionOrder';
+// import StockMovement from '@/models/StockMovement'; // ✅ added
+// import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
+// import salesOrder from '@/models/SalesOrder';
+// import BOM from '@/models/BOM';
+// import Item from '@/models/ItemModels';
+// import Warehouse from '@/models/warehouseModels';
+// import CompanyUser from '@/models/CompanyUser';
+
+
+
+
+
+
+
+// export async function POST(request) {
+//   await connectDB();
+
+//   try {
+//     // ✅ Extract and verify token
+//     const token = getTokenFromHeader(request);
+//     const user = verifyJWT(token); // decoded payload
+
+//     if (!user?.companyId) {
+//       return NextResponse.json(
+//         { error: "Company ID missing in token" },
+//         { status: 401 }
+//       );
+//     }
+
+//     const data = await request.json();
+
+//     // ✅ Attach company & user info
+//     data.companyId = user.companyId;
+//     data.createdBy = user._id || user.id;
+
+//     const order = new ProductionOrder(data);
+//     const saved = await order.save();
+
+//     // ✅ Record stock movements for BOM items (consumption)
+//     if (saved.bomId) {
+//       const bomDoc = await BOM.findById(saved.bomId).populate("items.item");
+
+//       if (bomDoc && Array.isArray(bomDoc.items)) {
+//         for (const bomItem of bomDoc.items) {
+//           const { item, quantity, warehouse } = bomItem;
+
+//           await StockMovement.create({
+//             companyId: user.companyId,
+//             createdBy: user._id || user.id,
+//             item,
+//             warehouse,
+//             movementType: "OUT",
+//             quantity: quantity, // planned consumption for production
+//             reference: saved._id.toString(),
+//             remarks: `Raw material consumption for Production Order ${saved._id}`,
+//           });
+//         }
+//       }
+//     }
+
+//     // ✅ Update SalesOrder status if linked
+//     if (saved.salesOrder) {
+//       const salesOrdersToUpdate = Array.isArray(saved.salesOrder)
+//         ? saved.salesOrder
+//         : [saved.salesOrder];
+
+//       console.log("Sales Orders to update:", salesOrdersToUpdate);
+
+//       const res = await salesOrder.updateMany(
+//         { _id: { $in: salesOrdersToUpdate }, companyId: user.companyId },
+//         {
+//           $set: {
+//             status: "LinkedToProductionOrder",
+//             linkedProductionOrder: saved._id, // 👈 link back to the ProductionOrder
+//           },
+//         }
+//       );
+
+//       console.log("SalesOrder update result:", res);
+//     }
+
+//     return NextResponse.json(saved, { status: 201 });
+//   } catch (err) {
+//     console.error("Error creating production order:", err);
+//     return NextResponse.json(
+//       { error: err.message || "Failed to create production order" },
+//       { status: 400 }
+//     );
+//   }
+// }
 
 
 

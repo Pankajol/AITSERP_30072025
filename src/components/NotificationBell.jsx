@@ -1,109 +1,107 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { HiBell } from 'react-icons/hi';
-import api from '@/lib/api';
+import { useEffect, useState } from "react";
+import { Bell } from "lucide-react"; // bell icon
 
 export default function NotificationBell() {
-  const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unread, setUnread] = useState(0);
-  const dropdownRef = useRef(null);
+  const [open, setOpen] = useState(false);
 
-  // Fetch notifications
-  const fetchNotifications = async () => {
+  async function fetchNotifications() {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const res = await api.get('/project/notifications', {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch("/api/project/notifications", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`, // adjust if you store token differently
+        },
       });
-
-      setNotifications(res.data || []);
-      setUnread(res.data.filter((n) => !n.read).length);
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data);
+      }
     } catch (err) {
-      console.error('Error fetching notifications:', err);
+      console.error(err);
     }
-  };
-  console.log(notifications);
+  }
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // every 30s
-    return () => clearInterval(interval);
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Mark notification as read
-  const markAsRead = async (id) => {
+  async function markAllRead() {
     try {
-      const token = localStorage.getItem('token');
-      await api.put(`/project/notifications/${id}/read`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
+      const ids = notifications.filter((n) => !n.read).map((n) => n._id);
+      if (!ids.length) return;
+
+      await fetch("/api/project/notifications", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ ids }),
       });
+
       setNotifications((prev) =>
-        prev.map((n) => (n._id === id ? { ...n, read: true } : n))
+        prev.map((n) => ({ ...n, read: true }))
       );
-      setUnread((prev) => Math.max(prev - 1, 0));
     } catch (err) {
-      console.error('Error marking as read:', err);
+      console.error(err);
     }
-  };
+  }
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {/* Bell Icon */}
+    <div className="relative">
+      {/* Bell Icon Button */}
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+        className="relative p-2 rounded-full hover:bg-gray-200"
       >
-        <HiBell className="text-xl" />
-        {unread > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs px-1.5 py-0.5 rounded-full">
-            {unread}
+        <Bell className="h-6 w-6" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs px-1 rounded-full">
+            {unreadCount}
           </span>
         )}
       </button>
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden z-30">
-          <div className="p-3 border-b font-semibold text-gray-700 dark:text-gray-200">
-            Notifications
+        <div className="absolute right-0 mt-2 w-80 bg-white border rounded-lg shadow-lg z-50">
+          <div className="flex justify-between items-center px-3 py-2 border-b">
+            <h3 className="font-semibold text-sm">Notifications</h3>
+            <button
+              onClick={markAllRead}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Mark all read
+            </button>
           </div>
-          <ul className="max-h-64 overflow-y-auto">
+
+          <div className="max-h-64 overflow-y-auto p-2">
             {notifications.length === 0 ? (
-              <li className="p-3 text-sm text-gray-500 text-center">
+              <p className="text-gray-500 text-sm text-center py-4">
                 No notifications
-              </li>
+              </p>
             ) : (
-              notifications.map((n) => (
-                <li
-                  key={n._id}
-                  className={`p-3 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                    !n.read ? 'font-semibold bg-gray-50 dark:bg-gray-700' : ''
-                  }`}
-                  onClick={() => markAsRead(n._id)}
-                >
-                  {n.message}
-                  <div className="text-xs text-gray-400">
-                    {new Date(n.createdAt).toLocaleString()}
-                  </div>
-                </li>
-              ))
+              <ul className="space-y-2">
+                {notifications.map((n) => (
+                  <li
+                    key={n._id}
+                    className={`p-2 rounded-md text-sm ${
+                      n.read ? "bg-gray-50" : "bg-blue-50"
+                    }`}
+                  >
+                    <p>{n.message}</p>
+                    <span className="text-xs text-gray-400">
+                      {new Date(n.createdAt).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
-          </ul>
+          </div>
         </div>
       )}
     </div>

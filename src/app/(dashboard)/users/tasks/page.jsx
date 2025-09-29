@@ -1,241 +1,797 @@
+
+
+
 "use client";
-import { useEffect, useState } from "react";
+
+import React, { useEffect, useState, useRef } from "react";
 import api from "@/lib/api";
+import Select from "react-select";
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [comment, setComment] = useState("");
+  const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  // modals
+  const [modalOpen, setModalOpen] = useState(false);
+  const [subModalOpen, setSubModalOpen] = useState(false);
+
+  // edit state
+  const [editTask, setEditTask] = useState(null);
+  const [editSubtask, setEditSubtask] = useState(null);
+
+  // expanded task for subtasks
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+
+  // dropdown menu state
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const menuRef = useRef(null);
+
+  // task form
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  // const [projectId, setProjectId] = useState("");
+  const [assignees, setAssignees] = useState([]);
+  const [dueDate, setDueDate] = useState("");
+  const [projectedStartDate, setProjectedStartDate] = useState("");
+  const [projectedEndDate, setProjectedEndDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [status, setStatus] = useState("todo");
   const [progress, setProgress] = useState("");
-  const [comments, setComments] = useState([]); // ✅ separate comments state
 
-  // Token
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  if (!token) return null;
+  // subtask form
+  const [subTitle, setSubTitle] = useState("");
+  const [subDescription, setSubDescription] = useState("");
+  const [subAssignees, setSubAssignees] = useState([]);
+  const [startDateData, setStartDateData] = useState("");
+  const [endDateData, setEndDateData] = useState("");
+  const [subDueDate, setSubDueDate] = useState("");
+  const [subPriority, setSubPriority] = useState("medium");
+  const [subStatus, setSubStatus] = useState("todo");
+  const [subProgress, setSubProgress] = useState("");
 
-  // Fetch tasks
-  const fetchTasks = async () => {
+  // fetch data
+  const fetchData = async () => {
     try {
-      const res = await api.get("/project/tasks", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setTasks(res.data);
-
-      // auto-refresh selectedTask
-      if (selectedTask) {
-        const fresh = res.data.find((t) => t._id === selectedTask._id);
-        if (fresh) {
-          setSelectedTask(fresh);
-          setProgress(fresh.progress || 0);
-        }
+      const token = localStorage.getItem("token");
+      if (token) {
+        api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       }
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const [tRes,  uRes] = await Promise.all([
+        api.get("project/tasks", { headers }),
+        // api.get("/project/projects", { headers }),
+        api.get("/company/users", { headers }),
+      ]);
+
+      setTasks(tRes.data);
+      console.log("tasks",tRes.data);
+      // setProjects(pRes.data);
+      const employees = uRes.data.filter((u) =>
+        u.roles?.includes("Employee")
+      );
+      setUsers(employees);
+      console.log("emp",employees);
+
     } catch (err) {
-      console.error("Error fetching tasks:", err);
+      console.error("Error fetching data:", err);
     }
   };
+  
 
   useEffect(() => {
-    fetchTasks();
-    const interval = setInterval(fetchTasks, 10000);
-    return () => clearInterval(interval);
+    fetchData();
   }, []);
 
-  // Fetch comments for a task
-  const fetchComments = async (taskId) => {
-    try {
-      const res = await api.get(`/project/tasks/${taskId}/comments`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setComments(res.data);
-      console.log("comments",comments)
-    } catch (err) {
-      console.error("Error fetching comments:", err);
-    }
-  };
-
-  // Update task (status/progress)
-  const updateTask = async (id, newStatus, newProgress) => {
-    try {
-      const res = await api.put(
-        `/project/tasks/${id}`,
-        { status: newStatus, progress: newProgress },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const updated = res.data;
-
-      setTasks((prev) =>
-        prev.map((t) => (t._id === id ? { ...t, ...updated } : t))
-      );
-
-      if (selectedTask && selectedTask._id === id) {
-        setSelectedTask(updated);
-        setProgress(updated.progress);
+  // close dropdown when clicked outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuId(null);
       }
-    } catch (err) {
-      console.error("Error updating task:", err);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // toggle subtasks
+  const toggleExpand = async (taskId) => {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null); // collapse
+    } else {
+      try {
+        const token = localStorage.getItem("token");
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const res = await api.get(`/tasks/${taskId}/subtasks`, {
+          headers,
+        });
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === taskId ? { ...t, subtasks: res.data } : t
+          )
+        );
+
+        setExpandedTaskId(taskId);
+      } catch (err) {
+        console.error("Error fetching subtasks:", err);
+      }
     }
   };
 
-  // Add comment
-  const addComment = async () => {
-    if (!comment.trim() || !selectedTask) return;
-    try {
-      const res = await api.post(
-        `/project/tasks/${selectedTask._id}/comments`, // ✅ correct endpoint
-        { text: comment },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+  // reset task form
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    // setProjectId("");
+    setAssignees([]);
+    setProjectedStartDate("");
+    setProjectedEndDate("");
+    setStartDate("");
+    setEndDate("");
+    setDueDate("");
+    setPriority("medium");
+    setStatus("todo");
+    setProgress("");
+    setEditTask(null);
+  };
 
-      const newComment = res.data;
-      setComments((prev) => [newComment, ...prev]); // ✅ instantly update UI
-      setComment("");
+  // open/close task modal
+  const openModal = (task = null) => {
+    if (task) {
+      setEditTask(task);
+      setTitle(task.title);
+      setDescription(task.description || "");
+      // setProjectId(task.project?._id || "");
+      setAssignees(task.assignees?.map((u) => u._id || u) || []);
+      setProjectedStartDate(task.projectedStartDate?.split("T")[0] || "");
+      setProjectedEndDate(task.projectedEndDate?.split("T")[0] || "");
+      setStartDate(task.startDate?.split("T")[0] || "");
+      setEndDate(task.endDate?.split("T")[0] || "");
+      setDueDate(task.dueDate?.split("T")[0] || "");
+      setPriority(task.priority);
+      setStatus(task.status);
+      setProgress(task.progress);
+    } else {
+      resetForm();
+    }
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    resetForm();
+  };
+
+  // create/update task
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        title,
+        description,
+      
+        assignees,
+        projectedStartDate: projectedStartDate
+          ? new Date(projectedStartDate).toISOString()
+          : null,
+        projectedEndDate: projectedEndDate
+          ? new Date(projectedEndDate).toISOString()
+          : null,
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        endDate: endDate ? new Date(endDate).toISOString() : null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        priority,
+        status,
+        progress,
+      };
+
+      const token = localStorage.getItem("token");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      if (editTask) {
+        await api.put(`/tasks/${editTask._id}`, payload, { headers });
+      } else {
+        await api.post("/tasks", payload, { headers });
+      }
+
+      await fetchData();
+      closeModal();
     } catch (err) {
-      console.error("Error adding comment:", err);
+      console.error("Error saving task:", err);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await api.delete(`/tasks/${id}`);
+      setTasks(tasks.filter((t) => t._id !== id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // open/close subtask modal
+  const openSubtaskModal = (task, subtask = null) => {
+    setEditTask(task);
+    if (subtask) {
+      setEditSubtask(subtask);
+      setSubTitle(subtask.title || "");
+      setSubDescription(subtask.description || "");
+      setSubAssignees(subtask.assignees?.map((a) => a._id || a) || []);
+      setStartDateData(subtask.startDate?.split("T")[0] || "");
+      setEndDateData(subtask.endDate?.split("T")[0] || "");
+      setSubDueDate(subtask.dueDate?.split("T")[0] || "");
+      setSubPriority(subtask.priority || "medium");
+      setSubStatus(subtask.status || "todo");
+      setSubProgress(subtask.progress || "");
+    } else {
+      setEditSubtask(null);
+      setSubTitle("");
+      setSubDescription("");
+      setSubAssignees([]);
+      setStartDateData("");
+      setEndDateData("");
+      setSubDueDate("");
+      setSubPriority("medium");
+      setSubStatus("todo");
+      setSubProgress("");
+    }
+    setSubModalOpen(true);
+  };
+
+  const closeSubtaskModal = () => {
+    setSubModalOpen(false);
+    setEditSubtask(null);
+  };
+
+  const handleSubtaskSubmit = async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}` };
+
+    try {
+      if (editSubtask) {
+        await api.put(
+          `/tasks/${editTask._id}/subtasks/${editSubtask._id}`,
+          {
+            title: subTitle,
+            description: subDescription,
+            assignees: subAssignees,
+            startDate: startDateData,
+            endDate: endDateData,
+            dueDate: subDueDate,
+            priority: subPriority,
+            status: subStatus,
+            progress: subProgress,
+          },
+          { headers }
+        );
+      } else {
+        await api.post(
+          `/tasks/${editTask._id}/subtasks`,
+          {
+            title: subTitle,
+            description: subDescription,
+            assignees: subAssignees,
+            startDate: startDateData,
+            endDate: endDateData,
+            dueDate: subDueDate,
+            priority: subPriority,
+            status: subStatus,
+            progress: subProgress,
+          },
+          { headers }
+        );
+      }
+      await fetchData();
+      closeSubtaskModal();
+    } catch (err) {
+      console.error("Subtask Submit Error:", err.message);
     }
   };
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6 text-gray-800">📋 My Tasks</h1>
-
-      {/* Task List */}
-      <div className="space-y-4">
-        {tasks.map((task) => (
-          <div
-            key={task._id}
-            onClick={() => {
-              setSelectedTask(task);
-              setProgress(task.progress || 0);
-              fetchComments(task._id); // ✅ load comments on open
-            }}
-            className="p-5 bg-white border rounded-lg shadow hover:shadow-lg flex justify-between items-center cursor-pointer transition"
-          >
-            <div>
-              <p className="font-semibold text-blue-600 text-lg">
-                {task.title}
-              </p>
-              <p className="text-gray-500 text-sm">{task.description}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Progress: {task.progress || 0}% | Status: {task.status}
-              </p>
-            </div>
-
-            <select
-              value={task.status}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) =>
-                updateTask(task._id, e.target.value, task.progress)
-              }
-              className="border rounded px-3 py-2 text-sm cursor-pointer focus:ring focus:ring-blue-300"
-            >
-              <option value="todo">📝 Todo</option>
-              <option value="in-progress">🚧 In Progress</option>
-              <option value="completed">✅ Completed</option>
-            </select>
-          </div>
-        ))}
-
-        {tasks.length === 0 && (
-          <p className="text-center text-gray-500">No tasks found 🚀</p>
-        )}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Tasks</h1>
+        <button
+          onClick={() => openModal()}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          + New Task
+        </button>
       </div>
 
-      {/* Modal */}
-      {selectedTask && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-lg relative animate-fadeIn">
-            {/* Close */}
-            <button
-              onClick={() => {
-                setSelectedTask(null);
-                setComments([]); // clear when closing
-              }}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 transition"
-            >
-              ✖
-            </button>
-
-            {/* Task Details */}
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              {selectedTask.title}
-            </h2>
-            <p className="text-gray-600 mb-4">{selectedTask.description}</p>
-
-            {/* Status */}
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Status
-            </label>
-            <select
-              value={selectedTask.status}
-              onChange={(e) =>
-                updateTask(selectedTask._id, e.target.value, progress)
-              }
-              className="w-full border rounded px-3 py-2 mb-4 focus:ring focus:ring-blue-300"
-            >
-              <option value="todo">📝 Todo</option>
-              <option value="in-progress">🚧 In Progress</option>
-              <option value="completed">✅ Completed</option>
-            </select>
-
-            {/* Progress */}
-            <h3 className="font-semibold text-gray-700 mt-4 mb-2">Progress</h3>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={progress}
-                onChange={(e) => setProgress(e.target.value)}
-                placeholder="Enter progress %"
-                min="0"
-                max="100"
-                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring focus:ring-blue-300"
-              />
-              <button
-                onClick={() =>
-                  updateTask(selectedTask._id, selectedTask.status, progress)
-                }
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition"
+      {/* Table */}
+      <table className="w-full border">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="p-2 border">Title</th>
+            {/* <th className="p-2 border">Project</th> */}
+            <th className="p-2 border">Assignees</th>
+            <th className="p-2 border">Start Date</th>
+            <th className="p-2 border">End Date</th>
+            <th className="p-2 border">Priority</th>
+            <th className="p-2 border">Status</th>
+            <th className="p-2 border">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.map((t) => (
+            <React.Fragment key={t._id}>
+              {/* Task Row */}
+              <tr
+                className="bg-white hover:bg-gray-50 cursor-pointer"
+                onClick={() => toggleExpand(t._id)}
               >
-                Save
-              </button>
-            </div>
+                <td className="p-2 border font-medium">
+                  {t.title}{" "}
+                  {t.subtasks?.length > 0 && (
+                    <span className="text-xs text-blue-600 ml-2">
+                      ({t.subtasks.length} subtasks)
+                    </span>
+                  )}
+                </td>
+                {/* <td className="p-2 border">{t.project?.name}</td> */}
+                <td className="p-2 border">
+                  {t.assignees?.map((u) => u.name || u).join(", ")}
+                </td>
+                <td className="p-2 border">
+                  {t.startDate ? new Date(t.startDate).toLocaleDateString("en-IN") : "-"}
+                </td>
+                
+                <td className="p-2 border">
+                  {t.endDate ? new Date(t.endDate).toLocaleDateString("en-IN") : "-"}
+                </td>
+                <td className="p-2 border">{t.priority}</td>
+                <td className="p-2 border">{t.status}</td>
+                <td
+                className="p-2 border relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() =>
+                    setOpenMenuId(openMenuId === t._id ? null : t._id)
+                  }
+                  className="p-1 rounded hover:bg-gray-200"
+                >
+                  ⋮
+                </button>
 
-            {/* Comments */}
-            <h3 className="font-semibold text-gray-700 mt-4 mb-2">
-              💬 Comments
-            </h3>
-            <ul className="mb-3 max-h-40 overflow-y-auto border rounded-lg p-3 bg-gray-50">
-              {comments.length > 0 ? (
-                comments.map((c) => (
-                  <li
-                    key={c._id}
-                    className="bg-white p-2 rounded shadow mb-2 text-sm"
+                {openMenuId === t._id && (
+                  <div
+                    ref={menuRef}
+                    className="absolute right-2 mt-1 w-32 bg-white border rounded shadow-md z-10"
                   >
-                    <span className="font-semibold">{c.author?.name}:</span>{" "}
-                    {c.text}
-                  </li>
-                ))
-              ) : (
-                <p className="text-gray-400 text-sm">No comments yet.</p>
-              )}
-            </ul>
+                    <button
+                      onClick={() => {
+                        openSubtaskModal(t);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-green-600"
+                    >
+                      + Subtask
+                    </button>
+                    <button
+                      onClick={() => {
+                        openModal(t);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-blue-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDelete(t._id);
+                        setOpenMenuId(null);
+                      }}
+                      className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </td>
+      
 
-            {/* Add comment */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Write a comment..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring focus:ring-blue-300"
-              />
-              <button
-                onClick={addComment}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
-              >
-                Send
-              </button>
-            </div>
+              </tr>
+
+              {/* Subtasks Row (collapsible) */}
+              {expandedTaskId === t._id && t.subtasks?.length > 0 && (
+                <tr key={`${t._id}-subtasks`}>
+                  <td colSpan="7" className="p-2 bg-gray-50">
+                    <div className="ml-6 space-y-2">
+                      {t.subtasks.map((s) => (
+                        <div
+                          key={s._id}
+                          className="flex justify-between items-center border-b pb-1"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{s.title}</p>
+                            <p className="text-xs text-gray-500">
+                              {s.status} • {s.priority}
+                            </p>
+                          </div>
+                          <div className="space-x-2">
+                            <button
+                              onClick={() => openSubtaskModal(t, s)}
+                              className="text-blue-600 text-sm hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() =>
+                                console.log("Delete subtask", s._id)
+                              }
+                              className="text-red-600 text-sm hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Modals (Task + Subtask) */}
+      {/* Task Modal */}
+      {modalOpen && (
+             <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center  z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">
+              {editTask ? "Edit Task" : "New Task"}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Title - Full width */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Title</label>
+                <input
+                  type="text"
+                  placeholder="Task Title"
+                  className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Description - Full width */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Description</label>
+                <textarea
+                  placeholder="Task Description"
+                  className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Two-column grid for other fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Project */}
+                {/* <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Project</label>
+                  <Select
+                    options={projects.map((p) => ({
+                      value: p._id,
+                      label: p.name,
+                    }))}
+                    value={projects
+                      .filter((p) => p._id === projectId)
+                      .map((p) => ({ value: p._id, label: p.name }))}
+                    onChange={(selected) => setProjectId(selected?.value || "")}
+                    placeholder="Search & select project"
+                    className="text-sm"
+                    classNamePrefix="select"
+                    isSearchable
+                  />
+                </div> */}
+
+                {/* Assignees */}
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Assignees</label>
+                  <Select
+                    isMulti
+                    options={users.map((u) => ({
+                      value: u._id,
+                      label: u.name,
+                    }))}
+                    value={assignees.map((id) => {
+                      const user = users.find((u) => u._id === id);
+                      return { value: id, label: user?.name || id };
+                    })}
+                    onChange={(selected) =>
+                      setAssignees(selected.map((s) => s.value))
+                    }
+                    placeholder="Search & select users"
+                    className="text-sm"
+                    classNamePrefix="select"
+                  />
+                </div>
+
+                {/* Dates */}
+                {/* <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div> */}
+
+                {/* <div className="flex flex-col">
+                  <label className="font-semibold mb-1">
+                    Projected Start Date
+                  </label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={projectedStartDate}
+                    onChange={(e) => setProjectedStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">
+                    Projected End Date
+                  </label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={projectedEndDate}
+                    onChange={(e) => setProjectedEndDate(e.target.value)}
+                  />
+                </div> */}
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">End Date</label>
+                  <input
+                    type="date"
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Priority</label>
+                  <select
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Status</label>
+                  <select
+                    className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Progress</label>
+                  <input
+                    type="number"
+                    value={progress}
+                    onChange={(e) => setProgress(e.target.value)}
+                    className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                  />
+                </div>
+              
+
+              </div>
+
+              {/* Buttons */}
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                >
+                  {editTask ? "Update" : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Subtask Modal */}
+      {subModalOpen && (
+         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">
+              {editSubtask ? "Edit Subtask" : "New Subtask"}
+            </h2>
+
+            <form onSubmit={handleSubtaskSubmit} className="space-y-4">
+              {/* Title */}
+              <h1>Subtask Title</h1>
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Title </label>
+                <input
+                  type="text"
+                  className="border p-2 rounded w-full"
+                  value={subTitle}
+                  onChange={(e) => setSubTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Description */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Description</label>
+                <textarea
+                  className="border p-2 rounded w-full"
+                  value={subDescription}
+                  onChange={(e) => setSubDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Assignees */}
+              <div className="flex flex-col">
+                <label className="font-semibold mb-1">Assignees</label>
+                <Select
+                  isMulti
+                  options={users.map((u) => ({ value: u._id, label: u.name }))}
+                  value={subAssignees.map((id) => {
+                    const user = users.find((u) => u._id === id);
+                    return { value: id, label: user?.name || id };
+                  })}
+                  onChange={(selected) =>
+                    setSubAssignees(selected.map((s) => s.value))
+                  }
+                />
+              </div>
+              {/* <div className="flex flex-col"> 
+                <label className="font-semibold mb-1">Projected Start Date</label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={projecStarttData}
+                  onChange={(e) => setProjectStartData(e.target.value)}
+                />
+
+              </div>
+              <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> Projected End Date </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={projectEndData}
+                  onChange={(e) => setProjectEndData(e.target.value)}
+                />
+
+              </div> */}
+                <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> Start Date  </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={startDateData}
+                  onChange={(e) => setStartDateData(e.target.value)}
+                />
+
+              </div>
+              <div className="flex flex-col"> 
+                <label className="font-semibold mb-1"> End Date </label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={endDateData}
+                  onChange={(e) => setEndDateData(e.target.value)}
+                />
+
+              </div>
+           
+
+              {/* Due Date */}
+              {/* <div className="flex flex-col">
+                <label className="font-semibold mb-1">Due Date</label>
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={subDueDate}
+                  onChange={(e) => setSubDueDate(e.target.value)}
+                />
+              </div> */}
+
+              {/* Priority + Status */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Priority</label>
+                  <select
+                    className="border p-2 rounded"
+                    value={subPriority}
+                    onChange={(e) => setSubPriority(e.target.value)}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Status</label>
+                  <select
+                    className="border p-2 rounded"
+                    value={subStatus}
+                    onChange={(e) => setSubStatus(e.target.value)}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col">
+                  <label className="font-semibold mb-1">Progress</label>
+                  <input
+                    type="number"
+                    value={subProgress}
+                    onChange={(e) => setSubProgress(e.target.value)}
+                    className="px-5 py-2 border rounded hover:bg-gray-100 transition"
+                    />
+              </div>
+            
+
+
+              {/* Buttons */}
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={closeSubtaskModal}
+                  className="px-4 py-2 border rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded"
+                >
+                  {editSubtask ? "Update" : "Add"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -246,304 +802,3 @@ export default function TasksPage() {
 
 
 
-
-
-// "use client";
-// import { useEffect, useState } from "react";
-// import api from "@/lib/api";
-
-// export default function TasksPage() {
-//   const [tasks, setTasks] = useState([]);
-//   const [selectedTask, setSelectedTask] = useState(null);
-//   const [comment, setComment] = useState("");
-//   const [progress, setProgress] = useState("");
-//   const [comments, setComments] = useState([]); // ✅ separate comments state
-
-//   // Token
-//   const token =
-//     typeof window !== "undefined" ? localStorage.getItem("token") : null;
-//   if (!token) return null;
-
-//   // Fetch tasks
-//   const fetchTasks = async () => {
-//     try {
-//       const res = await api.get("/project/tasks", {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       setTasks(res.data);
-
-//       // auto-refresh selectedTask
-//       if (selectedTask) {
-//         const fresh = res.data.find((t) => t._id === selectedTask._id);
-//         if (fresh) {
-//           setSelectedTask(fresh);
-//           setProgress(fresh.progress || 0);
-//         }
-//       }
-//     } catch (err) {
-//       console.error("Error fetching tasks:", err);
-//     }
-//   };
-
-//   useEffect(() => {
-//     fetchTasks();
-//     const interval = setInterval(fetchTasks, 10000);
-//     return () => clearInterval(interval);
-//   }, []);
-
-//   // Fetch comments for a task
-//   const fetchComments = async (taskId) => {
-//     try {
-//       const res = await api.get(`/project/tasks/${taskId}/comments`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       setComments(res.data);
-//     } catch (err) {
-//       console.error("Error fetching comments:", err);
-//     }
-//   };
-
-//   // Update task (status/progress)
-//   const updateTask = async (id, newStatus, newProgress) => {
-//     try {
-//       const res = await api.put(
-//         `/project/tasks/${id}`,
-//         { status: newStatus, progress: newProgress },
-//         { headers: { Authorization: `Bearer ${token}` } }
-//       );
-//       const updated = res.data;
-
-//       setTasks((prev) =>
-//         prev.map((t) => (t._id === id ? { ...t, ...updated } : t))
-//       );
-
-//       if (selectedTask && selectedTask._id === id) {
-//         setSelectedTask(updated);
-//         setProgress(updated.progress);
-//       }
-//     } catch (err) {
-//       console.error("Error updating task:", err);
-//     }
-//   };
-
-//   // Add comment
-//   const addComment = async () => {
-//     if (!comment.trim()) return;
-//     try {
-//       const res = await api.post(
-//         `/project/comments`,
-//         { taskId: selectedTask._id, text: comment },
-//         { headers: { Authorization: `Bearer ${token}` } }
-//       );
-
-//       const newComment = res.data;
-//       setComments((prev) => [newComment, ...prev]); // ✅ instantly update
-//       setComment("");
-//     } catch (err) {
-//       console.error("Error adding comment:", err);
-//     }
-//   };
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-2xl font-bold mb-6 text-gray-800">📋 My Tasks</h1>
-
-//       {/* Task List */}
-//       <div className="space-y-4">
-//         {tasks.map((task) => (
-//           <div
-//             key={task._id}
-//             onClick={() => {
-//               setSelectedTask(task);
-//               setProgress(task.progress || 0);
-//               fetchComments(task._id); // ✅ load comments on open
-//             }}
-//             className="p-5 bg-white border rounded-lg shadow hover:shadow-lg flex justify-between items-center cursor-pointer transition"
-//           >
-//             <div>
-//               <p className="font-semibold text-blue-600 text-lg">
-//                 {task.title}
-//               </p>
-//               <p className="text-gray-500 text-sm">{task.description}</p>
-//               <p className="text-xs text-gray-400 mt-1">
-//                 Progress: {task.progress || 0}% | Status: {task.status}
-//               </p>
-//             </div>
-
-//             <select
-//               value={task.status}
-//               onClick={(e) => e.stopPropagation()}
-//               onChange={(e) =>
-//                 updateTask(task._id, e.target.value, task.progress)
-//               }
-//               className="border rounded px-3 py-2 text-sm cursor-pointer focus:ring focus:ring-blue-300"
-//             >
-//               <option value="todo">📝 Todo</option>
-//               <option value="in-progress">🚧 In Progress</option>
-//               <option value="completed">✅ Completed</option>
-//             </select>
-//           </div>
-//         ))}
-
-//         {tasks.length === 0 && (
-//           <p className="text-center text-gray-500">No tasks found 🚀</p>
-//         )}
-//       </div>
-
-//       {/* Modal */}
-//       {selectedTask && (
-//         <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
-//           <div className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-lg relative animate-fadeIn">
-//             {/* Close */}
-//             <button
-//               onClick={() => {
-//                 setSelectedTask(null);
-//                 setComments([]); // clear when closing
-//               }}
-//               className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 transition"
-//             >
-//               ✖
-//             </button>
-
-//             {/* Task Details */}
-//             <h2 className="text-xl font-bold text-gray-800 mb-2">
-//               {selectedTask.title}
-//             </h2>
-//             <p className="text-gray-600 mb-4">{selectedTask.description}</p>
-
-//             {/* Status */}
-//             <label className="block text-sm font-medium text-gray-700 mb-1">
-//               Status
-//             </label>
-//             <select
-//               value={selectedTask.status}
-//               onChange={(e) =>
-//                 updateTask(selectedTask._id, e.target.value, progress)
-//               }
-//               className="w-full border rounded px-3 py-2 mb-4 focus:ring focus:ring-blue-300"
-//             >
-//               <option value="todo">📝 Todo</option>
-//               <option value="in-progress">🚧 In Progress</option>
-//               <option value="completed">✅ Completed</option>
-//             </select>
-
-//             {/* Progress */}
-//             <h3 className="font-semibold text-gray-700 mt-4 mb-2">Progress</h3>
-//             <div className="flex gap-2">
-//               <input
-//                 type="number"
-//                 value={progress}
-//                 onChange={(e) => setProgress(e.target.value)}
-//                 placeholder="Enter progress %"
-//                 min="0"
-//                 max="100"
-//                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring focus:ring-blue-300"
-//               />
-//               <button
-//                 onClick={() =>
-//                   updateTask(selectedTask._id, selectedTask.status, progress)
-//                 }
-//                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition"
-//               >
-//                 Save
-//               </button>
-//             </div>
-
-//             {/* Comments */}
-//             <h3 className="font-semibold text-gray-700 mt-4 mb-2">
-//               💬 Comments
-//             </h3>
-//             <ul className="mb-3 max-h-40 overflow-y-auto border rounded-lg p-3 bg-gray-50">
-//               {comments.length > 0 ? (
-//                 comments.map((c) => (
-//                   <li
-//                     key={c._id}
-//                     className="bg-white p-2 rounded shadow mb-2 text-sm"
-//                   >
-//                     <span className="font-semibold">{c.author?.name}:</span>{" "}
-//                     {c.text}
-//                   </li>
-//                 ))
-//               ) : (
-//                 <p className="text-gray-400 text-sm">No comments yet.</p>
-//               )}
-//             </ul>
-
-//             {/* Add comment */}
-//             <div className="flex gap-2">
-//               <input
-//                 type="text"
-//                 value={comment}
-//                 onChange={(e) => setComment(e.target.value)}
-//                 placeholder="Write a comment..."
-//                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring focus:ring-blue-300"
-//               />
-//               <button
-//                 onClick={addComment}
-//                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
-//               >
-//                 Send
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-/////////////////////////////////////////////////////////////
-
-
-// "use client";
-// import { useEffect, useState } from "react";
-// // import DashboardLayout from "@/components/DashboardLayout";
-// import axios from "axios";
-// import api from "@/lib/api";
-// import Link from "next/link";
-// export default function TasksPage() {
-//   const [tasks, setTasks] = useState([]);
-
-//   useEffect(() => {
-//     api.get("/project/tasks").then((res) => setTasks(res.data));
-//   }, []);
-
-//   const updateStatus = async (id, newStatus) => {
-//     await api.put(`/project/tasks/${id}`, { status: newStatus });
-//     setTasks(tasks.map((t) => (t._id === id ? { ...t, status: newStatus } : t)));
-//   };
-
-//   return (
-//     <>
-//       <h1 className="text-xl font-bold mb-4">My Tasks</h1>
-//       <div className="space-y-4">
-//         {tasks.map((task) => (
-//           <div key={task._id} className="p-4 bg-white shadow rounded flex justify-between items-center">
-//             <div>
-//                 <div>
-//       {tasks.map((task) => (
-//         <div key={task._id} className="p-2 border-b">
-//           <Link href={`/users/tasks/${task._id}`}>
-//             {task.title}
-//           </Link>
-//         </div>
-//       ))}
-//     </div>
-//               <p className="text-gray-600">{task.description}</p>
-//             </div>
-//             <select
-//               value={task.status}
-//               onChange={(e) => updateStatus(task._id, e.target.value)}
-//               className="border rounded px-2 py-1"
-//             >
-//               <option value="todo">Todo</option>
-//               <option value="in-progress">In Progress</option>
-//               <option value="completed">Completed</option>
-//             </select>
-//           </div>
-//         ))}
-//       </div>
-//     </>
-//   );
-// }

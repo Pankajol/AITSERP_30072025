@@ -125,90 +125,216 @@ async function deleteFilesByPublicIds(publicIds) {
  * ✅ Helper to process each GRN line item for Inventory and Stock Movement updates
  * This function handles both overall quantity and batch-specific updates.
  */
-async function processGrnItem(item, grnId, decodedToken, session,fromPO) {
+// async function processGrnItem(item, grnId, decodedToken, session,fromPO) {
+//   const qty = Number(item.quantity);
+
+//   // ✅ Extract proper IDs
+//   const itemId = item.item?._id || item.item;
+//   const warehouseId = item.warehouse;
+//   const binId = item.selectedBin?._id || item.selectedBin || null;
+
+//   if (!itemId || !Types.ObjectId.isValid(itemId) || !warehouseId || !Types.ObjectId.isValid(warehouseId) || qty <= 0) {
+//     console.warn(`Skipping invalid GRN item: ${item.itemCode || itemId} - missing item/warehouse ID or invalid quantity. Item data:`, item);
+//     throw new Error(`Invalid GRN item data for ${item.itemCode || 'an item'}. Check Item ID, Warehouse ID, or Quantity.`);
+//   }
+
+//   let inventoryDoc = await Inventory.findOne({
+//     item: new Types.ObjectId(itemId),
+//     warehouse: new Types.ObjectId(warehouseId),
+//     bin: binId ? new Types.ObjectId(binId) : null,
+//     companyId: decodedToken.companyId
+//   }).session(session);
+
+//   if (!inventoryDoc) {
+//     inventoryDoc = await Inventory.create([{
+//       item: new Types.ObjectId(itemId),
+//       warehouse: new Types.ObjectId(warehouseId),
+//       bin: binId ? new Types.ObjectId(binId) : null,
+//       companyId: decodedToken.companyId,
+//       quantity: 0,
+//       committed: 0,
+//       onOrder: 0,
+//       batches: [],
+//     }], { session });
+//     inventoryDoc = inventoryDoc[0];
+//     console.log(`Created new Inventory record for item ${itemId} in warehouse ${warehouseId}`);
+//     console.log(`Created new Inventory record for item ${itemId} in warehouse ${warehouseId}${binId ? `, bin ${binId}` : ''}`);
+//   }
+
+//   // ✅ Reduce onOrder, increase actual quantity
+//   if (fromPO) {
+//   inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
+// }
+
+
+//   /* ---------- Batch-Managed Items Handling ---------- */
+//   if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches) && item.batches.length > 0) {
+//     for (const receivedBatch of item.batches) {
+//       const batchQty = Number(receivedBatch.allocatedQuantity ?? receivedBatch.batchQuantity);
+//             const batchBinId = receivedBatch.selectedBin?._id || receivedBatch.selectedBin || binId || null; 
+//       if (!receivedBatch.batchNumber || isNaN(batchQty) || batchQty <= 0) {
+//         console.warn(`Skipping invalid batch for ${item.itemCode}:`, receivedBatch);
+//         continue;
+//       }
+
+//       const batchIndex = inventoryDoc.batches.findIndex(b => b.batchNumber === receivedBatch.batchNumber);
+//       if (batchIndex === -1) {
+//         inventoryDoc.batches.push({
+//           batchNumber: receivedBatch.batchNumber,
+//           quantity: batchQty,
+//           expiryDate: receivedBatch.expiryDate ? new Date(receivedBatch.expiryDate) : null,
+//           manufacturer: receivedBatch.manufacturer || '',
+//           unitPrice: receivedBatch.unitPrice || 0,
+//         });
+//       } else {
+//         inventoryDoc.batches[batchIndex].quantity += batchQty;
+//           if (batchBinId) {
+//           inventoryDoc.batches[batchIndex].bin = new Types.ObjectId(batchBinId); // update bin if provided
+//         }
+//       }
+//     }
+//   } else if (item.managedBy?.toLowerCase() === "batch" && (!Array.isArray(item.batches) || item.batches.length === 0)) {
+//     console.warn(`Item ${item.itemCode} is batch-managed but no batches provided. Proceeding with normal update.`);
+//     // ✅ Do nothing special
+//   }
+
+//   // ✅ Always update overall quantity
+//   inventoryDoc.quantity += qty;
+//   await inventoryDoc.save({ session });
+
+//   // ✅ Stock Movement
+//   await StockMovement.create([{
+//     item: new Types.ObjectId(itemId),
+//     warehouse: new Types.ObjectId(warehouseId),
+//      bin: batchBinId ? new Types.ObjectId(batchBinId) : null,
+//     movementType: "IN",
+//     quantity: qty,
+//     reference: grnId,
+//     referenceType: "GRN",
+//     remarks: "Stock received via GRN",
+//     companyId: decodedToken.companyId,
+//     createdBy: decodedToken.userId,
+//   }], { session });
+
+//   console.log(`Processed GRN item: ${item.itemCode || itemId}, qty: ${qty}`);
+// }
+
+
+
+async function processGrnItem(item, grnId, decodedToken, session, fromPO) {
   const qty = Number(item.quantity);
 
-  // ✅ Extract proper IDs
+  // ✅ Extract IDs
   const itemId = item.item?._id || item.item;
-  const warehouseId = item.warehouse;
+  const warehouseId = item.warehouse?._id || item.warehouse;
+  const binId = item.selectedBin?._id || item.selectedBin || null;
 
   if (!itemId || !Types.ObjectId.isValid(itemId) || !warehouseId || !Types.ObjectId.isValid(warehouseId) || qty <= 0) {
-    console.warn(`Skipping invalid GRN item: ${item.itemCode || itemId} - missing item/warehouse ID or invalid quantity. Item data:`, item);
-    throw new Error(`Invalid GRN item data for ${item.itemCode || 'an item'}. Check Item ID, Warehouse ID, or Quantity.`);
+    console.warn(`Skipping invalid GRN item: ${item.itemCode || itemId}`, item);
+    throw new Error(`Invalid GRN item for ${item.itemCode || 'unknown'}`);
   }
 
+  // ✅ Find inventory record
   let inventoryDoc = await Inventory.findOne({
     item: new Types.ObjectId(itemId),
     warehouse: new Types.ObjectId(warehouseId),
-    companyId: decodedToken.companyId
+    bin: binId ? new Types.ObjectId(binId) : { $in: [null, undefined] },
+    companyId: decodedToken.companyId,
   }).session(session);
 
+  // ✅ Create if not exists
   if (!inventoryDoc) {
-    inventoryDoc = await Inventory.create([{
+    inventoryDoc = new Inventory({
       item: new Types.ObjectId(itemId),
       warehouse: new Types.ObjectId(warehouseId),
+      bin: binId ? new Types.ObjectId(binId) : null,
       companyId: decodedToken.companyId,
       quantity: 0,
       committed: 0,
       onOrder: 0,
       batches: [],
-    }], { session });
-    inventoryDoc = inventoryDoc[0];
-    console.log(`Created new Inventory record for item ${itemId} in warehouse ${warehouseId}`);
+    });
+    console.log(`Created new inventory for item ${itemId} in warehouse ${warehouseId}${binId ? `, bin ${binId}` : ""}`);
   }
 
-  // ✅ Reduce onOrder, increase actual quantity
+  // ✅ Reduce onOrder if coming from PO
   if (fromPO) {
-  inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
-}
+    inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
+  }
 
-
-  /* ---------- Batch-Managed Items Handling ---------- */
+  // ---------- Batch-Managed Items ----------
   if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches) && item.batches.length > 0) {
     for (const receivedBatch of item.batches) {
       const batchQty = Number(receivedBatch.allocatedQuantity ?? receivedBatch.batchQuantity);
+      const batchBinId = receivedBatch.selectedBin?._id || receivedBatch.selectedBin || binId || null;
+
       if (!receivedBatch.batchNumber || isNaN(batchQty) || batchQty <= 0) {
-        console.warn(`Skipping invalid batch for ${item.itemCode}:`, receivedBatch);
+        console.warn(`Skipping invalid batch for ${item.itemCode || itemId}`, receivedBatch);
         continue;
       }
 
+      // Ensure batches array exists
+      if (!Array.isArray(inventoryDoc.batches)) inventoryDoc.batches = [];
+
       const batchIndex = inventoryDoc.batches.findIndex(b => b.batchNumber === receivedBatch.batchNumber);
+
       if (batchIndex === -1) {
+        // Add new batch
         inventoryDoc.batches.push({
           batchNumber: receivedBatch.batchNumber,
           quantity: batchQty,
           expiryDate: receivedBatch.expiryDate ? new Date(receivedBatch.expiryDate) : null,
-          manufacturer: receivedBatch.manufacturer || '',
+          manufacturer: receivedBatch.manufacturer || "",
           unitPrice: receivedBatch.unitPrice || 0,
+          bin: batchBinId ? new Types.ObjectId(batchBinId) : null,
         });
       } else {
+        // Update existing batch
         inventoryDoc.batches[batchIndex].quantity += batchQty;
+        if (batchBinId) inventoryDoc.batches[batchIndex].bin = new Types.ObjectId(batchBinId);
       }
+
+      // Update overall quantity
+      inventoryDoc.quantity += batchQty;
+
+      // Create StockMovement
+      await StockMovement.create([{
+        item: new Types.ObjectId(itemId),
+        warehouse: new Types.ObjectId(warehouseId),
+        bin: batchBinId ? new Types.ObjectId(batchBinId) : null,
+        movementType: "IN",
+        quantity: batchQty,
+        reference: grnId,
+        referenceType: "GRN",
+        remarks: `Stock received via GRN - Batch ${receivedBatch.batchNumber}`,
+        companyId: decodedToken.companyId,
+        createdBy: decodedToken.userId,
+      }], { session });
     }
-  } else if (item.managedBy?.toLowerCase() === "batch" && (!Array.isArray(item.batches) || item.batches.length === 0)) {
-    console.warn(`Item ${item.itemCode} is batch-managed but no batches provided. Proceeding with normal update.`);
-    // ✅ Do nothing special
+  } else {
+    // ---------- Non-Batch Items ----------
+    inventoryDoc.quantity += qty;
+
+    await StockMovement.create([{
+      item: new Types.ObjectId(itemId),
+      warehouse: new Types.ObjectId(warehouseId),
+      bin: binId ? new Types.ObjectId(binId) : null,
+      movementType: "IN",
+      quantity: qty,
+      reference: grnId,
+      referenceType: "GRN",
+      remarks: "Stock received via GRN",
+      companyId: decodedToken.companyId,
+      createdBy: decodedToken.userId,
+    }], { session });
   }
 
-  // ✅ Always update overall quantity
-  inventoryDoc.quantity += qty;
+  // ✅ Save updates
   await inventoryDoc.save({ session });
 
-  // ✅ Stock Movement
-  await StockMovement.create([{
-    item: new Types.ObjectId(itemId),
-    warehouse: new Types.ObjectId(warehouseId),
-    movementType: "IN",
-    quantity: qty,
-    reference: grnId,
-    referenceType: "GRN",
-    remarks: "Stock received via GRN",
-    companyId: decodedToken.companyId,
-    createdBy: decodedToken.userId,
-  }], { session });
-
-  console.log(`Processed GRN item: ${item.itemCode || itemId}, qty: ${qty}`);
+  console.log(`Processed GRN item: ${item.itemCode || itemId}, qty: ${qty}${binId ? `, bin: ${binId}` : ""}`);
 }
+
 
 
 

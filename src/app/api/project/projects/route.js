@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Project from "@/models/project/ProjectModel";
+import Notification from "@/models/project/NotificationModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import "@/models/CompanyUser";
 import "@/models/project/WorkspaceModel";
 import "@/models/CustomerModel";
 import "@/models/SalesOrder";
 
-// GET: fetch projects (owner or member)
+// ✅ GET: fetch projects (owner or member)
 export async function GET(req) {
   try {
     await connectDB();
@@ -21,7 +22,7 @@ export async function GET(req) {
     })
       .populate("owner", "name email")
       .populate("workspace", "name")
-      .populate("members", "name email") // ✅ also populate members
+      .populate("members", "name email")
       .populate("customer", "customerName")
       .populate("salesOrder", "documentNumberOrder");
 
@@ -31,7 +32,7 @@ export async function GET(req) {
   }
 }
 
-// POST: create new project
+// ✅ POST: create new project & send notifications
 export async function POST(req) {
   try {
     await connectDB();
@@ -41,17 +42,41 @@ export async function POST(req) {
     const decoded = verifyJWT(token);
     const body = await req.json();
 
+    // Create project
     const project = new Project({
       ...body,
       company: decoded.companyId,
-      owner: decoded.id, // ✅ logged-in user is the owner
-      members: body.members?.length ? body.members : [decoded.id], // ✅ ensure at least owner is in members
-
+      owner: decoded.id,
+      members: body.members?.length ? body.members : [decoded.id],
     });
 
     await project.save();
 
-    // repopulate for response (so UI has user names immediately)
+    // 🔔 Notifications
+    // Admin notification
+    await Notification.create({
+      user: decoded.id,
+      company: decoded.companyId,
+      type: "project_created",
+      message: `Project "${project.name}" created by ${decoded.name || "a user"}`,
+      project: project._id,
+      role: "admin",
+    });
+
+    // Member notifications
+    for (const memberId of project.members) {
+      await Notification.create({
+        user: decoded.id,
+        company: decoded.companyId,
+        type: "project_assigned",
+        message: `You have been assigned to project "${project.name}"`,
+        project: project._id,
+        role: "user",
+        assignedTo: memberId,
+      });
+    }
+
+    // Repopulate before sending response
     const populatedProject = await Project.findById(project._id)
       .populate("owner", "name email")
       .populate("workspace", "name")
@@ -59,13 +84,11 @@ export async function POST(req) {
       .populate("customer", "customerName")
       .populate("salesOrder", "documentNumberOrder");
 
-
     return NextResponse.json(populatedProject, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }
-
 
 
 

@@ -126,62 +126,122 @@ export default function ProjectsPage() {
     setDefaultCostCenter("");
   };
 
-  // add / edit project
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      if (editProject) {
-        // update
-        const res = await api.put(`/project/projects/${editProject._id}`, {
-          name,
-          workspace: workspaceId,
-          status,
-          description,
-          dueDate,
-          projectedStartDate,
-          projectedEndDate,
-          startDate,
-          endDate,
-          priority,
-          members: assignees,
-          assignedTo,
-          customer : customer,
-          salesOrder: salesOrder,
-          costingBilling,
-          estimatedCosting,
-          defaultCostCenter,
-        });
-        setProjects((prev) =>
-          prev.map((p) => (p._id === editProject._id ? res.data : p))
-        );
-      } else {
-        // create
-        const res = await api.post("/project/projects", {
-          name,
-          workspace: workspaceId,
-          status,
-          description,
-          dueDate,
-          projectedStartDate,
-          projectedEndDate,
-          startDate,
-          endDate,
-          priority,
-          members: assignees,
-          assignedTo,
-          customer: customer ? customer.value : null,
-          salesOrder: salesOrder ? salesOrder.value : null,
-          costingBilling,
-          estimatedCosting,
-          defaultCostCenter,
-        });
-        setProjects([...projects, res.data]);
-      }
-      closeModal();
-    } catch (err) {
-      console.error(err);
+  // // add / edit project
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   try {
+  //     if (editProject) {
+  //       // update
+  //       const res = await api.put(`/project/projects/${editProject._id}`, {
+  //         name,
+  //         workspace: workspaceId,
+  //         status,
+  //         description,
+  //         dueDate,
+  //         projectedStartDate,
+  //         projectedEndDate,
+  //         startDate,
+  //         endDate,
+  //         priority,
+  //         members: assignees,
+  //         assignedTo,
+  //         customer : customer,
+  //         salesOrder: salesOrder,
+  //         costingBilling,
+  //         estimatedCosting,
+  //         defaultCostCenter,
+  //       });
+  //       setProjects((prev) =>
+  //         prev.map((p) => (p._id === editProject._id ? res.data : p))
+  //       );
+  //     } else {
+  //       // create
+  //       const res = await api.post("/project/projects", {
+  //         name,
+  //         workspace: workspaceId,
+  //         status,
+  //         description,
+  //         dueDate,
+  //         projectedStartDate,
+  //         projectedEndDate,
+  //         startDate,
+  //         endDate,
+  //         priority,
+  //         members: assignees,
+  //         assignedTo,
+  //         customer: customer ? customer.value : null,
+  //         salesOrder: salesOrder ? salesOrder.value : null,
+  //         costingBilling,
+  //         estimatedCosting,
+  //         defaultCostCenter,
+  //       });
+  //       setProjects([...projects, res.data]);
+  //     }
+  //     closeModal();
+  //   } catch (err) {
+  //     console.error(err);
+  //   }
+  // };
+
+// add / edit project
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    if (editProject) {
+      // update
+      const res = await api.put(`/project/projects/${editProject._id}`, {
+        name,
+        workspace: workspaceId,
+        status,
+        description,
+        dueDate,
+        projectedStartDate,
+        projectedEndDate,
+        startDate,
+        endDate,
+        priority,
+        members: assignees, // array of user IDs
+        assignedTo,
+        customer: customer ? customer.value : null,   // ✅ fixed
+        salesOrder: salesOrder ? salesOrder.value : null, // ✅ fixed
+        costingBilling,
+        estimatedCosting,
+        defaultCostCenter,
+      });
+      setProjects((prev) =>
+        prev.map((p) => (p._id === editProject._id ? res.data : p))
+      );
+    } else {
+      // create
+      const res = await api.post("/project/projects", {
+        name,
+        workspace: workspaceId,
+        status,
+        description,
+        dueDate,
+        projectedStartDate,
+        projectedEndDate,
+        startDate,
+        endDate,
+        priority,
+        members: assignees, // array of user IDs
+        assignedTo,
+        customer: customer ? customer.value : null,
+        salesOrder: salesOrder ? salesOrder.value : null,
+        costingBilling,
+        estimatedCosting,
+        defaultCostCenter,
+      });
+      setProjects([...projects, res.data]);
     }
-  };
+    closeModal();
+  } catch (err) {
+    console.error("❌ Project save failed:", err.response?.data || err.message);
+  }
+};
+
+
+
 
   // delete
 const handleDelete = async (id) => {

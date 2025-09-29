@@ -4,7 +4,9 @@ const StockMovementSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'companyUser' },
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+ // optional
   warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse', required: true },
+  bin: { type: mongoose.Schema.Types.ObjectId, ref: "Bin" },
   movementType: { 
     type: String, 
     // enum: ['IN', 'OUT', 'TRANSFER', 'RESERVE', 'FULFILL','ON_ORDER','RETURN','ADJUSTMENT',' STOCK_ISSUE','RECEIPT_FROM_PRODUCTION_ORDER'], 

@@ -3,7 +3,7 @@ import connectDB from "@/lib/db";
 import ProductionOrder from "@/models/ProductionOrder";
 import ReceiptProduction from "@/models/ReceiptProduction";
 import Inventory from "@/models/Inventory";
-import StockMovement from "@/models/StockMovement"; // ✅ add this
+import StockMovement from "@/models/StockMovement";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 export async function POST(req, contextPromise) {
@@ -21,7 +21,6 @@ export async function POST(req, contextPromise) {
     // ✅ Auth
     const token = getTokenFromHeader(req);
     if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-
     const decoded = verifyJWT(token);
     if (!decoded) return NextResponse.json({ message: "Invalid token" }, { status: 403 });
 
@@ -30,22 +29,15 @@ export async function POST(req, contextPromise) {
     const qtyParam = parseFloat(qty || "1");
 
     const body = await req.json();
+    const { warehouse: sourceWarehouse, selectedBin, batches } = body;
+
+    if (!sourceWarehouse) return NextResponse.json({ message: "Warehouse is required" }, { status: 400 });
+    if (!selectedBin) return NextResponse.json({ message: "Bin selection is required" }, { status: 400 });
 
     // ✅ Find order with BOM
     const order = await ProductionOrder.findById(orderId).populate("bomId");
     if (!order) return NextResponse.json({ message: "Production Order not found" }, { status: 404 });
-
-    if (!order.bomId || !Array.isArray(order.bomId.items)) {
-      return NextResponse.json({ message: "Invalid or missing BOM items" }, { status: 400 });
-    }
-
-    const sourceWarehouse = order?.warehouse || order?.bomId?.[0]?.warehouse;
-    if (!sourceWarehouse) {
-      return NextResponse.json(
-        { error: "sourceWarehouse is required but not found in order or BOM" },
-        { status: 400 }
-      );
-    }
+    if (!order.bomId || !order.bomId.productNo) return NextResponse.json({ message: "BOM or Product missing", status: 400 });
 
     // ✅ Step 1: Create ReceiptProduction
     const receipt = await ReceiptProduction.create({
@@ -54,34 +46,81 @@ export async function POST(req, contextPromise) {
       createdBy: decoded.id,
       qty: qtyParam,
       sourceWarehouse,
+      selectedBin,
+      batches: batches || [],
     });
 
     // ✅ Step 2: Update Inventory + Stock Movements
-    for (const bomItem of order.bomId.items) {
-      const { item, quantity, warehouse } = bomItem;
-      const totalQuantity = quantity * qtyParam;
+    if (batches && batches.length > 0) {
+      // Handle each batch separately
+      for (const batch of batches) {
+        const { batchNumber, quantity } = batch;
+        if (!quantity || quantity <= 0) continue;
 
-      // Update inventory
-      const existingInventory = await Inventory.findOne({ item, warehouse });
-      if (existingInventory) {
-        existingInventory.quantity += totalQuantity;
-        await existingInventory.save();
+        let inventory = await Inventory.findOne({
+          item: order.bomId.productNo._id,
+          warehouse: sourceWarehouse,
+          bin: selectedBin,
+          batchNumber: batchNumber || null,
+        });
+
+        if (inventory) {
+          inventory.quantity += quantity;
+          await inventory.save();
+        } else {
+          await Inventory.create({
+            item: order.bomId.productNo._id,
+            warehouse: sourceWarehouse,
+            bin: selectedBin,
+            batchNumber: batchNumber || null,
+            quantity,
+          });
+        }
+
+        await StockMovement.create({
+          companyId: decoded.companyId,
+          createdBy: decoded.id,
+          item: order.bomId.productNo._id,
+          warehouse: sourceWarehouse,
+          bin: selectedBin,
+          batchNumber: batchNumber || null,
+          movementType: "RECEIPT_FROM_PRODUCTION_ORDER",
+          quantity,
+          reference: receipt._id.toString(),
+          remarks: `Receipt from Production Order ${orderId}`,
+        });
+      }
+    } else {
+      // No batches provided: update inventory for the item + warehouse + bin
+      let inventory = await Inventory.findOne({
+        item: order.bomId.productNo._id,
+        warehouse: sourceWarehouse,
+        bin: selectedBin,
+        batchNumber: null,
+      });
+
+      if (inventory) {
+        inventory.quantity += qtyParam;
+        await inventory.save();
       } else {
         await Inventory.create({
-          item,
-          warehouse,
-          quantity: totalQuantity,
+          item: order.bomId.productNo._id,
+          warehouse: sourceWarehouse,
+          bin: selectedBin,
+          batchNumber: null,
+          quantity: qtyParam,
         });
       }
 
-      // Record stock movement
       await StockMovement.create({
-        companyId: decoded.companyId, // ✅ comes from JWT
+        companyId: decoded.companyId,
         createdBy: decoded.id,
-        item,
-        warehouse,
+        item: order.bomId.productNo._id,
+        warehouse: sourceWarehouse,
+        bin: selectedBin,
+        batchNumber: null,
         movementType: "RECEIPT_FROM_PRODUCTION_ORDER",
-        quantity: totalQuantity,
+        quantity: qtyParam,
         reference: receipt._id.toString(),
         remarks: `Receipt from Production Order ${orderId}`,
       });

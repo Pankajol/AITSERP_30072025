@@ -49,8 +49,9 @@ export async function GET(req) {
 
     // ✅ 4. Fetch inventory with population
     const inventories = await Inventory.find(query)
-      .populate('warehouse', 'warehouseName')
+      .populate('warehouse', 'warehouseName binLocations bin')
       .populate('item', 'itemCode itemName')
+  
       .populate({
         path: 'productNo',        // Inventory → BOM
         model: 'BOM',

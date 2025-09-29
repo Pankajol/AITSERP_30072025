@@ -26,7 +26,7 @@ export default function RootLayout({ children }) {
     <body
   className={`${geistSans.variable} ${geistMono.variable} antialiased `}
 >
-  <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+  <div className="flex-1 overflow-y-auto  bg-gray-50 dark:bg-gray-900">
     {children}
   </div>
   <ToastContainer />

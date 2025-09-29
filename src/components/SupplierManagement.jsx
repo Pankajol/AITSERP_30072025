@@ -296,6 +296,7 @@ export default function SupplierManagement() {
     emailId: "",
     mobileNumber: "",
     contactPersonName: "",
+
     billingAddresses: [
       { address1: "", address2: "", city: "", state: "", country: "", pin: "" },
     ],
@@ -344,6 +345,20 @@ export default function SupplierManagement() {
   useEffect(() => {
     fetchSuppliers();
   }, []);
+
+
+  const verifyUdyam = async () => {
+  const res = await fetch("/api/udyam", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ udyamNumber: "UDYAM-MH-19-0253751" }),
+  });
+
+  const data = await res.json();
+  console.log(data);
+};
+
+
 
   const generateSupplierCode = async () => {
     try {
@@ -679,6 +694,28 @@ export default function SupplierManagement() {
             />
             {getFieldError("supplierName")}
           </div>
+        </div>
+
+
+        <div>
+       {/* uddyam */}
+       <input
+          name="udyamNumber"
+          value={supplierDetails.udyamNumber || ""}
+          onChange={(e) => setSupplierDetails((prev) => ({ ...prev, udyamNumber: e.target.value }))}
+          placeholder="Udyam Number"  
+          className="w-full border rounded-md p-2 focus:ring-2 focus:ring-blue-500 mb-2"
+        />
+        {getFieldError("udyamNumber")}
+        
+
+        <button
+          onClick={verifyUdyam}
+          className="inline-flex items-center text-blue-600 mb-6"
+        >
+          <FaPlus className="mr-1" /> Verify Udyam
+        </button> 
+
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">

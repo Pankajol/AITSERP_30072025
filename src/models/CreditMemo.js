@@ -45,8 +45,8 @@ const CreditNoteSchema = new mongoose.Schema({
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
   customerCode: { type: String, required: true },
   customerName: { type: String, required: true },
-  contactPerson: { type: String, required: true },
-  refNumber: { type: String, required: true },
+  contactPerson: { type: String,  },
+  refNumber: { type: String, },
   salesEmployee: { type: String },
   status: { type: String },
   postingDate: { type: Date },
@@ -75,7 +75,7 @@ const CreditNoteSchema = new mongoose.Schema({
 },
   { timestamps: true });
 
-CreditNoteSchema.index({ documentNumberCreditNote: 1, companyId: 1 }, { unique: true });
+CreditNoteSchema.index({ companyId: 1, documentNumberCreditNote: 1 }, { unique: true });
   
 
 // CreditNoteSchema.pre("save", async function (next) {

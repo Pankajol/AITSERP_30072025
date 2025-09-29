@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import Inventory from '@/models/Inventory';
 import ProductionOrder from '@/models/ProductionOrder';
-import StockMovement from '@/models/StockMovement'; // ✅ added
+import StockMovement from '@/models/StockMovement';
 import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 
 export async function POST(req, { params }) {
@@ -25,7 +25,7 @@ export async function POST(req, { params }) {
 
     const { productionOrderId } = params;
     const { searchParams } = new URL(req.url);
-    const qtyParam = Number(searchParams.get('qty'));
+    const qtyParam = Number(searchParams.get('qty')) || 0;
 
     const payload = await req.json();
     const data = payload.data || payload;
@@ -45,6 +45,7 @@ export async function POST(req, { params }) {
         expiryDate,
         manufacturer,
         unitPrice,
+        selectedBin
       } = entry;
 
       if (!itemId || !sourceWarehouse || !destinationWarehouse || quantity == null || quantity <= 0) {
@@ -53,7 +54,6 @@ export async function POST(req, { params }) {
 
       // ===== Fetch Source Inventory =====
       const sourceInventory = await Inventory.findOne({ item: itemId, warehouse: sourceWarehouse, companyId });
-
       if (!sourceInventory || sourceInventory.quantity < quantity) {
         return NextResponse.json({ message: `Insufficient quantity in source warehouse` }, { status: 400 });
       }
@@ -69,6 +69,7 @@ export async function POST(req, { params }) {
         sourceBatch.quantity = Math.max(0, sourceBatch.quantity - quantity);
       }
 
+      // Reduce overall source quantity
       sourceInventory.quantity = Math.max(0, sourceInventory.quantity - quantity);
       await sourceInventory.save();
 
@@ -104,7 +105,6 @@ export async function POST(req, { params }) {
       await destInventory.save();
 
       // ===== Record Stock Movements =====
-      // OUT movement from source
       await StockMovement.create({
         companyId,
         createdBy: userId,
@@ -112,11 +112,11 @@ export async function POST(req, { params }) {
         warehouse: sourceWarehouse,
         movementType: 'OUT',
         quantity,
+        selectedBin: selectedBin || null,
         reference: productionOrderId,
         remarks: `Stock transfer OUT for Production Order ${productionOrderId}`,
       });
 
-      // IN movement to destination
       await StockMovement.create({
         companyId,
         createdBy: userId,
@@ -124,12 +124,13 @@ export async function POST(req, { params }) {
         warehouse: destinationWarehouse,
         movementType: 'IN',
         quantity,
+        selectedBin: selectedBin || null,
         reference: productionOrderId,
         remarks: `Stock transfer IN for Production Order ${productionOrderId}`,
       });
     }
 
-    // ===== Update Production Order Transfer Status =====
+    // ===== Update Production Order =====
     await ProductionOrder.findByIdAndUpdate(
       productionOrderId,
       {
@@ -158,6 +159,7 @@ export async function POST(req, { params }) {
 // import connectDB from '@/lib/db';
 // import Inventory from '@/models/Inventory';
 // import ProductionOrder from '@/models/ProductionOrder';
+// import StockMovement from '@/models/StockMovement'; // ✅ added
 // import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
 
 // export async function POST(req, { params }) {
@@ -176,6 +178,7 @@ export async function POST(req, { params }) {
 //     }
 
 //     const companyId = user.companyId;
+//     const userId = user._id || user.id;
 
 //     const { productionOrderId } = params;
 //     const { searchParams } = new URL(req.url);
@@ -233,7 +236,7 @@ export async function POST(req, { params }) {
 //         destInventory = new Inventory({
 //           item: itemId,
 //           warehouse: destinationWarehouse,
-//           companyId, // ✅ required field
+//           companyId,
 //           quantity: 0,
 //           batches: [],
 //         });
@@ -256,6 +259,31 @@ export async function POST(req, { params }) {
 
 //       destInventory.quantity += quantity;
 //       await destInventory.save();
+
+//       // ===== Record Stock Movements =====
+//       // OUT movement from source
+//       await StockMovement.create({
+//         companyId,
+//         createdBy: userId,
+//         item: itemId,
+//         warehouse: sourceWarehouse,
+//         movementType: 'OUT',
+//         quantity,
+//         reference: productionOrderId,
+//         remarks: `Stock transfer OUT for Production Order ${productionOrderId}`,
+//       });
+
+//       // IN movement to destination
+//       await StockMovement.create({
+//         companyId,
+//         createdBy: userId,
+//         item: itemId,
+//         warehouse: destinationWarehouse,
+//         movementType: 'IN',
+//         quantity,
+//         reference: productionOrderId,
+//         remarks: `Stock transfer IN for Production Order ${productionOrderId}`,
+//       });
 //     }
 
 //     // ===== Update Production Order Transfer Status =====
@@ -279,200 +307,5 @@ export async function POST(req, { params }) {
 //     return NextResponse.json({ message: 'Server error', error: err.message }, { status: 500 });
 //   }
 // }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import { NextResponse } from 'next/server';
-// import connectDB from '@/lib/db';
-// import Inventory from '@/models/Inventory';
-// import ProductionOrder from '@/models/ProductionOrder';
-
-// // This handles a dynamic route like: /api/stock-transfer/[productionOrderId]?qty=8
-// export async function POST(req, { params }) {
-//   try {
-//     await connectDB();
-
-//     const { productionOrderId } = params;
-//     const { searchParams } = new URL(req.url);
-//     const qtyParam = Number(searchParams.get('qty'));
-
-//     const data = await req.json(); // assuming this contains itemId, sourceWarehouse, etc.
-
-//     console.log('Received data:', data);
-
-//     if (!Array.isArray(data) || data.length === 0) {
-//       return NextResponse.json({ message: 'Invalid data array' }, { status: 400 });
-//     }
-
-//     for (const entry of data) {
-//       const {
-//         itemId,
-//         sourceWarehouse,
-//         destinationWarehouse,
-//         batchNumber,
-//         quantity,
-//         expiryDate,
-//         manufacturer,
-//         unitPrice,
-//       } = entry;
-
-//       if (!itemId || !sourceWarehouse || !destinationWarehouse || !batchNumber || !quantity) {
-//         return NextResponse.json({ message: 'Missing required fields in entry' }, { status: 400 });
-//       }
-
-//       // ===== Deduct from source warehouse =====
-//       const sourceInventory = await Inventory.findOne({ item: itemId, warehouse: sourceWarehouse });
-
-//       if (!sourceInventory) {
-//         return NextResponse.json({ message: `No inventory found in source warehouse` }, { status: 404 });
-//       }
-
-//       const sourceBatch = sourceInventory.batches.find(b => b.batchNumber === batchNumber);
-//       if (!sourceBatch || sourceBatch.quantity < quantity) {
-//         return NextResponse.json({ message: `Insufficient batch quantity or batch not found` }, { status: 400 });
-//       }
-
-//       sourceBatch.quantity -= quantity;
-//       sourceInventory.quantity = Math.max(0, sourceInventory.quantity - quantity);
-//       await sourceInventory.save();
-
-//       // ===== Add to destination warehouse =====
-//       let destInventory = await Inventory.findOne({ item: itemId, warehouse: destinationWarehouse });
-
-//       if (!destInventory) {
-//         destInventory = new Inventory({ item: itemId, warehouse: destinationWarehouse, quantity: 0, batches: [] });
-//       }
-
-//       let destBatch = destInventory.batches.find(b => b.batchNumber === batchNumber);
-//       if (destBatch) {
-//         destBatch.quantity += quantity;
-//       } else {
-//         destInventory.batches.push({ batchNumber, quantity, expiryDate, manufacturer, unitPrice });
-//       }
-
-//       destInventory.quantity += quantity;
-//       await destInventory.save();
-//     }
-
-//     // ===== Update ProductionOrder after loop =====
-//     await ProductionOrder.findByIdAndUpdate(
-//       productionOrderId,
-//       {
-//         $set: { status: 'transferred' },
-//         $inc: { transferqty: qtyParam || 0 },
-//       },
-//       { new: true }
-//     );
-
-//     return NextResponse.json({ message: 'Stock transfer successful' }, { status: 200 });
-
-//   } catch (err) {
-//     console.error(err);
-//     return NextResponse.json({ message: 'Server error', error: err.message }, { status: 500 });
-//   }
-// }
-
 
 

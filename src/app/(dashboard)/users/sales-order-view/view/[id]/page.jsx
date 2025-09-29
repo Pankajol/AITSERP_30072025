@@ -242,7 +242,36 @@ export default function InvoiceDetail() {
           <p className="text-center text-gray-500 py-4">No items available.</p>
         )}
       </div>
-
+         <div className="mt-8 pt-4 border-t-2 border-gray-300">
+            <h3 className="text-xl font-semibold mb-2">Attachments</h3>
+            {order.attachments && order.attachments.length > 0 ? (
+              <ul className="list-disc pl-5 space-y-2">
+                {order.attachments.map((attachment, index) => {
+                  const isImage = attachment.fileType && attachment.fileType.startsWith("image/");
+                  const isPDF = attachment.fileType === "application/pdf" || attachment.fileName.toLowerCase().endsWith(".pdf");
+                  return (
+                    <li key={index}>
+                      <p className="font-semibold mb-2">{attachment.fileName}</p>
+                      {isImage ? (
+                        <img src={attachment.fileUrl} alt={attachment.fileName} className="max-w-full h-auto rounded mb-2" />
+                      ) : isPDF ? (
+                        <iframe src={attachment.fileUrl} className="w-full h-[400px] rounded mb-2" title="PDF Preview"></iframe>
+                      ) : (
+                        <a href={attachment.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Open {attachment.fileName} in a new tab
+                        </a>
+                      )}
+                      {!isImage && !isPDF && (
+                        <p className="text-sm text-gray-500">Unsupported file type for preview.</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-gray-500">No attachments available.</p>
+            )}
+          </div>
       <div className="flex justify-end space-x-4">
         <Link href="/admin/sales-order-view">
           <button className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded transition">

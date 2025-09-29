@@ -89,18 +89,92 @@ async function deleteFilesByPublicIds(publicIds) {
 }
 
 /** ✅ Process Inventory & Stock Movement */
-async function processInvoiceItem(item, invoiceId, decoded, session, linkedToPO = false) {
+// async function processInvoiceItem(item, invoiceId, decoded, session, linkedToPO = false) {
+//   const qty = Number(item.quantity);
+//   const itemId = item.item?._id || item.item;
+//   const warehouseId = item.warehouse;
+
+//   if (!itemId || !warehouseId || qty <= 0) {
+//     throw new Error(`Invalid item data for ${item.itemCode || 'unknown item'}`);
+//   }
+
+//   let inventoryDoc = await Inventory.findOne({
+//     item: new Types.ObjectId(itemId),
+//     warehouse: new Types.ObjectId(warehouseId),
+//     companyId: decoded.companyId,
+//   }).session(session);
+
+//   if (!inventoryDoc) {
+//     inventoryDoc = await Inventory.create([{
+//       item: new Types.ObjectId(itemId),
+//       warehouse: new Types.ObjectId(warehouseId),
+//       companyId: decoded.companyId,
+//       quantity: 0,
+//       onOrder: 0,
+//       batches: [],
+//     }], { session });
+//     inventoryDoc = inventoryDoc[0];
+//   }
+
+//   // ✅ If PO is linked, reduce onOrder
+//   if (linkedToPO) {
+//     inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
+//   }
+
+//   // ✅ Batch handling
+//   if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches)) {
+//     for (const b of item.batches) {
+//       const batchQty = Number(b.batchQuantity);
+//       if (!b.batchNumber || isNaN(batchQty) || batchQty <= 0) continue;
+//       const existingBatch = inventoryDoc.batches.find(batch => batch.batchNumber === b.batchNumber);
+//       if (existingBatch) {
+//         existingBatch.quantity += batchQty;
+//       } else {
+//         inventoryDoc.batches.push({
+//           batchNumber: b.batchNumber,
+//           quantity: batchQty,
+//           expiryDate: b.expiryDate ? new Date(b.expiryDate) : null,
+//           manufacturer: b.manufacturer || '',
+//         });
+//       }
+//     }
+//   }
+
+//   inventoryDoc.quantity += qty;
+//   await inventoryDoc.save({ session });
+
+//   // ✅ Stock Movement
+//   await StockMovement.create([{
+//     item: new Types.ObjectId(itemId),
+//     warehouse: new Types.ObjectId(warehouseId),
+//     movementType: "IN",
+//     quantity: qty,
+//     reference: invoiceId,
+//     referenceType: "PurchaseInvoice",
+//     remarks: linkedToPO ? "Stock received via Purchase Invoice (Linked PO)" : "Stock received via Purchase Invoice",
+//     companyId: decoded.companyId,
+//     createdBy: decoded.userId,
+//   }], { session });
+// }
+
+
+
+
+ async function processInvoiceItem(item, invoiceId, decoded, session, linkedToPO = false) {
   const qty = Number(item.quantity);
   const itemId = item.item?._id || item.item;
   const warehouseId = item.warehouse;
+  const binId = item.selectedBin?._id || null;
 
   if (!itemId || !warehouseId || qty <= 0) {
     throw new Error(`Invalid item data for ${item.itemCode || 'unknown item'}`);
   }
 
+  // ✅ Find or create inventory
   let inventoryDoc = await Inventory.findOne({
     item: new Types.ObjectId(itemId),
     warehouse: new Types.ObjectId(warehouseId),
+    bin: binId ? new Types.ObjectId(binId) : { $in: [null, undefined] },
     companyId: decoded.companyId,
   }).session(session);
 
@@ -108,54 +182,82 @@ async function processInvoiceItem(item, invoiceId, decoded, session, linkedToPO 
     inventoryDoc = await Inventory.create([{
       item: new Types.ObjectId(itemId),
       warehouse: new Types.ObjectId(warehouseId),
+      bin: binId ? new Types.ObjectId(binId) : null,
       companyId: decoded.companyId,
       quantity: 0,
+      committed: 0,
       onOrder: 0,
       batches: [],
     }], { session });
     inventoryDoc = inventoryDoc[0];
   }
 
-  // ✅ If PO is linked, reduce onOrder
+  // ✅ Reduce onOrder if linked to PO
   if (linkedToPO) {
     inventoryDoc.onOrder = Math.max((inventoryDoc.onOrder || 0) - qty, 0);
   }
 
-  // ✅ Batch handling
-  if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches)) {
-    for (const b of item.batches) {
-      const batchQty = Number(b.batchQuantity);
-      if (!b.batchNumber || isNaN(batchQty) || batchQty <= 0) continue;
-      const existingBatch = inventoryDoc.batches.find(batch => batch.batchNumber === b.batchNumber);
+  // ✅ Batch-managed items
+  if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches) && item.batches.length > 0) {
+    for (const batch of item.batches) {
+      const batchQty = Number(batch.batchQuantity || batch.allocatedQuantity || 0);
+      if (!batch.batchNumber || batchQty <= 0) continue;
+
+      if (!Array.isArray(inventoryDoc.batches)) inventoryDoc.batches = [];
+      const existingBatch = inventoryDoc.batches.find(b => b.batchNumber === batch.batchNumber);
+
       if (existingBatch) {
         existingBatch.quantity += batchQty;
+        if (binId) existingBatch.bin = new Types.ObjectId(binId);
       } else {
         inventoryDoc.batches.push({
-          batchNumber: b.batchNumber,
+          batchNumber: batch.batchNumber,
           quantity: batchQty,
-          expiryDate: b.expiryDate ? new Date(b.expiryDate) : null,
-          manufacturer: b.manufacturer || '',
+          expiryDate: batch.expiryDate ? new Date(batch.expiryDate) : null,
+          manufacturer: batch.manufacturer || "",
+          unitPrice: batch.unitPrice || 0,
+          bin: binId ? new Types.ObjectId(binId) : null,
         });
       }
+
+      inventoryDoc.quantity += batchQty;
+
+      // ✅ Stock Movement for batch
+      await StockMovement.create([{
+        item: new Types.ObjectId(itemId),
+        warehouse: new Types.ObjectId(warehouseId),
+        bin: binId ? new Types.ObjectId(binId) : null,
+        movementType: "IN",
+        quantity: batchQty,
+        reference: invoiceId,
+        referenceType: "PurchaseInvoice",
+        remarks: linkedToPO ? `Stock received via Purchase Invoice (Linked PO) - Batch ${batch.batchNumber}` : `Stock received via Purchase Invoice - Batch ${batch.batchNumber}`,
+        companyId: decoded.companyId,
+        createdBy: decoded.userId,
+      }], { session });
     }
+  } else {
+    // ✅ Non-batch items
+    inventoryDoc.quantity += qty;
+
+    await StockMovement.create([{
+      item: new Types.ObjectId(itemId),
+      warehouse: new Types.ObjectId(warehouseId),
+      bin: binId ? new Types.ObjectId(binId) : null,
+      movementType: "IN",
+      quantity: qty,
+      reference: invoiceId,
+      referenceType: "PurchaseInvoice",
+      remarks: linkedToPO ? "Stock received via Purchase Invoice (Linked PO)" : "Stock received via Purchase Invoice",
+      companyId: decoded.companyId,
+      createdBy: decoded.userId,
+    }], { session });
   }
 
-  inventoryDoc.quantity += qty;
+  // ✅ Save inventory changes
   await inventoryDoc.save({ session });
-
-  // ✅ Stock Movement
-  await StockMovement.create([{
-    item: new Types.ObjectId(itemId),
-    warehouse: new Types.ObjectId(warehouseId),
-    movementType: "IN",
-    quantity: qty,
-    reference: invoiceId,
-    referenceType: "PurchaseInvoice",
-    remarks: linkedToPO ? "Stock received via Purchase Invoice (Linked PO)" : "Stock received via Purchase Invoice",
-    companyId: decoded.companyId,
-    createdBy: decoded.userId,
-  }], { session });
 }
+
 
 
 

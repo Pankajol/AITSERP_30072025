@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo,useRef } from 'react';
 import Link from 'next/link';
+
+import { useRouter } from "next/navigation";
 import axios from 'axios';
-import { useRouter } from 'next/navigation';
+
 import {
   FaEllipsisV,
   FaEdit,
@@ -14,6 +16,7 @@ import {
   FaWhatsapp,
   FaSearch,
 } from 'react-icons/fa';
+import ActionMenu from '@/components/ActionMenu';
 
 /* ================================================================= */
 /*  Sales Order List                                                 */
@@ -106,16 +109,27 @@ export default function SalesOrderList() {
     }
   };
 
-  const handleCopyTo = (order, dest) => {
-    const data = { ...order, salesOrderId: order._id, sourceModel: 'SalesOrder' };
-    if (dest === 'Delivery') {
-      sessionStorage.setItem('deliveryData', JSON.stringify(data));
-      router.push('/admin/delivery-view/new');
-    } else {
-      sessionStorage.setItem('SalesInvoiceData', JSON.stringify(data));
-      router.push('/admin/sales-invoice-view/new');
-    }
+const handleCopyTo = (order, dest) => {
+
+
+  if (dest === 'Delivery') {
+      const data = {
+    ...order,
+    sourceId: order._id, // ✅ Add correct field
+    sourceModel: 'delivery', // ✅ Already good
   };
+    sessionStorage.setItem('deliveryData', JSON.stringify(data));
+    router.push('/admin/delivery-view/new');
+  } else {
+      const data = {
+    ...order,
+    sourceId: order._id, // ✅ Add correct field
+    sourceModel: 'salesorder', // ✅ Already good
+  };
+    sessionStorage.setItem('SalesInvoiceData', JSON.stringify(data));
+    router.push('/admin/sales-invoice-view/new');
+  }
+};
 
   /* ================================================================= */
   /*  UI                                                               */
@@ -138,7 +152,7 @@ export default function SalesOrderList() {
           />
         </div>
 
-        <Link href="sales-order-view/new" className="sm:w-auto">
+        <Link href="/admin/sales-order-view/new" className="sm:w-auto">
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaEdit /> New Order
           </button>
@@ -186,7 +200,7 @@ function Table({ orders, onDelete, onCopy }) {
     <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
       <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
         <tr>
-          {['#', 'Sales Order No.', 'Customer', 'Date','Sales Stages', 'Status', 'Total', ''].map((h) => (
+          {['#', 'Document Number.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
             <th
               key={h}
               className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
@@ -203,12 +217,12 @@ function Table({ orders, onDelete, onCopy }) {
             className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
             <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{o.salesNumber || o.refNumber}</td>
+            <td className="px-4 py-3">{o.documentNumberOrder}</td>
             <td className="px-4 py-3">{o.customerName}</td>
             <td className="px-4 py-3">
               {new Date(o.postingDate || o.orderDate).toLocaleDateString('en-GB')}
             </td>
-            <td className="px-4 py-3">{o.statusStages}</td>
+           
             <td className="px-4 py-3">{o.status}</td>
             <td className="px-4 py-3">₹{o.grandTotal}</td>
             <td className="px-4 py-3">
@@ -236,7 +250,7 @@ function Card({ order, idx, onDelete, onCopy }) {
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {order.salesNumber || order.refNumber}
+          #{idx + 1} • {order.ducumentNumber}
         </div>
         <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
       </div>
@@ -258,65 +272,35 @@ function Card({ order, idx, onDelete, onCopy }) {
 function RowMenu({ order, onDelete, onCopy }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const router = useRouter();
 
-  /* --- find button coords for fixed menu --- */
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
-  useEffect(() => {
-    if (open && btnRef.current) {
-      const { bottom, right } = btnRef.current.getBoundingClientRect();
-      setCoords({ top: bottom + 8, left: right - 192 /* menu width */ });
-    }
-  }, [open]);
-
-  const MenuItem = ({ icon, label, onClick, color = '' }) => (
-    <button
-      onClick={() => { onClick(); setOpen(false); }}
-      className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
-    >
-      <span className={`${color}`}>{icon}</span> {label}
-    </button>
-  );
-
-  return (
-    <>
-      <button
-        ref={btnRef}
-        onClick={() => setOpen(!open)}
-        className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full focus:ring-2 focus:ring-blue-500"
-      >
-        <FaEllipsisV size={16} />
-      </button>
-
-      {open && (
-        <div
-          style={{ top: coords.top, left: coords.left }}
-          className="fixed z-50 w-48 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg"
-        >
-          <MenuItem icon={<FaEye />} label="View"
-            onClick={() => (window.location.href = `/admin/sales-order-view/view/${order._id}`)}
-          />
-          <MenuItem icon={<FaEdit />} label="Edit"
-            onClick={() => (window.location.href = `/admin/sales-order-view/new?editId=${order._id}`)}
-          />
-          <MenuItem icon={<FaCopy />} label="Copy → Delivery"
-            onClick={() => onCopy(order, 'Delivery')}
-          />
-          <MenuItem icon={<FaCopy />} label="Copy → Invoice"
-            onClick={() => onCopy(order, 'Invoice')}
-          />
-          <MenuItem icon={<FaEnvelope />} label="Email"
-            onClick={() => (window.location.href = `/admin/sales-order-email/${order._id}`)}
-          />
-          <MenuItem icon={<FaWhatsapp />} label="WhatsApp"
-            onClick={() => (window.location.href = `/admin/sales-order-whatsapp/${order._id}`)}
-          />
-          <MenuItem icon={<FaTrash />} label="Delete" color="text-red-600"
-            onClick={() => onDelete(order._id)}
-          />
-        </div>
-      )}
-    </>
-  );
+  /** ✅ Actions Array */
+  const actions = [
+    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/sales-order-view/view/${order._id}`) },
+    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/sales-order-view/new?editId=${order._id}`) },
+    { icon: <FaCopy />, label: "Copy → Delivery", onClick: () => onCopy(order, "Delivery") },
+    { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },
+    {
+      icon: <FaEnvelope />,
+      label: "Email",
+      onClick: async () => {
+        try {
+          const res = await axios.post("/api/email", { type: "order", id: order._id });
+          if (res.data.success) toast.success("Email sent successfully!");
+          else toast.error(res.data.message || "Failed to send email.");
+        } catch {
+          toast.error("Error sending email.");
+        }
+      },
+    },
+    // { icon: <FaEnvelope />, label: "Email", onClick: () => router.push(`/admin/sales-order-email/${order._id}`) },
+    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/admin/sales-order-whatsapp/${order._id}`) },
+    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(order._id) },
+  ];
+  return ( 
+    <ActionMenu actions={actions} />
+  )
 }
 
 

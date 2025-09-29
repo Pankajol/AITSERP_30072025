@@ -7,185 +7,221 @@ import dbConnect from "@/lib/db";
 import DebitNote from "@/models/DebitNoteModel";
 import Inventory from "@/models/Inventory";
 import StockMovement from "@/models/StockMovement";
+import Warehouse from "@/models/warehouseModels"; // Import the Warehouse model
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import Counter from "@/models/Counter";
 
 const { Types } = mongoose;
 
+// --- Configuration ---
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+ cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+ api_key: process.env.CLOUDINARY_API_KEY,
+ api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-function requestToNodeStream(req) {
-  if (!req.body) throw new Error("Request body is undefined.");
-  return Readable.fromWeb(req.body);
-}
-
-async function parseForm(req) {
-  const form = formidable({ multiples: true });
-  const headers = {};
-  for (const [key, value] of req.headers.entries()) headers[key.toLowerCase()] = value;
-  return new Promise((resolve, reject) => {
-    const nodeReq = Object.assign(requestToNodeStream(req), { headers, method: req.method });
-    form.parse(nodeReq, (err, fields, files) => {
-      if (err) return reject(err);
-      const parsedFields = {};
-      for (const key in fields) parsedFields[key] = Array.isArray(fields[key]) ? fields[key][0] : fields[key];
-      const parsedFiles = {};
-      for (const key in files) parsedFiles[key] = Array.isArray(files[key]) ? files[key] : [files[key]];
-      resolve({ fields: parsedFields, files: parsedFiles });
-    });
-  });
-}
-
-async function uploadFiles(fileObjects, folderName, companyId) {
-  const uploadedFiles = [];
-  if (!fileObjects?.length) return uploadedFiles;
-  for (const file of fileObjects) {
-    if (!file?.filepath) continue;
-    const result = await cloudinary.uploader.upload(file.filepath, {
-      folder: `${folderName}/${companyId || 'default_company_attachments'}`,
-      resource_type: "auto",
-      original_filename: file.originalFilename,
-    });
-    uploadedFiles.push({
-      fileName: file.originalFilename,
-      fileUrl: result.secure_url,
-      fileType: file.mimetype,
-      uploadedAt: new Date(),
-      publicId: result.public_id,
-    });
-  }
-  return uploadedFiles;
-}
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req) {
-  await dbConnect();
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// --- Helper Functions for File Parsing and Uploading ---
+function requestToNodeStream(req) {
+ if (!req.body) throw new Error("Request body is undefined.");
+ return Readable.fromWeb(req.body);
+}
 
-  try {
-    const token = getTokenFromHeader(req);
-    if (!token) throw new Error("Unauthorized: No token provided.");
-    const decoded = verifyJWT(token);
-    const companyId = decoded?.companyId;
-    if (!decoded?.id || !companyId) throw new Error("Unauthorized: Invalid token.");
+async function parseForm(req) {
+ const form = formidable({ multiples: true });
+ const headers = {};
+ for (const [key, value] of req.headers.entries()) headers[key.toLowerCase()] = value;
+ return new Promise((resolve, reject) => {
+  const nodeReq = Object.assign(requestToNodeStream(req), { headers, method: req.method });
+  form.parse(nodeReq, (err, fields, files) => {
+   if (err) return reject(err);
+   const parsedFields = {};
+   for (const key in fields) parsedFields[key] = Array.isArray(fields[key]) ? fields[key][0] : fields[key];
+   const parsedFiles = {};
+   for (const key in files) parsedFiles[key] = Array.isArray(files[key]) ? files[key] : [files[key]];
+   resolve({ fields: parsedFields, files: parsedFiles });
+  });
+ });
+}
 
-    const { fields, files } = await parseForm(req);
-    if (!fields.debitNoteData) throw new Error("Missing debitNoteData payload.");
-
-    const debitNoteData = JSON.parse(fields.debitNoteData);
-    debitNoteData.companyId = companyId;
-    delete debitNoteData._id;
-    debitNoteData.createdBy = decoded.id;
-
-    const newUploadedFiles = await uploadFiles(files.newAttachments || [], 'debit-notes', companyId);
-    let existingAttachments = [];
-    try {
-      existingAttachments = JSON.parse(fields.existingFiles || '[]');
-    } catch {}
-    debitNoteData.attachments = [...existingAttachments, ...newUploadedFiles];
-
-    if (!Array.isArray(debitNoteData.items) || debitNoteData.items.length === 0) throw new Error("Debit Note must contain items.");
-
-    debitNoteData.items = debitNoteData.items.map((item, index) => {
-      delete item._id;
-      item.item = Types.ObjectId.isValid(item.item) ? item.item : new Types.ObjectId(item.item);
-      item.warehouse = Types.ObjectId.isValid(item.warehouse) ? item.warehouse : new Types.ObjectId(item.warehouse);
-      item.quantity = Number(item.quantity) || 0;
-      if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches)) {
-        item.batches = item.batches.map((b) => ({
-          batchCode: b.batchCode ?? b.batchNumber,
-          allocatedQuantity: Number(b.allocatedQuantity) || 0,
-          expiryDate: b.expiryDate || null,
-          manufacturer: b.manufacturer || '',
-          unitPrice: Number(b.unitPrice) || 0,
-        })).filter(b => b.batchCode);
-      } else item.batches = [];
-      return item;
-    });
-
-    for (const [i, item] of debitNoteData.items.entries()) {
-      const inventory = await Inventory.findOne({
-        item: item.item,
-        warehouse: item.warehouse,
-        companyId
-      }).session(session);
-      if (!inventory || inventory.quantity < item.quantity) throw new Error(`Row ${i + 1}: Insufficient stock.`);
-      if (item.managedBy?.toLowerCase() === "batch") {
-        const totalAllocated = item.batches.reduce((sum, b) => sum + b.allocatedQuantity, 0);
-        if (totalAllocated !== item.quantity) throw new Error(`Row ${i + 1}: Batch quantity mismatch.`);
-        for (const b of item.batches) {
-          const invBatch = inventory.batches.find(batch => batch.batchNumber === b.batchCode);
-          if (!invBatch || invBatch.quantity < b.allocatedQuantity)
-            throw new Error(`Row ${i + 1} Batch ${b.batchCode}: Insufficient batch stock.`);
-        }
-      }
-    }
-
-    const now = new Date();
-    const fyStart = now.getMonth() + 1 < 4 ? now.getFullYear() - 1 : now.getFullYear();
-    const fyEnd = fyStart + 1;
-    const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
-    const key = "PurchaseDebitNote";
-    let counter = await Counter.findOne({ id: key, companyId }).session(session);
-    if (!counter) [counter] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
-    else {
-      counter.seq += 1;
-      await counter.save({ session });
-    }
-    const paddedSeq = String(counter.seq).padStart(5, "0");
-    debitNoteData.documentNumberDebitNote = `PURCH-DEBIT/${financialYear}/${paddedSeq}`;
-
-    const [debitNote] = await DebitNote.create([debitNoteData], { session });
-
-    for (const item of debitNoteData.items) {
-      const inventory = await Inventory.findOne({ item: item.item, warehouse: item.warehouse, companyId }).session(session);
-      inventory.quantity -= item.quantity;
-      if (item.managedBy?.toLowerCase() === "batch") {
-        for (const b of item.batches) {
-          const idx = inventory.batches.findIndex(batch => batch.batchNumber === b.batchCode);
-          inventory.batches[idx].quantity -= b.allocatedQuantity;
-          if (inventory.batches[idx].quantity <= 0) inventory.batches.splice(idx, 1);
-        }
-      }
-      await inventory.save({ session });
-    }
-
-    for (const item of debitNoteData.items) {
-      await StockMovement.create([
-        {
-          item: item.item,
-          warehouse: item.warehouse,
-          movementType: "OUT",
-          quantity: item.quantity,
-          reference: debitNote._id,
-          referenceType: "DebitNote",
-          remarks: `Stock decreased via Debit Note for item ${item.itemName}.`,
-          companyId,
-          createdBy: decoded.id,
-          batchDetails: item.managedBy?.toLowerCase() === "batch" ? item.batches.map(b => ({ batchNumber: b.batchCode, quantity: b.allocatedQuantity })) : [],
-        },
-      ], { session });
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-    return NextResponse.json({ success: true, message: "Debit Note created.", debitNoteId: debitNote._id, debitNote }, { status: 201 });
-
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("Debit Note error:", error);
-    return NextResponse.json({ success: false, message: error.message || "Unexpected error." }, { status: 500 });
-  }
+async function uploadFiles(fileObjects, folderName, companyId) {
+ const uploadedFiles = [];
+ if (!fileObjects?.length) return uploadedFiles;
+ for (const file of fileObjects) {
+  if (!file?.filepath) continue;
+  const result = await cloudinary.uploader.upload(file.filepath, {
+   folder: `${folderName}/${companyId || 'default_company_attachments'}`,
+   resource_type: "auto",
+    original_filename: file.originalFilename,
+  });
+  uploadedFiles.push({
+   fileName: file.originalFilename,
+   fileUrl: result.secure_url,
+   fileType: file.mimetype,
+   uploadedAt: new Date(),
+   publicId: result.public_id,
+  });
+ }
+ return uploadedFiles;
 }
 
 
+/**
+ * Pre-validates stock for all items before starting the database transaction.
+ */
+async function validateStockAvailability(items, companyId) {
+    for (const item of items) {
+        const warehouseDoc = await Warehouse.findById(item.warehouse).lean();
+        if (!warehouseDoc) throw new Error(`Warehouse '${item.warehouseName}' not found.`);
+        
+        const useBins = warehouseDoc.binLocations && warehouseDoc.binLocations.length > 0;
+        const query = {
+            item: new Types.ObjectId(item.item),
+            warehouse: new Types.ObjectId(item.warehouse),
+            companyId: new Types.ObjectId(companyId),
+        };
+
+        if (useBins) {
+            if (!item.selectedBin?._id) throw new Error(`A bin must be selected for '${item.itemName}'.`);
+            query.bin = new Types.ObjectId(item.selectedBin._id);
+        } else {
+            query.bin = { $in: [null, undefined] };
+        }
+
+        const inventoryDoc = await Inventory.findOne(query).lean();
+        const location = useBins ? `bin '${item.selectedBin.code}'` : `warehouse '${item.warehouseName}'`;
+
+        if (!inventoryDoc) throw new Error(`Stock Check Failed: No inventory for '${item.itemName}' in ${location}.`);
+        if (inventoryDoc.quantity < item.quantity) {
+            throw new Error(`Stock Check Failed: Insufficient stock for '${item.itemName}' in ${location}. Required: ${item.quantity}, Available: ${inventoryDoc.quantity}.`);
+        }
+    }
+}
+
+/**
+ * Processes a single item's stock deduction within a database transaction.
+ */
+async function processItemForDebitNote(item, session, debitNote, decoded) {
+    const warehouseDoc = await Warehouse.findById(item.warehouse).session(session).lean();
+    if (!warehouseDoc) throw new Error(`Warehouse '${item.warehouseName}' not found.`);
+    
+    const useBins = warehouseDoc.binLocations && warehouseDoc.binLocations.length > 0;
+    const query = {
+        item: new Types.ObjectId(item.item),
+        warehouse: new Types.ObjectId(item.warehouse),
+        companyId: new Types.ObjectId(decoded.companyId),
+    };
+    let binId = null;
+
+    if (useBins) {
+        binId = new Types.ObjectId(item.selectedBin._id);
+        query.bin = binId;
+    } else {
+        query.bin = { $in: [null, undefined] };
+    }
+
+    const inventoryDoc = await Inventory.findOne(query).session(session);
+    if (!inventoryDoc) {
+        const location = useBins ? `bin '${item.selectedBin.code}'` : `warehouse '${item.warehouseName}'`;
+        throw new Error(`Transaction failed: Inventory record for '${item.itemName}' in ${location} disappeared.`);
+    }
+
+    if (inventoryDoc.quantity < item.quantity) {
+        const location = useBins ? `bin '${item.selectedBin.code}'` : `warehouse '${item.warehouseName}'`;
+        throw new Error(`Transaction failed due to insufficient stock for '${item.itemName}' in ${location}.`);
+    }
+
+    inventoryDoc.quantity -= item.quantity;
+    
+    await StockMovement.create([{
+        item: item.item,
+        warehouse: item.warehouse,
+        bin: binId,
+        movementType: "OUT",
+        quantity: item.quantity,
+        reference: debitNote._id,
+        referenceType: 'DebitNote',
+        documentNumber: debitNote.documentNumberDebitNote,
+        remarks: `Stock out via Debit Note: ${debitNote.documentNumberDebitNote}`,
+        companyId: decoded.companyId,
+        createdBy: decoded.id,
+    }], { session });
+
+    await inventoryDoc.save({ session });
+}
+
+/* ------------------------------------------- */
+/* ---------- API HANDLER (POST) ---------- */
+/* ------------------------------------------- */
+export async function POST(req) {
+    await dbConnect();
+    const session = await mongoose.startSession();
+
+    try {
+        const token = getTokenFromHeader(req);
+        if (!token) throw new Error("Unauthorized: No token provided.");
+        const decoded = verifyJWT(token);
+        const companyId = decoded?.companyId;
+        if (!decoded?.id || !companyId) throw new Error("Unauthorized: Invalid token.");
+
+        const { fields, files } = await parseForm(req);
+        if (!fields.debitNoteData) throw new Error("Missing debitNoteData payload.");
+
+        const debitNoteData = JSON.parse(fields.debitNoteData);
+        if (!Array.isArray(debitNoteData.items) || debitNoteData.items.length === 0) throw new Error("Debit Note must contain items.");
+
+        // ✅ 1. PRE-VALIDATION: Check stock availability BEFORE starting the transaction.
+        await validateStockAvailability(debitNoteData.items, companyId);
+        
+        // ✅ 2. START TRANSACTION: If stock is available, begin the database transaction.
+        session.startTransaction();
+
+        debitNoteData.companyId = companyId;
+        delete debitNoteData._id;
+        debitNoteData.createdBy = decoded.id;
+
+        const newUploadedFiles = await uploadFiles(files.newAttachments || [], 'debit-notes', companyId);
+        let existingAttachments = [];
+        try { existingAttachments = JSON.parse(fields.existingFiles || '[]'); } catch {}
+        debitNoteData.attachments = [...existingAttachments, ...newUploadedFiles];
+
+        const now = new Date();
+        const fyStart = now.getMonth() + 1 < 4 ? now.getFullYear() - 1 : now.getFullYear();
+        const fyEnd = fyStart + 1;
+        const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+        const key = "PurchaseDebitNote";
+        let counter = await Counter.findOne({ id: key, companyId }).session(session);
+        if (!counter) [counter] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
+        else {
+            counter.seq += 1;
+            await counter.save({ session });
+        }
+        const paddedSeq = String(counter.seq).padStart(5, "0");
+        debitNoteData.documentNumberDebitNote = `PURCH-DEBIT/${financialYear}/${paddedSeq}`;
+
+        const [debitNote] = await DebitNote.create([debitNoteData], { session });
+
+        // ✅ 3. PROCESS ITEMS: Deduct stock from the correct bins.
+        for (const item of debitNoteData.items) {
+            await processItemForDebitNote(item, session, debitNote, decoded);
+        }
+
+        // ✅ 4. COMMIT: If all steps succeed, commit the transaction.
+        await session.commitTransaction();
+        session.endSession();
+        return NextResponse.json({ success: true, message: "Debit Note created successfully.", debitNoteId: debitNote._id }, { status: 201 });
+
+    } catch (error) {
+        // ✅ 5. ABORT: If any error occurs, abort the transaction.
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        session.endSession();
+        console.error("Debit Note creation error:", error);
+        return NextResponse.json({ success: false, message: error.message || "Unexpected error." }, { status: 500 });
+    }
+}
 
 
 // import { NextResponse } from "next/server";
@@ -202,101 +238,53 @@ export async function POST(req) {
 
 // const { Types } = mongoose;
 
-// // Configure Cloudinary
 // cloudinary.config({
 //   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 //   api_key: process.env.CLOUDINARY_API_KEY,
 //   api_secret: process.env.CLOUDINARY_API_SECRET,
 // });
 
-// // Helper to convert web Request body to Node.js stream for formidable
 // function requestToNodeStream(req) {
-//   if (!req.body) {
-//     throw new Error("Request body is undefined. Cannot convert to stream.");
-//   }
+//   if (!req.body) throw new Error("Request body is undefined.");
 //   return Readable.fromWeb(req.body);
 // }
 
-// // Parse form-data
 // async function parseForm(req) {
 //   const form = formidable({ multiples: true });
 //   const headers = {};
-//   for (const [key, value] of req.headers.entries()) {
-//     headers[key.toLowerCase()] = value;
-//   }
+//   for (const [key, value] of req.headers.entries()) headers[key.toLowerCase()] = value;
 //   return new Promise((resolve, reject) => {
-//     const nodeReq = Object.assign(requestToNodeStream(req), {
-//       headers,
-//       method: req.method,
-//     });
+//     const nodeReq = Object.assign(requestToNodeStream(req), { headers, method: req.method });
 //     form.parse(nodeReq, (err, fields, files) => {
-//       if (err) {
-//         console.error("Formidable parse error:", err);
-//         return reject(err);
-//       }
+//       if (err) return reject(err);
 //       const parsedFields = {};
-//       for (const key in fields) {
-//         parsedFields[key] = Array.isArray(fields[key]) ? fields[key][0] : fields[key];
-//       }
+//       for (const key in fields) parsedFields[key] = Array.isArray(fields[key]) ? fields[key][0] : fields[key];
 //       const parsedFiles = {};
-//       for (const key in files) {
-//         parsedFiles[key] = Array.isArray(files[key]) ? files[key] : [files[key]];
-//       }
+//       for (const key in files) parsedFiles[key] = Array.isArray(files[key]) ? files[key] : [files[key]];
 //       resolve({ fields: parsedFields, files: parsedFiles });
 //     });
 //   });
 // }
 
-// // Upload files to Cloudinary
 // async function uploadFiles(fileObjects, folderName, companyId) {
 //   const uploadedFiles = [];
-//   if (!fileObjects || fileObjects.length === 0) {
-//     return uploadedFiles;
-//   }
+//   if (!fileObjects?.length) return uploadedFiles;
 //   for (const file of fileObjects) {
-//     if (!file || !file.filepath) {
-//       console.warn("Skipping invalid file object:", file);
-//       continue;
-//     }
-//     try {
-//       const result = await cloudinary.uploader.upload(file.filepath, {
-//         folder: `${folderName}/${companyId || 'default_company_attachments'}`,
-//         resource_type: "auto",
-//         original_filename: file.originalFilename,
-//       });
-//       uploadedFiles.push({
-//         fileName: file.originalFilename,
-//         fileUrl: result.secure_url,
-//         fileType: file.mimetype,
-//         uploadedAt: new Date(),
-//         publicId: result.public_id,
-//       });
-//     } catch (uploadError) {
-//       console.error(`Cloudinary upload error for ${file.originalFilename}:`, uploadError);
-//       throw new Error(`Failed to upload file ${file.originalFilename}: ${uploadError.message}`);
-//     }
+//     if (!file?.filepath) continue;
+//     const result = await cloudinary.uploader.upload(file.filepath, {
+//       folder: `${folderName}/${companyId || 'default_company_attachments'}`,
+//       resource_type: "auto",
+//       original_filename: file.originalFilename,
+//     });
+//     uploadedFiles.push({
+//       fileName: file.originalFilename,
+//       fileUrl: result.secure_url,
+//       fileType: file.mimetype,
+//       uploadedAt: new Date(),
+//       publicId: result.public_id,
+//     });
 //   }
 //   return uploadedFiles;
-// }
-
-// // Delete files from Cloudinary
-// async function deleteFilesByPublicIds(publicIds) {
-//   if (!publicIds || publicIds.length === 0) return;
-//   const results = await Promise.allSettled(
-//     publicIds.map(async (publicId) => {
-//       try {
-//         await cloudinary.uploader.destroy(publicId);
-//         console.log(`Deleted Cloudinary asset: ${publicId}`);
-//         return { publicId, status: "fulfilled" };
-//       } catch (deleteError) {
-//         console.error(`Error deleting Cloudinary asset ${publicId}:`, deleteError);
-//         return { publicId, status: "rejected", error: deleteError.message };
-//       }
-//     })
-//   );
-//   results.filter(r => r.status === 'rejected').forEach(r => {
-//     console.error(`Failed to delete Cloudinary asset ${r.value.publicId}: ${r.value.error}`);
-//   });
 // }
 
 // export const dynamic = 'force-dynamic';
@@ -308,287 +296,122 @@ export async function POST(req) {
 
 //   try {
 //     const token = getTokenFromHeader(req);
-//     if (!token) {
-//       console.error("Authentication Error: No token provided in request headers.");
-//       throw new Error("Unauthorized: No token provided.");
-//     }
+//     if (!token) throw new Error("Unauthorized: No token provided.");
 //     const decoded = verifyJWT(token);
 //     const companyId = decoded?.companyId;
-
-//     if (!decoded) {
-//       console.error("Authentication Error: JWT verification failed. Token might be expired, malformed, or signed with a different secret.");
-//       throw new Error("Unauthorized: Invalid token.");
-//     }
-//     if (!decoded.id) { // Check for userId claim
-//       console.error("Authentication Error: Decoded JWT is missing 'userId' claim.", { decoded });
-//       throw new Error("Unauthorized: Invalid token (missing userId).");
-//     }
-//     if (!decoded.companyId) { // Check for companyId claim
-//       console.error("Authentication Error: Decoded JWT is missing 'companyId' claim.", { decoded });
-//       throw new Error("Unauthorized: Invalid token (missing companyId).");
-//     }
+//     if (!decoded?.id || !companyId) throw new Error("Unauthorized: Invalid token.");
 
 //     const { fields, files } = await parseForm(req);
-
-//     if (!fields.debitNoteData) {
-//       throw new Error("Missing debitNoteData payload.");
-//     }
+//     if (!fields.debitNoteData) throw new Error("Missing debitNoteData payload.");
 
 //     const debitNoteData = JSON.parse(fields.debitNoteData);
-
-//     // Assign companyId from the authenticated user to the document
-//     debitNoteData.companyId = decoded.companyId;
-//     if (debitNoteData._id) {
-//       delete debitNoteData._id;
-//     }
+//     debitNoteData.companyId = companyId;
+//     delete debitNoteData._id;
 //     debitNoteData.createdBy = decoded.id;
 
-//     const newUploadedFiles = await uploadFiles(files.newAttachments || [], 'debit-notes', decoded.companyId);
+//     const newUploadedFiles = await uploadFiles(files.newAttachments || [], 'debit-notes', companyId);
+//     let existingAttachments = [];
+//     try {
+//       existingAttachments = JSON.parse(fields.existingFiles || '[]');
+//     } catch {}
+//     debitNoteData.attachments = [...existingAttachments, ...newUploadedFiles];
 
-//     let existingAttachmentsFromFrontend = [];
-//     if (fields.existingFiles) {
-//         try {
-//             const parsed = JSON.parse(fields.existingFiles);
-//             existingAttachmentsFromFrontend = Array.isArray(parsed) ? parsed : [parsed];
-//         } catch (e) {
-//             console.warn("Failed to parse existingFiles field:", e);
-//             existingAttachmentsFromFrontend = [];
-//         }
-//     }
-//     debitNoteData.attachments = [...(existingAttachmentsFromFrontend || []), ...newUploadedFiles];
-
-//     if (!Array.isArray(debitNoteData.items) || debitNoteData.items.length === 0) {
-//       throw new Error("Debit Note must contain at least one item.");
-//     }
+//     if (!Array.isArray(debitNoteData.items) || debitNoteData.items.length === 0) throw new Error("Debit Note must contain items.");
 
 //     debitNoteData.items = debitNoteData.items.map((item, index) => {
-//       if (item._id) delete item._id;
-
-//       if (item.item && !Types.ObjectId.isValid(item.item)) {
-//         item.item = new Types.ObjectId(item.item);
-//       } else if (!item.item) {
-//         throw new Error(`Row ${index + 1}: Item ID is required.`);
-//       }
-
-//       if (item.warehouse && !Types.ObjectId.isValid(item.warehouse)) {
-//         item.warehouse = new Types.ObjectId(item.warehouse);
-//       } else if (!item.warehouse) {
-//         throw new Error(`Row ${index + 1}: Warehouse ID is required.`);
-//       }
-
-//       if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches)) {
-//         item.batches = item.batches
-//           .map((b) => ({
-//             batchCode: b.batchCode ?? b.batchNumber ?? b.batchNo,
-//             allocatedQuantity: Number(b.allocatedQuantity) || 0,
-//             expiryDate: b.expiryDate || null,
-//             manufacturer: b.manufacturer || '',
-//             unitPrice: Number(b.unitPrice) || 0,
-//           }))
-//           .filter((b) => b.batchCode && b.allocatedQuantity >= 0);
-//       } else {
-//         item.batches = [];
-//       }
-
+//       delete item._id;
+//       item.item = Types.ObjectId.isValid(item.item) ? item.item : new Types.ObjectId(item.item);
+//       item.warehouse = Types.ObjectId.isValid(item.warehouse) ? item.warehouse : new Types.ObjectId(item.warehouse);
 //       item.quantity = Number(item.quantity) || 0;
+//       if (item.managedBy?.toLowerCase() === "batch" && Array.isArray(item.batches)) {
+//         item.batches = item.batches.map((b) => ({
+//           batchCode: b.batchCode ?? b.batchNumber,
+//           allocatedQuantity: Number(b.allocatedQuantity) || 0,
+//           expiryDate: b.expiryDate || null,
+//           manufacturer: b.manufacturer || '',
+//           unitPrice: Number(b.unitPrice) || 0,
+//         })).filter(b => b.batchCode);
+//       } else item.batches = [];
 //       return item;
 //     });
 
 //     for (const [i, item] of debitNoteData.items.entries()) {
-//       if (!item.item || !item.warehouse) {
-//         throw new Error(`Row ${i + 1}: Item or Warehouse ID is missing.`);
-//       }
-//       if (!Types.ObjectId.isValid(item.item)) {
-//         throw new Error(`Row ${i + 1}: Invalid item ID provided.`);
-//       }
-//       if (!Types.ObjectId.isValid(item.warehouse)) {
-//         throw new Error(`Row ${i + 1}: Invalid warehouse ID provided.`);
-//       }
-
-//       const quantity = Number(item.quantity);
-//       if (isNaN(quantity) || quantity <= 0) {
-//         throw new Error(`Row ${i + 1} (${item.itemCode || item.item}): Quantity to deduct must be a positive number.`);
-//       }
-
-//       const allowedQty = Number(item.allowedQuantity) || 0;
-//       if (allowedQty > 0 && quantity > allowedQty) {
-//         throw new Error(
-//           `Row ${i + 1} (${item.itemCode}): Quantity exceeds allowed (${allowedQty}).`
-//         );
-//       }
-//     }
-
-//     for (const [i, item] of debitNoteData.items.entries()) {
-//       if (item.managedBy?.toLowerCase() === "batch") {
-//         const totalBatchQty = (item.batches || []).reduce(
-//           (sum, b) => sum + (Number(b.allocatedQuantity) || 0),
-//           0
-//         );
-//         if (totalBatchQty !== Number(item.quantity)) {
-//           throw new Error(
-//             `Row ${i + 1} (${item.itemCode || item.item}): Batch allocated quantity mismatch. Expected ${item.quantity}, got ${totalBatchQty}.`
-//           );
-//         }
-//         if (item.batches.length === 0 && Number(item.quantity) > 0) {
-//             throw new Error(`Row ${i + 1} (${item.itemCode || item.item}): Batch managed item with quantity > 0 must have at least one batch allocated.`);
-//         }
-//       }
-//     }
-
-//     // Pre-check for sufficient stock before creating document
-//     for (const [i, item] of debitNoteData.items.entries()) {
-//       const itemId = new Types.ObjectId(item.item);
-//       const warehouseId = new Types.ObjectId(item.warehouse);
-//       const quantityToDeduct = Number(item.quantity);
-
-//       const inventoryDoc = await Inventory.findOne({
-//         item: itemId,
-//         warehouse: warehouseId,
-//         companyId: decoded.companyId, // Filter by companyId
+//       const inventory = await Inventory.findOne({
+//         item: item.item,
+//         warehouse: item.warehouse,
+//         companyId
 //       }).session(session);
-
-//       if (!inventoryDoc) {
-//         throw new Error(`Row ${i + 1} (${item.itemCode || item.item}): Inventory record not found for this item in the specified warehouse.`);
-//       }
-//       if (inventoryDoc.quantity < quantityToDeduct) {
-//         throw new Error(`Row ${i + 1} (${item.itemCode || item.item}): Insufficient total stock. Available: ${inventoryDoc.quantity}, Requested: ${quantityToDeduct}.`);
-//       }
-
+//       if (!inventory || inventory.quantity < item.quantity) throw new Error(`Row ${i + 1}: Insufficient stock.`);
 //       if (item.managedBy?.toLowerCase() === "batch") {
-//         const totalBatchQtyAllocated = (item.batches || []).reduce(
-//             (sum, b) => sum + (Number(b.allocatedQuantity) || 0), 0
-//         );
-//         if (totalBatchQtyAllocated !== quantityToDeduct) {
-//             throw new Error(`Row ${i + 1} (${item.itemCode || item.item}): Allocated batch quantity (${totalBatchQtyAllocated}) must match item quantity (${quantityToDeduct}).`);
-//         }
-
-//         for (const allocatedBatch of item.batches) {
-//           const batchInInventory = inventoryDoc.batches.find(
-//             (b) => b.batchNumber === (allocatedBatch.batchCode || allocatedBatch.batchNumber)
-//           );
-//           if (!batchInInventory || batchInInventory.quantity < allocatedBatch.allocatedQuantity) {
-//             throw new Error(
-//               `Row ${i + 1} (${item.itemCode || item.item}, Batch ${allocatedBatch.batchCode || allocatedBatch.batchNumber}): Insufficient quantity in batch. Available: ${batchInInventory?.quantity || 0}, Requested: ${allocatedBatch.allocatedQuantity}.`
-//             );
-//           }
+//         const totalAllocated = item.batches.reduce((sum, b) => sum + b.allocatedQuantity, 0);
+//         if (totalAllocated !== item.quantity) throw new Error(`Row ${i + 1}: Batch quantity mismatch.`);
+//         for (const b of item.batches) {
+//           const invBatch = inventory.batches.find(batch => batch.batchNumber === b.batchCode);
+//           if (!invBatch || invBatch.quantity < b.allocatedQuantity)
+//             throw new Error(`Row ${i + 1} Batch ${b.batchCode}: Insufficient batch stock.`);
 //         }
 //       }
 //     }
 
-//      const now = new Date();
-//         const currentYear = now.getFullYear();
-//         const currentMonth = now.getMonth() + 1;
-    
-//         let fyStart = currentYear;
-//         let fyEnd = currentYear + 1;
-//         if (currentMonth < 4) {
-//           fyStart = currentYear - 1;
-//           fyEnd = currentYear;
-//         }
-    
-//         const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
-//         const key = "PurchaseDebitNote";
-    
-//         let counter = await Counter.findOne({ id: key, companyId }).session(session);
-//         if (!counter) {
-//           const [created] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
-//           counter = created;
-//         } else {
-//           counter.seq += 1;
-//           await counter.save({ session });
-//         }
-    
-//         const paddedSeq = String(counter.seq).padStart(5, "0");
-//         debitNoteData.documentNumberDebitNote = `PURCH-DEBIT/${financialYear}/${paddedSeq}`;
-    
-
+//     const now = new Date();
+//     const fyStart = now.getMonth() + 1 < 4 ? now.getFullYear() - 1 : now.getFullYear();
+//     const fyEnd = fyStart + 1;
+//     const financialYear = `${fyStart}-${String(fyEnd).slice(-2)}`;
+//     const key = "PurchaseDebitNote";
+//     let counter = await Counter.findOne({ id: key, companyId }).session(session);
+//     if (!counter) [counter] = await Counter.create([{ id: key, companyId, seq: 1 }], { session });
+//     else {
+//       counter.seq += 1;
+//       await counter.save({ session });
+//     }
+//     const paddedSeq = String(counter.seq).padStart(5, "0");
+//     debitNoteData.documentNumberDebitNote = `PURCH-DEBIT/${financialYear}/${paddedSeq}`;
 
 //     const [debitNote] = await DebitNote.create([debitNoteData], { session });
-//     if (!debitNote) {
-//         throw new Error("Failed to create Debit Note.");
+
+//     for (const item of debitNoteData.items) {
+//       const inventory = await Inventory.findOne({ item: item.item, warehouse: item.warehouse, companyId }).session(session);
+//       inventory.quantity -= item.quantity;
+//       if (item.managedBy?.toLowerCase() === "batch") {
+//         for (const b of item.batches) {
+//           const idx = inventory.batches.findIndex(batch => batch.batchNumber === b.batchCode);
+//           inventory.batches[idx].quantity -= b.allocatedQuantity;
+//           if (inventory.batches[idx].quantity <= 0) inventory.batches.splice(idx, 1);
+//         }
+//       }
+//       await inventory.save({ session });
 //     }
 
-//     // Update inventory (stock DECREASE)
 //     for (const item of debitNoteData.items) {
-//       const itemId = new Types.ObjectId(item.item);
-//       const warehouseId = new Types.ObjectId(item.warehouse);
-//       const quantityToDeduct = Number(item.quantity);
-
-//       const inventoryDoc = await Inventory.findOne({
-//         item: itemId,
-//         warehouse: warehouseId,
-//         companyId: decoded.companyId, // Filter by companyId
-//       }).session(session);
-
-//       if (!inventoryDoc || inventoryDoc.quantity < quantityToDeduct) {
-//          throw new Error(`Concurrency error: Insufficient stock for item ${item.itemCode} during transaction.`);
-//       }
-
-//       inventoryDoc.quantity -= quantityToDeduct;
-
-//       if (item.managedBy?.toLowerCase() === "batch" && item.batches && item.batches.length > 0) {
-//           for (const allocatedBatch of item.batches) {
-//               const batchNumber = allocatedBatch.batchCode;
-//               const batchIndex = inventoryDoc.batches.findIndex(
-//                   (b) => b.batchNumber === batchNumber
-//               );
-
-//               if (batchIndex !== -1) {
-//                   inventoryDoc.batches[batchIndex].quantity -= allocatedBatch.allocatedQuantity;
-
-//                   if (inventoryDoc.batches[batchIndex].quantity <= 0) {
-//                       inventoryDoc.batches.splice(batchIndex, 1);
-//                   }
-//               } else {
-//                   console.warn(`Attempted to deduct from non-existent batch ${batchNumber} for item ${item.itemCode}. This should have been caught by pre-validation.`);
-//                   throw new Error(`Batch ${batchNumber} not found in inventory for item ${item.itemCode} during deduction. Data inconsistency.`);
-//               }
-//           }
-//       }
-//       await inventoryDoc.save({ session });
-//     }
-
-//     // Stock Movement Log
-//     for (const item of debitNoteData.items) {
-//         await StockMovement.create(
-//             [
-//                 {
-//                     item: new Types.ObjectId(item.item),
-//                     warehouse: new Types.ObjectId(item.warehouse),
-//                     movementType: "OUT",
-//                     quantity: Number(item.quantity),
-//                     reference: debitNote._id,
-//                     referenceType: "DebitNote",
-//                     remarks: `Stock decreased via Debit Note (e.g., Sales Return for Outward Processing) for item ${item.itemName}.`,
-//                     companyId: decoded.companyId, // Assign companyId
-//                     createdBy: decoded.id, // Assign createdBy
-//                     batchDetails: item.managedBy?.toLowerCase() === "batch" ? item.batches.map(b => ({
-//                         batchNumber: b.batchCode,
-//                         quantity: b.allocatedQuantity
-//                     })) : [],
-//                 },
-//             ],
-//             { session }
-//         );
+//       await StockMovement.create([
+//         {
+//           item: item.item,
+//           warehouse: item.warehouse,
+//           movementType: "OUT",
+//           quantity: item.quantity,
+//           reference: debitNote._id,
+//           referenceType: "DebitNote",
+//           remarks: `Stock decreased via Debit Note for item ${item.itemName}.`,
+//           companyId,
+//           createdBy: decoded.id,
+//           batchDetails: item.managedBy?.toLowerCase() === "batch" ? item.batches.map(b => ({ batchNumber: b.batchCode, quantity: b.allocatedQuantity })) : [],
+//         },
+//       ], { session });
 //     }
 
 //     await session.commitTransaction();
 //     session.endSession();
+//     return NextResponse.json({ success: true, message: "Debit Note created.", debitNoteId: debitNote._id, debitNote }, { status: 201 });
 
-//     return NextResponse.json(
-//       { success: true, message: "Debit Note created and inventory updated (stock reduced).", debitNoteId: debitNote._id, debitNote: debitNote },
-//       { status: 201 }
-//     );
 //   } catch (error) {
 //     await session.abortTransaction();
 //     session.endSession();
-//     console.error("Error creating Debit Note (Stock Out):", error.stack || error);
-//     return NextResponse.json(
-//       { success: false, message: error.message || "An unexpected error occurred." },
-//       { status: 500 }
-//     );
+//     console.error("Debit Note error:", error);
+//     return NextResponse.json({ success: false, message: error.message || "Unexpected error." }, { status: 500 });
 //   }
 // }
+
+
 
 // GET - Fetch all Debit Notes
 export async function GET(req) {
