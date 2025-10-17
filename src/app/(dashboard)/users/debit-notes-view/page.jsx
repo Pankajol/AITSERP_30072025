@@ -76,7 +76,7 @@ export default function DebitNoteList() {
             className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <Link href="/admin/debit-notes-view/new">
+        <Link href="/users/debit-notes-view/new">
           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaEdit className="mr-2" />
             Create New Debit Note
@@ -156,10 +156,10 @@ export default function DebitNoteList() {
 //   const [position, setPosition] = useState("right-0"); // Default
 
 //   const actions = [
-//     { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/admin/debit-notes-view/${note._id}`) },
-//     { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/admin/debit-notes-view/${note._id}/edit`) },
-//     { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/admin/debit-note/${note._id}/send-email`) },
-//     { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/admin/debit-note/${note._id}/send-whatsapp`) },
+//     { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}`) },
+//     { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}/edit`) },
+//     { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-email`) },
+//     { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-whatsapp`) },
 //     { icon: <FaTrash />, label: "Delete", onClick: () => onDelete(note._id), color: "text-red-600" },
 //   ];
 
@@ -276,7 +276,7 @@ export default function DebitNoteList() {
 //     <div className="container mx-auto p-6">
 //       <h1 className="text-4xl font-bold mb-6 text-center">Debit Note List</h1>
 //       <div className="flex justify-end mb-4">
-//         <Link href="/admin/debit-notes-view/new">
+//         <Link href="/users/debit-notes-view/new">
 //           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200">
 //             <FaEdit className="mr-2" />
 //             Create New Debit Note
@@ -311,7 +311,7 @@ export default function DebitNoteList() {
 //                 </td>
 //                 <td className="py-3 px-4 border-b">
 //                   <div className="flex justify-center space-x-2">
-//                     <Link href={`/admin/debit-notes-view/${note._id}`}>
+//                     <Link href={`/users/debit-notes-view/${note._id}`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition duration-200"
 //                         title="View Details"
@@ -319,7 +319,7 @@ export default function DebitNoteList() {
 //                         <FaEye />
 //                       </button>
 //                     </Link>
-//                     <Link href={`/admin/debit-notes-view/${note._id}/edit`}>
+//                     <Link href={`/users/debit-notes-view/${note._id}/edit`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
 //                         title="Edit"
@@ -334,7 +334,7 @@ export default function DebitNoteList() {
 //                     >
 //                       <FaTrash />
 //                     </button>
-//                     <Link href={`/admin/debit-note/${note._id}/send-email`}>
+//                     <Link href={`/users/debit-note/${note._id}/send-email`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-500 transition duration-200"
 //                         title="Send Email"
@@ -342,7 +342,7 @@ export default function DebitNoteList() {
 //                         <FaEnvelope />
 //                       </button>
 //                     </Link>
-//                     <Link href={`/admin/debit-note/${note._id}/send-whatsapp`}>
+//                     <Link href={`/users/debit-note/${note._id}/send-whatsapp`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200"
 //                         title="Send WhatsApp"
@@ -377,10 +377,10 @@ function RowMenu({ note, onDelete }) {
   const [style, setStyle] = useState({});
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/admin/debit-notes-view/${note._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/admin/debit-notes-view/${note._id}/edit`) },
-    { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/admin/debit-note/${note._id}/send-email`) },
-    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/admin/debit-note/${note._id}/send-whatsapp`) },
+    { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}`) },
+    { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}/edit`) },
+    { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-email`) },
+    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-whatsapp`) },
     { icon: <FaTrash />, label: "Delete", onClick: () => onDelete(note._id), color: "text-red-600" },
   ];
 

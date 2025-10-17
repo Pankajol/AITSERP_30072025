@@ -44,9 +44,7 @@ export async function GET(req) {
   }
 }
 
-/* ========================================
-   ✏️ POST /api/suppliers
-======================================== */
+
 export async function POST(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);

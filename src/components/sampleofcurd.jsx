@@ -996,7 +996,13 @@ const validate = () => {
 
   const handleDelete = async id => {
     if (!confirm("Are you sure?")) return;
-    await axios.delete(`/api/customers/${id}`);
+    const token = localStorage.getItem("token");
+    if (!token) throw new Error("User is not authenticated");
+    await axios.delete(`/api/customers/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
     setCustomers(prev => prev.filter(c => c._id !== id));
   };
 

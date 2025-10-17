@@ -3,7 +3,7 @@
   "appName": "ImportExportSystem",
   "webDir": "empty",
   "server": {
-    "url": "https://aitserp.vercel.app/",
+    "url": "https://aitserp-30072025.vercel.app/",
     "cleartext": true
   }
 }

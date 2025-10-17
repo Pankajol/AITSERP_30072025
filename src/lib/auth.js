@@ -10,7 +10,9 @@ export function signToken(user) {
                                    // user or company _id
       email: user.email,
       role: user.role?.name ?? "Company",             // if company this is just "Company"
-      type: user.type,                                // "company" | "user"
+      type: user.type,
+      permissions: user.permissions,
+                                     // "company" | "user"
       // ⬇️ ALWAYS include companyId; if it's a company token, use its own _id
       companyId: user.companyId ? user.companyId : user._id,
     },

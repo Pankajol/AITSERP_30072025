@@ -21,14 +21,14 @@ export default function SalesOrderSearch({
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        console.log("API response:", res);
+     
 
         // ✅ your sales orders are inside res.data.data
         const salesOrders = Array.isArray(res.data?.data)
           ? res.data.data
           : [];
 
-        console.log("Fetched sales orders:", salesOrders);
+       
 
         const formatted = salesOrders.map((o) => ({
           value: o._id,

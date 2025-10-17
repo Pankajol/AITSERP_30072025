@@ -59,7 +59,7 @@ export async function POST(req) {
     //   return new Response(JSON.stringify({ message: 'Invalid password' }), { status: 400 });
     // }
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: user._id, role: user.role,mo }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
     return new Response(JSON.stringify({ token }), { status: 200 });
   } catch (error) {

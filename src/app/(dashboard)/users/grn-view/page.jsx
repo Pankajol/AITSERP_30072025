@@ -94,7 +94,7 @@ export default function GRNList() {
 //   sessionStorage.setItem("grnDataForInvoice", JSON.stringify(dataToStore));
 
 //   toast.success("GRN data copied to Purchase Invoice");
-//   router.push(`/admin/purchaseInvoice-view/new`);
+//   router.push(`/users/purchaseInvoice-view/new`);
 // };
 
   
@@ -119,7 +119,7 @@ const handleCopyToInvoice = (grn, destination) => {
 
   sessionStorage.setItem(key, JSON.stringify(dataToStore));
 
-  router.push("/admin/purchaseInvoice-view/new");
+  router.push("/users/purchaseInvoice-view/new");
 };
 
 
@@ -159,7 +159,7 @@ const handleCopyToInvoice = (grn, destination) => {
 
   // ✅ Print PDF
   const handlePrint = (id) => {
-    window.open(`/admin/grn-view/print/${id}`, "_blank");
+    window.open(`/users/grn-view/print/${id}`, "_blank");
   };
 
   // ✅ Email Send
@@ -199,7 +199,7 @@ const handleCopyToInvoice = (grn, destination) => {
           />
         </div>
 
-        <Link href="/admin/grn-view/new" className="sm:w-auto">
+        <Link href="/users/grn-view/new" className="sm:w-auto">
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             + New GRN
           </button>
@@ -380,13 +380,13 @@ function Card({ grn, idx, onDelete, onCopy, onEmail, onPrint }) {
 //           <MenuItem
 //             icon={<FaEye />}
 //             label="View"
-//             onClick={() => router.push(`/admin/grn-view/view/${grn._id}`)}
+//             onClick={() => router.push(`/users/grn-view/view/${grn._id}`)}
 //           />
 //           <MenuItem
 //             icon={<FaEdit />}
 //             label="Edit"
 //             onClick={() =>
-//               router.push(`/admin/grn-view/new?editId=${grn._id}`)
+//               router.push(`/users/grn-view/new?editId=${grn._id}`)
 //             }
 //           />
 //           <MenuItem
@@ -425,8 +425,8 @@ function RowMenu({ grn, onDelete, onCopy, onEmail, onPrint }) {
   const router = useRouter();
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/grn-view/view/${grn._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/grn-view/new?editId=${grn._id}`) },
+    { icon: <FaEye />, label: "View", onClick: () => router.push(`/users/grn-view/view/${grn._id}`) },
+    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/users/grn-view/new?editId=${grn._id}`) },
     { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(grn) },
     {
       icon: <FaEnvelope />,

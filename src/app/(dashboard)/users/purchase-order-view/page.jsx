@@ -41,10 +41,10 @@
 //   const handleCopyTo = (selectedPO, destination) => {
 //     if (destination === "GRN") {
 //       sessionStorage.setItem("purchaseOrderData", JSON.stringify(selectedPO));
-//       router.push("/admin/GRN");
+//       router.push("/users/GRN");
 //     } else if (destination === "Invoice") {
 //       sessionStorage.setItem("purchaseInvoiceData", JSON.stringify(selectedPO));
-//       router.push("/admin/purchase-invoice");
+//       router.push("/users/purchase-invoice");
 //     }
 //   };
 
@@ -92,7 +92,7 @@
 //     <div className="container mx-auto p-6">
 //       <h1 className="text-4xl font-bold mb-6 text-center">Purchase Orders</h1>
 //       <div className="flex justify-end mb-4">
-//         <Link href="/admin/purchase-order">
+//         <Link href="/users/purchase-order">
 //           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200">
 //             <FaEdit className="mr-2" />
 //             Create New Order
@@ -124,7 +124,7 @@
 //                 <td className="py-3 px-4 border-b">
 //                   <div className="flex justify-center space-x-2">
 //                     {/* View Button */}
-//                     <Link href={`/admin/purchase-order-view/${order._id}`}>
+//                     <Link href={`/users/purchase-order-view/${order._id}`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition duration-200"
 //                         title="View Details"
@@ -133,7 +133,7 @@
 //                       </button>
 //                     </Link>
 //                     {/* Edit Button */}
-//                     <Link href={`/admin/purchase-order-view/new?editId=${order._id}`}>
+//                     <Link href={`/users/purchase-order-view/new?editId=${order._id}`}>
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
 //                         title="Edit"
@@ -280,8 +280,8 @@ const handleCopyTo = (order, destination) => {
   // ✅ Redirect user to the target page
   router.push(
     destination === "GRN"
-      ? "/admin/grn-view/new"
-      : "/admin/purchaseInvoice-view/new"
+      ? "/users/grn-view/new"
+      : "/users/purchaseInvoice-view/new"
   );
 };
 
@@ -306,7 +306,7 @@ const handleCopyTo = (order, destination) => {
           />
         </div>
 
-        <Link href="/admin/purchase-order-view/new" className="sm:w-auto">
+        <Link href="/users/purchase-order-view/new" className="sm:w-auto">
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaEdit /> New Order
           </button>
@@ -442,12 +442,12 @@ function RowMenu({ order, onDelete, onCopy }) {
     {
       icon: <FaEye />,
       label: "View",
-      onClick: () => router.push(`/admin/purchase-order-view/view/${order._id}`),
+      onClick: () => router.push(`/users/purchase-order-view/view/${order._id}`),
     },
     {
       icon: <FaEdit />,
       label: "Edit",
-      onClick: () => router.push(`/admin/purchase-order-view/new?editId=${order._id}`),
+      onClick: () => router.push(`/users/purchase-order-view/new?editId=${order._id}`),
     },
     { icon: <FaCopy />, label: "Copy → GRN", onClick: () => onCopy(order, "GRN") },
     { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },

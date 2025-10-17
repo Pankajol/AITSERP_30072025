@@ -37,8 +37,10 @@ export default function BOMViewPage() {
   if (loading) return <div>Loading BOM details...</div>;
   if (error) return <div className="text-red-600">{error}</div>;
   if (!bom) return <div>No BOM found.</div>;
-const productName = bom?.productNo?.itemName || bom?.productNo || "—";
-const warehouseName = bom?.warehouse?.warehouseName || bom?.warehouse || "—";
+
+  const productName = bom?.productNo?.itemName || bom?.productNo || "—";
+  const warehouseName = bom?.warehouse?.warehouseName || bom?.warehouse || "—";
+
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white shadow-lg rounded">
       <button
@@ -54,13 +56,14 @@ const warehouseName = bom?.warehouse?.warehouseName || bom?.warehouse || "—";
         <div><strong>Product:</strong> {productName}</div>
         <div><strong>Description:</strong> {bom?.productDesc || "—"}</div>
         <div><strong>BOM Type:</strong> {bom?.bomType || "—"}</div>
-        <div><strong>Warehouse:</strong> {warehouseName || "—"}</div>
+        <div><strong>Warehouse:</strong> {warehouseName}</div>
         <div><strong>Total:</strong> {(bom?.totalSum ?? 0).toFixed(2)}</div>
         <div><strong>Date:</strong> {bom?.createdAt ? new Date(bom.createdAt).toLocaleDateString() : "—"}</div>
       </div>
 
+      {/* Items Table */}
       <h3 className="text-xl font-semibold mb-2">Items</h3>
-      <table className="w-full table-auto border-collapse border text-sm">
+      <table className="w-full table-auto border-collapse border text-sm mb-6">
         <thead className="bg-gray-100">
           <tr>
             <th className="border p-2">#</th>
@@ -75,18 +78,49 @@ const warehouseName = bom?.warehouse?.warehouseName || bom?.warehouse || "—";
             bom.items.map((it, idx) => (
               <tr key={idx}>
                 <td className="border p-2 text-center">{idx + 1}</td>
-                <td className="border p-2">
-                    {it.item?.itemName || it.itemName || "—"}
-                </td>
+                <td className="border p-2">{it.item?.itemName || it.itemName || "—"}</td>
                 <td className="border p-2 text-center">{it.quantity}</td>
-                <td className="border p-2 text-right">{it.unitPrice.toFixed(2)}</td>
-                <td className="border p-2 text-right">{(it.total).toFixed(2)}</td>
+                <td className="border p-2 text-right">{(it.unitPrice ?? 0).toFixed(2)}</td>
+                <td className="border p-2 text-right">{(it.total ?? 0).toFixed(2)}</td>
               </tr>
             ))
           ) : (
             <tr>
               <td colSpan={5} className="border p-4 text-center text-gray-500">
                 No items in this BOM.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Resources Table */}
+      <h3 className="text-xl font-semibold mb-2">Resources</h3>
+      <table className="w-full table-auto border-collapse border text-sm">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="border p-2">#</th>
+            <th className="border p-2">Resource</th>
+            <th className="border p-2">Quantity</th>
+            <th className="border p-2">Cost</th>
+            <th className="border p-2">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bom?.resources?.length > 0 ? (
+            bom.resources.map((res, idx) => (
+              <tr key={idx}>
+                <td className="border p-2 text-center">{idx + 1}</td>
+                <td className="border p-2">{res.name || res.code || "—"}</td>
+                <td className="border p-2 text-center">{res.quantity}</td>
+                <td className="border p-2 text-right">{(res.unitPrice ?? 0).toFixed(2)}</td>
+                <td className="border p-2 text-right">{(res.total ?? 0).toFixed(2)}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={5} className="border p-4 text-center text-gray-500">
+                No resources in this BOM.
               </td>
             </tr>
           )}

@@ -68,7 +68,7 @@ export default function InvoiceDetail() {
 
   return (
     <div className="container mx-auto p-6">
-      <Link href="/admin/sales-order-view">
+      <Link href="/users/sales-order-view">
         <button className="mb-4 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded transition">
           ← Back to Order List
         </button>

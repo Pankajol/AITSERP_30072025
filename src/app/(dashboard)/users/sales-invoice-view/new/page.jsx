@@ -717,7 +717,7 @@ function SalesInvoiceEditPage() {
             setRemovedFiles([]);
             setAttachments([]);
           }
-          router.push("/admin/sales-invoice-view"); // Redirect to view page
+          router.push("/users/sales-invoice-view"); // Redirect to view page
       } else {
           toast.error(response.data.message || "Operation failed.");
       }
@@ -1030,7 +1030,7 @@ function SalesInvoiceEditPage() {
           {editId ? "Update Sales Invoice" : "Add Sales Invoice"}
         </button>
         <button
-          onClick={() => router.push("/admin/sales-invoice-view")}
+          onClick={() => router.push("/users/sales-invoice-view")}
           className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
         >
           Cancel
@@ -1599,7 +1599,7 @@ export default SalesInvoiceFormWrapper;
 //     toast.success(editId ? "Sales Invoice updated successfully" : "Sales Invoice added successfully");
 
 //     // ✅ Redirect to listing
-//     router.push("/admin/sales-invoice-view");
+//     router.push("/users/sales-invoice-view");
 //   } catch (error) {
 //     console.error("Error saving sales invoice:", error);
 //     toast.error(editId ? "Failed to update sales invoice" : "Error adding sales invoice");
@@ -2031,7 +2031,7 @@ export default SalesInvoiceFormWrapper;
 //           {editId ? "Update Sales Invoice" : "Add Sales Invoice"}
 //         </button>
 //         <button
-//           onClick={() => router.push("/admin/sales-invoice-view")}
+//           onClick={() => router.push("/users/sales-invoice-view")}
 //           className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
 //         >
 //           Cancel

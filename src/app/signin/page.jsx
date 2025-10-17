@@ -147,6 +147,7 @@ export default function LoginPage() {
       const url = mode==='Company' ? '/api/company/login' : '/api/users/login';
       const { data } = await axios.post(url, form);
       localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       router.push(mode==='Company' ? '/admin' : '/users');
     } catch (ex) {
       setErr(ex?.response?.data?.message || 'Login failed');

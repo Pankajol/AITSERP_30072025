@@ -77,7 +77,7 @@ export default function PurchaseQuotationList() {
 
   const handleCopyTo = (quotation) => {
     sessionStorage.setItem("purchaseOrderData", JSON.stringify(quotation));
-    router.push("/admin/purchase-order-view/new");
+    router.push("/users/purchase-order-view/new");
   };
 
   return (
@@ -98,7 +98,7 @@ export default function PurchaseQuotationList() {
           />
         </div>
 
-        <Link href="/admin/PurchaseQuotationList/new" className="sm:w-auto">
+        <Link href="/users/PurchaseQuotationList/new" className="sm:w-auto">
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaEdit /> New Quotation
           </button>
@@ -233,12 +233,12 @@ function Card({ quotation, idx, onDelete, onCopy }) {
     {
       icon: <FaEye />,
       label: "View",
-      onClick: () => router.push(`/admin/PurchaseQuotationList/view/${quotation._id}`),
+      onClick: () => router.push(`/users/PurchaseQuotationList/view/${quotation._id}`),
     },
     {
       icon: <FaEdit />,
       label: "Edit",
-      onClick: () => router.push(`/admin/PurchaseQuotationList/new?editId=${quotation._id}`),
+      onClick: () => router.push(`/users/PurchaseQuotationList/new?editId=${quotation._id}`),
     },
     { icon: <FaCopy />, label: "Copy → Order", onClick: () => onCopy(quotation) },
     {
@@ -260,7 +260,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
     {
       icon: <FaWhatsapp />,
       label: "WhatsApp",
-      onClick: () => router.push(`/admin/purchase-quotation/${quotation._id}/send-whatsapp`),
+      onClick: () => router.push(`/users/purchase-quotation/${quotation._id}/send-whatsapp`),
     },
     {
       icon: <FaTrash />,
@@ -330,13 +330,13 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //     // if (destination === "GRN") {
 //     //   // Save using the key "grnData" so that the GRN page can read it.
 //     //   sessionStorage.setItem("grnData", JSON.stringify(quotation));
-//     //   router.push("/admin/GRN");
+//     //   router.push("/users/GRN");
 //     // } else if (destination === "Invoice") {
 //     //   // sessionStorage.setItem("purchaseOrderData", JSON.stringify(quotation));
 //     //   console.log("Copying quotation:", quotation);
 //     //   sessionStorage.setItem("purchaseOrderData", JSON.stringify(quotation));
 
-//     //   router.push("/admin/purchase-invoice");
+//     //   router.push("/users/purchase-invoice");
 //     // }else 
 // if (destination === "Order") {
 //   // ⛔ block a quotation that contains any zero-quantity items
@@ -345,14 +345,14 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //   // ✅ everything is fine – proceed
 //   sessionStorage.setItem("purchaseOrderData", JSON.stringify(quotation));
   
-//   router.push("/admin/purchase-order-view/new");
+//   router.push("/users/purchase-order-view/new");
 // }
 //     // else if (destination === "Debit-Note") {
       
 //     //   sessionStorage.setItem("debitNoteData", JSON.stringify(quotation));
 
 //     //   // sessionStorage.setItem("purchaseOrderData", JSON.stringify(quotation));
-//     //   router.push("/admin/debit-note");
+//     //   router.push("/users/debit-note");
 //     // }
 //   };
 //   const CopyToDropdown = ({ handleCopyTo, quotation }) => {
@@ -403,7 +403,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //         Purchase Quotations
 //       </h1>
 //       <div className="flex justify-end mb-4">
-//         <Link href="/admin/PurchaseQuotationList/new">
+//         <Link href="/users/PurchaseQuotationList/new">
 //           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200">
 //             <FaEdit className="mr-2" />
 //             Create New Quotation
@@ -449,7 +449,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //                   <div className="flex justify-center space-x-2">
 //                     {/* View Button */}
 //                     <Link
-//                       href={`/admin/PurchaseQuotationList/view/${quotation._id}`}
+//                       href={`/users/PurchaseQuotationList/view/${quotation._id}`}
 //                     >
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition duration-200"
@@ -460,7 +460,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //                     </Link>
 //                     {/* Edit Button (opens the form with editId) */}
 //                     <Link
-//                       href={`/admin/PurchaseQuotationList/new?editId=${quotation._id}`}
+//                       href={`/users/PurchaseQuotationList/new?editId=${quotation._id}`}
 //                     >
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
@@ -497,7 +497,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //                     <CopyToDropdown handleCopyTo={handleCopyTo} quotation={quotation} />
 //                     {/* Email Button */}
 //                     <Link
-//                       href={`/admin/purchase-quotation/${quotation._id}/send-email`}
+//                       href={`/users/purchase-quotation/${quotation._id}/send-email`}
 //                     >
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-500 transition duration-200"
@@ -508,7 +508,7 @@ function Card({ quotation, idx, onDelete, onCopy }) {
 //                     </Link>
 //                     {/* WhatsApp Button */} 
 //                     <Link
-//                       href={`/admin/purchase-quotation/${quotation._id}/send-whatsapp`}
+//                       href={`/users/purchase-quotation/${quotation._id}/send-whatsapp`}
 //                     >
 //                       <button
 //                         className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200"

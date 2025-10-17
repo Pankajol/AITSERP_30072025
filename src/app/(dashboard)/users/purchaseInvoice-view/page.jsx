@@ -86,7 +86,7 @@ export default function InvoiceView() {
   const handleCopyTo = (invoice, destination) => {
     if (destination === "debitNote") {
       sessionStorage.setItem("invoiceData", JSON.stringify(invoice));
-      router.push("/admin/debit-notes-view/new");
+      router.push("/users/debit-notes-view/new");
     }
   };
 
@@ -108,7 +108,7 @@ export default function InvoiceView() {
           />
         </div>
 
-        <Link href="/admin/purchaseInvoice-view/new" className="sm:w-auto">
+        <Link href="/users/purchaseInvoice-view/new" className="sm:w-auto">
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaPlus /> New Invoice
           </button>
@@ -291,13 +291,13 @@ function InvoiceCard({ invoice, idx, onDelete, onCopyTo }) {
 //           <MenuItem
 //             icon={<FaEye />}
 //             label="View"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/${invoice._id}`)}
+//             onClick={() => router.push(`/users/purchaseInvoice-view/${invoice._id}`)}
 //           />
 //           <MenuItem
 //             icon={<FaEdit />}
             
 //             label="Edit"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/new/?editId=${invoice._id}`)}
+//             onClick={() => router.push(`/users/purchaseInvoice-view/new/?editId=${invoice._id}`)}
 //           />
 //           <MenuItem
 //             icon={<FaCopy />}
@@ -329,7 +329,7 @@ function InvoiceCard({ invoice, idx, onDelete, onCopyTo }) {
 //           <MenuItem
 //             icon={<FaWhatsapp />}
 //             label="WhatsApp"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/${invoice._id}/send-whatsapp`)}
+//             onClick={() => router.push(`/users/purchaseInvoice-view/${invoice._id}/send-whatsapp`)}
 //           />
 //           <MenuItem
 //             icon={<FaTrash />}
@@ -352,8 +352,8 @@ function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
   const router = useRouter();
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/purchaseInvoice-view/${invoice._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/purchaseInvoice-view/new/?editId=${invoice._id}`) },
+    { icon: <FaEye />, label: "View", onClick: () => router.push(`/users/purchaseInvoice-view/${invoice._id}`) },
+    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/users/purchaseInvoice-view/new/?editId=${invoice._id}`) },
     { icon: <FaCopy />, label: "Copy → Debit Note", onClick: () => onCopyTo(invoice, "debitNote") },
     {
       icon: <FaEnvelope />,
@@ -368,7 +368,7 @@ function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
         }
       },
     },
-    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/admin/purchaseInvoice-view/${invoice._id}/send-whatsapp`) },
+    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/users/purchaseInvoice-view/${invoice._id}/send-whatsapp`) },
     { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(invoice._id) },
   ];
 

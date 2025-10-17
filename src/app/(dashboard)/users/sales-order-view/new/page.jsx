@@ -922,7 +922,7 @@ const handleSubmit = async () => {
 
     if (res.data.success) {
       toast.success(editId ? "Order Updated" : "Order Created");
-      router.push("/admin/sales-order-view");
+      router.push("/users/sales-order-view");
     }
   } catch (err) {
     console.error("Error saving order:", err.response?.data || err.message);
@@ -1168,7 +1168,7 @@ const handleSubmit = async () => {
         <button
           onClick={() => {
             setFormData(initialOrderState);
-            router.push("/admin/salesOrder");
+            router.push("/users/salesOrder");
           }}
           className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400"
         >

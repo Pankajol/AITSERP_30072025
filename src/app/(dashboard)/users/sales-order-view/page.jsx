@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo,useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-
-import { useRouter } from "next/navigation";
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import {
-  FaEllipsisV,
   FaEdit,
   FaTrash,
   FaCopy,
@@ -18,129 +18,96 @@ import {
 } from 'react-icons/fa';
 import ActionMenu from '@/components/ActionMenu';
 
-/* ================================================================= */
-/*  Sales Order List                                                 */
-/* ================================================================= */
+/* ---------- Permission Helper ---------- */
+const hasPermission = (user, moduleName, permissionType) =>
+  user?.modules?.[moduleName]?.selected &&
+  user.modules[moduleName]?.permissions?.[permissionType] === true;
+
+/* ======================================================= */
+/* Sales Order List Component                              */
+/* ======================================================= */
 export default function SalesOrderList() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [search, setSearch] = useState('');
   const router = useRouter();
 
+  /* ---------- Load User ---------- */
+  useEffect(() => {
+    const stored = localStorage.getItem('user');
+    if (stored) setUser(JSON.parse(stored));
+  }, []);
 
-  //   const fetchOrders = async () => {
-  //   try {
-  //     const res = await axios.get("/api/sales-order");
-  //     console.log("Fetched orders:", res.data.data);
-  //     //Expecting an object with a success flag and a data array.
-  //     if (res.data.success) {
-  //       setOrders(res.data);
-  //     }
-  //   setOrders(res.data);
-  //   } catch (error) {
-  //     console.error("Error fetching sales orders:", error);
-  //   } finally {
-  //       setLoading(false);
-  //     }
-  // };
-
-
-
+  /* ---------- Fetch Orders ---------- */
   const fetchOrders = async () => {
-  setLoading(true);
-  try {
-    const token = localStorage.getItem("token");
-
-    const res = await axios.get("/api/sales-order", {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    console.log("Fetched orders:", res.data?.data);
-
-    if (res.data?.success && Array.isArray(res.data.data)) {
-      setOrders(res.data.data);
-    } else {
-      console.warn("Unexpected response:", res.data);
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await axios.get('/api/sales-order', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setOrders(res.data?.success && Array.isArray(res.data.data) ? res.data.data : []);
+    } catch (err) {
+      console.error('Error fetching sales orders:', err.response?.data || err.message);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Error fetching sales orders:", error.response?.data || error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchOrders();
   }, []);
 
-  /* ---------- fetch orders ---------- */
-  // useEffect(() => {
-  //   (async () => {
-  //     try {
-  //         const res = await axios.get("/api/sales-order");
-  //         if (res.data.success) {
-  //       setOrders(res.data);
-  //     }
-  //     } catch (err) {
-  //       console.error('Error fetching orders:', err);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   })();
-  // }, []);
-
-  /* ---------- filtered list ---------- */
+  /* ---------- Filter Orders ---------- */
   const displayOrders = useMemo(() => {
     if (!search.trim()) return orders;
     const q = search.toLowerCase();
     return orders.filter((o) => (o.customerName || '').toLowerCase().includes(q));
   }, [orders, search]);
 
-  /* ---------- row actions ---------- */
+  /* ---------- Delete Order ---------- */
   const handleDelete = async (id) => {
+    if (!hasPermission(user, 'Sales Order', 'delete')) {
+      toast.error("You don't have permission to delete orders.");
+      return;
+    }
     if (!confirm('Delete this order?')) return;
     try {
       await axios.delete(`/api/sales-order/${id}`);
       setOrders((prev) => prev.filter((o) => o._id !== id));
+      toast.success('Order deleted successfully.');
     } catch {
-      alert('Failed to delete');
+      toast.error('Failed to delete order.');
     }
   };
 
-const handleCopyTo = (order, dest) => {
+  /* ---------- Copy Order ---------- */
+  const handleCopyTo = (order, dest) => {
+    if (!hasPermission(user, 'Sales Order', 'create')) {
+      toast.error("You don't have permission to create records.");
+      return;
+    }
 
-
-  if (dest === 'Delivery') {
-      const data = {
-    ...order,
-    sourceId: order._id, // ✅ Add correct field
-    sourceModel: 'delivery', // ✅ Already good
+    const data = { ...order, sourceId: order._id, sourceModel: dest === 'Delivery' ? 'delivery' : 'salesorder' };
+    if (dest === 'Delivery') {
+      sessionStorage.setItem('deliveryData', JSON.stringify(data));
+      router.push('/users/delivery-view/new');
+    } else {
+      sessionStorage.setItem('SalesInvoiceData', JSON.stringify(data));
+      router.push('/users/sales-invoice-view/new');
+    }
   };
-    sessionStorage.setItem('deliveryData', JSON.stringify(data));
-    router.push('/admin/delivery-view/new');
-  } else {
-      const data = {
-    ...order,
-    sourceId: order._id, // ✅ Add correct field
-    sourceModel: 'salesorder', // ✅ Already good
-  };
-    sessionStorage.setItem('SalesInvoiceData', JSON.stringify(data));
-    router.push('/admin/sales-invoice-view/new');
-  }
-};
 
-  /* ================================================================= */
-  /*  UI                                                               */
-  /* ================================================================= */
+  /* ======================================================= */
+  /* Render UI                                              */
+  /* ======================================================= */
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
-        Sales Orders
-      </h1>
+      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">Sales Orders</h1>
 
-      {/* toolbar */}
+      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
         <div className="relative flex-1 max-w-md">
           <FaSearch className="absolute top-3 left-3 text-gray-400" />
@@ -152,39 +119,30 @@ const handleCopyTo = (order, dest) => {
           />
         </div>
 
-        <Link href="/admin/sales-order-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaEdit /> New Order
-          </button>
-        </Link>
+        {user && hasPermission(user, 'Sales Order', 'create') && (
+          <Link href="/users/sales-order-view/new" className="sm:w-auto">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+              <FaEdit /> New Order
+            </button>
+          </Link>
+        )}
       </div>
 
-      {/* table / cards */}
       {loading ? (
         <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
       ) : (
         <>
-          {/* desktop */}
+          {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto">
-            <Table orders={displayOrders} onDelete={handleDelete} onCopy={handleCopyTo} />
+            <Table orders={displayOrders} onDelete={handleDelete} onCopy={handleCopyTo} user={user} />
           </div>
 
-          {/* mobile cards */}
+          {/* Mobile Cards */}
           <div className="md:hidden space-y-4">
             {displayOrders.map((o, i) => (
-              <Card
-                key={o._id}
-                order={o}
-                idx={i}
-                onDelete={handleDelete}
-                onCopy={handleCopyTo}
-              />
+              <Card key={o._id} order={o} idx={i} onDelete={handleDelete} onCopy={handleCopyTo} user={user} />
             ))}
-            {!displayOrders.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
-                No matching orders
-              </p>
-            )}
+            {!displayOrders.length && <p className="text-center text-gray-500 dark:text-gray-400">No matching orders</p>}
           </div>
         </>
       )}
@@ -192,49 +150,34 @@ const handleCopyTo = (order, dest) => {
   );
 }
 
-/* ================================================================= */
-/*  Desktop Table                                                    */
-/* ================================================================= */
-function Table({ orders, onDelete, onCopy }) {
+/* ======================================================= */
+/* Desktop Table Component                                  */
+/* ======================================================= */
+function Table({ orders, onDelete, onCopy, user }) {
   return (
     <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
       <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
         <tr>
-          {['#', 'Document Number.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
-            <th
-              key={h}
-              className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-            >
-              {h}
-            </th>
+          {['#', 'Document Number', 'Customer', 'Date', 'Status', 'Total', 'Actions'].map((h) => (
+            <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100">{h}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {orders.map((o, i) => (
-          <tr
-            key={o._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-          >
+          <tr key={o._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
             <td className="px-4 py-3">{i + 1}</td>
             <td className="px-4 py-3">{o.documentNumberOrder}</td>
             <td className="px-4 py-3">{o.customerName}</td>
-            <td className="px-4 py-3">
-              {new Date(o.postingDate || o.orderDate).toLocaleDateString('en-GB')}
-            </td>
-           
+            <td className="px-4 py-3">{new Date(o.postingDate || o.orderDate).toLocaleDateString('en-GB')}</td>
             <td className="px-4 py-3">{o.status}</td>
             <td className="px-4 py-3">₹{o.grandTotal}</td>
-            <td className="px-4 py-3">
-              <RowMenu order={o} onDelete={onDelete} onCopy={onCopy} />
-            </td>
+            <td className="px-4 py-3"><RowMenu order={o} onDelete={onDelete} onCopy={onCopy} user={user} /></td>
           </tr>
         ))}
         {!orders.length && (
           <tr>
-            <td colSpan={7} className="text-center py-6 text-gray-500 dark:text-gray-400">
-              No orders found.
-            </td>
+            <td colSpan={7} className="text-center py-6 text-gray-500 dark:text-gray-400">No orders found.</td>
           </tr>
         )}
       </tbody>
@@ -242,80 +185,108 @@ function Table({ orders, onDelete, onCopy }) {
   );
 }
 
-/* ================================================================= */
-/*  Mobile Card                                                      */
-/* ================================================================= */
-function Card({ order, idx, onDelete, onCopy }) {
+/* ======================================================= */
+/* Mobile Card Component                                   */
+/* ======================================================= */
+function Card({ order, idx, onDelete, onCopy, user }) {
   return (
     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {order.ducumentNumber}
-        </div>
-        <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
+        <div className="font-semibold text-gray-700 dark:text-gray-100">#{idx + 1} • {order.documentNumberOrder}</div>
+        <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} user={user} />
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-        Customer: {order.customerName}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Date: {new Date(order.postingDate || order.orderDate).toLocaleDateString('en-GB')}
-      </p>
+      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Customer: {order.customerName}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-300">Date: {new Date(order.postingDate || order.orderDate).toLocaleDateString('en-GB')}</p>
       <p className="text-sm text-gray-500 dark:text-gray-300">Status: {order.status}</p>
       <p className="text-sm text-gray-500 dark:text-gray-300">Total: ₹{order.grandTotal}</p>
     </div>
   );
 }
 
-/* ================================================================= */
-/*  Row Action Menu (dropdown)                                       */
-/* ================================================================= */
-function RowMenu({ order, onDelete, onCopy }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
+/* ======================================================= */
+/* Row Menu Component                                      */
+/* ======================================================= */
+function RowMenu({ order, onDelete, onCopy, user }) {
   const router = useRouter();
 
-  /** ✅ Actions Array */
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/sales-order-view/view/${order._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/sales-order-view/new?editId=${order._id}`) },
-    { icon: <FaCopy />, label: "Copy → Delivery", onClick: () => onCopy(order, "Delivery") },
-    { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },
-    {
+    { icon: <FaEye />, label: 'View', onClick: () => router.push(`/users/sales-order-view/view/${order._id}`) },
+    hasPermission(user, 'Sales Order', 'edit') && { icon: <FaEdit />, label: 'Edit', onClick: () => router.push(`/users/sales-order-view/new?editId=${order._id}`) },
+    hasPermission(user, 'Sales Order', 'create') && { icon: <FaCopy />, label: 'Copy → Delivery', onClick: () => onCopy(order, 'Delivery') },
+    hasPermission(user, 'Sales Order', 'create') && { icon: <FaCopy />, label: 'Copy → Invoice', onClick: () => onCopy(order, 'Invoice') },
+    hasPermission(user, 'Sales Order', 'email') && {
       icon: <FaEnvelope />,
-      label: "Email",
+      label: 'Email',
       onClick: async () => {
         try {
-          const res = await axios.post("/api/email", { type: "order", id: order._id });
-          if (res.data.success) toast.success("Email sent successfully!");
-          else toast.error(res.data.message || "Failed to send email.");
+          const res = await axios.post('/api/email', { type: 'order', id: order._id });
+          if (res.data.success) toast.success('Email sent successfully!');
+          else toast.error(res.data.message || 'Failed to send email.');
         } catch {
-          toast.error("Error sending email.");
+          toast.error('Error sending email.');
         }
       },
     },
-    // { icon: <FaEnvelope />, label: "Email", onClick: () => router.push(`/admin/sales-order-email/${order._id}`) },
-    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/admin/sales-order-whatsapp/${order._id}`) },
-    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(order._id) },
-  ];
-  return ( 
-    <ActionMenu actions={actions} />
-  )
+    hasPermission(user, 'Sales Order', 'whatsapp') && {
+      icon: <FaWhatsapp />,
+      label: 'Whatsapp',
+      onclick : async () => {
+        try {
+          const res = await axios.post('/api/whatsapp', { type: 'order', id: order._id });
+          if (res.data.success) toast.success('whatsapp sent');
+          else toast.error(res.data.message || 'Failed to send whatsapp.');
+        } catch {
+          toast.error('Error sending whatsapp.');
+        }
+      },
+    },
+    // { icon: <FaEnvelope />, label: 'Email', onClick: async () => {
+    //   try {
+    //     const res = await axios.post('/api/email', { type: 'order', id: order._id });
+    //     if (res.data.success) toast.success('Email sent successfully!');
+    //     else toast.error(res.data.message || 'Failed to send email.');
+    //   } catch { toast.error('Error sending email.'); }
+    // }},
+    // { icon: <FaWhatsapp />, label: 'WhatsApp', onClick: () => router.push(`/users/sales-order-whatsapp/${order._id}`) },
+    hasPermission(user, 'Sales Order', 'delete') && { icon: <FaTrash />, label: 'Delete', color: 'text-red-600', onClick: () => onDelete(order._id) },
+  ].filter(Boolean);
+
+  return <ActionMenu actions={actions} />;
 }
 
 
 
 
-// "use client";
 
-// import { useState, useEffect } from "react";
-// import Link from "next/link";
-// import axios from "axios";
+
+// 'use client';
+
+// import { useState, useEffect, useMemo,useRef } from 'react';
+// import Link from 'next/link';
+
 // import { useRouter } from "next/navigation";
-// import { FaEdit, FaTrash, FaCopy, FaEye, FaEnvelope, FaWhatsapp } from "react-icons/fa";
+// import axios from 'axios';
 
+// import {
+//   FaEllipsisV,
+//   FaEdit,
+//   FaTrash,
+//   FaCopy,
+//   FaEye,
+//   FaEnvelope,
+//   FaWhatsapp,
+//   FaSearch,
+// } from 'react-icons/fa';
+// import ActionMenu from '@/components/ActionMenu';
+
+// /* ================================================================= */
+// /*  Sales Order List                                                 */
+// /* ================================================================= */
 // export default function SalesOrderList() {
 //   const [orders, setOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
+//   const [user, setUser] = useState(null);
+//   const [search, setSearch] = useState('');
 //   const router = useRouter();
 
 
@@ -323,199 +294,262 @@ function RowMenu({ order, onDelete, onCopy }) {
 
 
 
+//   const fetchOrders = async () => {
+//   setLoading(true);
+//   try {
+//     const token = localStorage.getItem("token");
 
-  // const fetchOrders = async () => {
-  //   try {
-  //     const res = await axios.get("/api/sales-order");
-  //     console.log("Fetched orders:", res.data.data);
-  //     //Expecting an object with a success flag and a data array.
-  //     if (res.data.success) {
-  //       setOrders(res.data);
-  //     }
-  //   setOrders(res.data);
-  //   } catch (error) {
-  //     console.error("Error fetching sales orders:", error);
-  //   }
-  // };
-
-  // useEffect(() => {
-  //   fetchOrders();
-  // }, []);
-
-//   const handleDelete = async (id) => {
-//     if (!confirm("Are you sure you want to delete this order?")) return;
-//     try {
-//       const res = await axios.delete(`/api/sales-order/${id}`);
-//       if (res.data.success) {
-//         alert("Deleted successfully");
-//         fetchOrders();
+//     const res = await axios.get("/api/sales-order", {
+//       headers: {
+//         Authorization: `Bearer ${token}`
 //       }
-//     } catch (error) {
-//       console.error("Error deleting sales order:", error);
-//       alert("Failed to delete order");
+//     });
+
+//     console.log("Fetched orders:", res.data?.data);
+
+//     if (res.data?.success && Array.isArray(res.data.data)) {
+//       setOrders(res.data.data);
+//     } else {
+//       console.warn("Unexpected response:", res.data);
+//     }
+//   } catch (error) {
+//     console.error("Error fetching sales orders:", error.response?.data || error.message);
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
+//   useEffect(() => {
+//     fetchOrders();
+//   }, []);
+
+//   useEffect(() => {
+//   const stored = localStorage.getItem('user');
+//   if (stored) {
+//     const parsed = JSON.parse(stored);
+//     console.log("User object:", parsed);
+//     setUser(parsed);
+//   }
+// }, []);
+
+
+
+
+//   /* ---------- filtered list ---------- */
+//   const displayOrders = useMemo(() => {
+//     if (!search.trim()) return orders;
+//     const q = search.toLowerCase();
+//     return orders.filter((o) => (o.customerName || '').toLowerCase().includes(q));
+//   }, [orders, search]);
+
+//   /* ---------- row actions ---------- */
+//   const handleDelete = async (id) => {
+//     if (!confirm('Delete this order?')) return;
+//     try {
+//       await axios.delete(`/api/sales-order/${id}`);
+//       setOrders((prev) => prev.filter((o) => o._id !== id));
+//     } catch {
+//       alert('Failed to delete');
 //     }
 //   };
 
-//   const handleCopyTo = (order, destination) => {
-//     // sessionStorage.setItem("salesOrderData", JSON.stringify(order));
-//     //  router.push("/admin/sales-invoice");
-
-//     if (destination === "Delivery") {
-//       const orderWithId = { ...order, salesOrderId: order._id,sourceModel: "SalesOrder" };
-//       sessionStorage.setItem("deliveryData", JSON.stringify(order));
-//       router.push("/admin/delivery-view/new");
-//     }else if (destination === "Invoice") {
-//       const invoiceWithId = {...order,salesOrderId:order._id, sourceModel: "SalesOrder" }
-//       sessionStorage.setItem("SalesInvoiceData", JSON.stringify(invoiceWithId));
-//       router.push("/admin/sales-invoice-view/new");
-//     } 
-//     // else if (destination === "Debit-Note") {
-//     //   sessionStorage.setItem("debitNoteData", JSON.stringify(order));
-//     //   router.push("/admin/debit-note");
-//     // }
+// const handleCopyTo = (order, dest) => {
 
 
-
-
-
+//   if (dest === 'Delivery') {
+//       const data = {
+//     ...order,
+//     sourceId: order._id, // ✅ Add correct field
+//     sourceModel: 'delivery', // ✅ Already good
 //   };
-
-//   const CopyToDropdown = ({ handleCopyTo, order }) => {
-//     const [isOpen, setIsOpen] = useState(false);
-//     const toggleDropdown = () => setIsOpen((prev) => !prev);
-//     const onSelect = (option) => {
-//       handleCopyTo(order, option);
-//       setIsOpen(false);
-//     };
-//     return (
-//       <div className="relative inline-block text-left">
-//         <button
-//           onClick={toggleDropdown}
-//           className="flex items-center px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-500 transition duration-200"
-//           title="Copy To"
-//         >
-//           <FaCopy className="mr-1" />
-//           <span className="hidden sm:inline"></span>
-//         </button>
-//         {isOpen && (
-//           <div className="absolute right-0 mt-2 w-40 origin-top-right bg-white border border-gray-200 rounded-md shadow-lg z-10">
-//             <div className="py-1">
-//               <button
-//                 onClick={() => onSelect("Delivery")}
-//                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-//               >
-//                 Delivery
-//               </button>
-//               <button
-//                 onClick={() => onSelect("Invoice")}
-//                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-//               >
-//                 Invoice
-//               </button>
-            
-//             </div>
-//           </div>
-//         )}
-//       </div>
-//     );
+//     sessionStorage.setItem('deliveryData', JSON.stringify(data));
+//     router.push('/users/delivery-view/new');
+//   } else {
+//       const data = {
+//     ...order,
+//     sourceId: order._id, // ✅ Add correct field
+//     sourceModel: 'salesorder', // ✅ Already good
 //   };
+//     sessionStorage.setItem('SalesInvoiceData', JSON.stringify(data));
+//     router.push('/users/sales-invoice-view/new');
+//   }
+// };
 
+//   /* ================================================================= */
+//   /*  UI                                                               */
+//   /* ================================================================= */
 //   return (
-//     <div className="container mx-auto p-6">
-//       <h1 className="text-4xl font-bold mb-6 text-center">Sales Orders</h1>
-//       <div className="flex justify-end mb-4">
-//         <Link href="/admin/sales-order-view/new">
-//           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200">
-//             <FaEdit className="mr-2" />
-//             Create New Order
+//     <div className="max-w-7xl mx-auto px-4 py-6">
+//       <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
+//         Sales Orders
+//       </h1>
+
+//       {/* toolbar */}
+//       <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
+//         <div className="relative flex-1 max-w-md">
+//           <FaSearch className="absolute top-3 left-3 text-gray-400" />
+//           <input
+//             value={search}
+//             onChange={(e) => setSearch(e.target.value)}
+//             placeholder="Search customer…"
+//             className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+//           />
+//         </div>
+
+//         <Link href="/users/sales-order-view/new" className="sm:w-auto">
+//           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+//             <FaEdit /> New Order
 //           </button>
 //         </Link>
 //       </div>
-//       <div className="overflow-x-auto">
-//         <table className="min-w-full bg-white shadow-md rounded border border-gray-200">
-//           <thead className="bg-gray-100">
-//             <tr>
-//               <th className="py-3 px-4 border-b">Ref Number</th>
-//               <th className="py-3 px-4 border-b">Customer Name</th>
-//               <th className="py-3 px-4 border-b">Order Date</th>
-//               <th className="py-3 px-4 border-b">Status</th>
-//               <th className="py-3 px-4 border-b">Grand Total</th>
-//               <th className="py-3 px-4 border-b">Actions</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {orders.map((order) => (
-//               <tr key={order._id} className="hover:bg-gray-50 transition-colors">
-//                 <td className="py-3 px-4 border-b text-center">{order.refNumber}</td>
-//                 <td className="py-3 px-4 border-b text-center">{order.customerName}</td>
-//                 <td className="py-3 px-4 border-b text-center">
-//                   {order.postingDate ?  new Date(order.postingDate).toLocaleDateString("en-GB")
-//                     : ""}
-//                 </td>
-//                 <td className="py-3 px-4 border-b text-center">{order.status}</td>
-//                 <td className="py-3 px-4 border-b text-center">{order.grandTotal}</td>
-//                 <td className="py-3 px-4 border-b">
-//                   <div className="flex justify-center space-x-2">
-//                     {/* View Button */}
-//                     <Link href={`/admin/sales-order-view/${order._id}`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition duration-200"
-//                         title="View Details"
-//                       >
-//                         <FaEye />
-//                       </button>
-//                     </Link>
-//                     {/* Edit Button */}
-//                   <Link href={`/admin/sales-order-view/new?editId=${order._id}`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
-//                         title="Edit"
-//                       >
-//                         <FaEdit />
-//                       </button>
-//                     </Link>
-//                     {/* Delete Button */}
-//                     <button
-//                       onClick={() => handleDelete(order._id)}
-//                       className="flex items-center px-2 py-1 bg-red-600 text-white rounded hover:bg-red-500 transition duration-200"
-//                       title="Delete"
-//                     >
-//                       <FaTrash />
-//                     </button>
-//                     {/* Copy To Dropdown */}
-//                     <CopyToDropdown handleCopyTo={handleCopyTo} order={order} />
-//                     {/* Email Button */}  
-//                     <Link href={`/admin/sales-order-email/${order._id}`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
-//                         title="Email Order"
-//                       >
-//                         <FaEnvelope />
-//                       </button>
-//                     </Link>
-//                     {/* WhatsApp Button */} 
-//                     <Link href={`/admin/sales-order-whatsapp/${order._id}`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200"
-//                         title="WhatsApp Order"
-//                       >
-//                         <FaWhatsapp />
-//                       </button>
-//                     </Link>
-//                   </div>
-//                 </td>
-//               </tr>
+
+//       {/* table / cards */}
+//       {loading ? (
+//         <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
+//       ) : (
+//         <>
+//           {/* desktop */}
+//           <div className="hidden md:block overflow-x-auto">
+//             <Table orders={displayOrders} onDelete={handleDelete} onCopy={handleCopyTo} />
+//           </div>
+
+//           {/* mobile cards */}
+//           <div className="md:hidden space-y-4">
+//             {displayOrders.map((o, i) => (
+//               <Card
+//                 key={o._id}
+//                 order={o}
+//                 idx={i}
+//                 onDelete={handleDelete}
+//                 onCopy={handleCopyTo}
+//               />
 //             ))}
-//             {orders.length === 0 && (
-//               <tr>
-//                 <td colSpan="6" className="text-center py-4">
-//                   No purchase orders found.
-//                 </td>
-//               </tr>
+//             {!displayOrders.length && (
+//               <p className="text-center text-gray-500 dark:text-gray-400">
+//                 No matching orders
+//               </p>
 //             )}
-//           </tbody>
-//         </table>
-//       </div>
+//           </div>
+//         </>
+//       )}
 //     </div>
 //   );
 // }
+
+// /* ================================================================= */
+// /*  Desktop Table                                                    */
+// /* ================================================================= */
+// function Table({ orders, onDelete, onCopy }) {
+//   return (
+//     <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+//       <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
+//         <tr>
+//           {['#', 'Document Number.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
+//             <th
+//               key={h}
+//               className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
+//             >
+//               {h}
+//             </th>
+//           ))}
+//         </tr>
+//       </thead>
+//       <tbody>
+//         {orders.map((o, i) => (
+//           <tr
+//             key={o._id}
+//             className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+//           >
+//             <td className="px-4 py-3">{i + 1}</td>
+//             <td className="px-4 py-3">{o.documentNumberOrder}</td>
+//             <td className="px-4 py-3">{o.customerName}</td>
+//             <td className="px-4 py-3">
+//               {new Date(o.postingDate || o.orderDate).toLocaleDateString('en-GB')}
+//             </td>
+           
+//             <td className="px-4 py-3">{o.status}</td>
+//             <td className="px-4 py-3">₹{o.grandTotal}</td>
+//             <td className="px-4 py-3">
+//               <RowMenu order={o} onDelete={onDelete} onCopy={onCopy} />
+//             </td>
+//           </tr>
+//         ))}
+//         {!orders.length && (
+//           <tr>
+//             <td colSpan={7} className="text-center py-6 text-gray-500 dark:text-gray-400">
+//               No orders found.
+//             </td>
+//           </tr>
+//         )}
+//       </tbody>
+//     </table>
+//   );
+// }
+
+// /* ================================================================= */
+// /*  Mobile Card                                                      */
+// /* ================================================================= */
+// function Card({ order, idx, onDelete, onCopy }) {
+//   return (
+//     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+//       <div className="flex justify-between">
+//         <div className="font-semibold text-gray-700 dark:text-gray-100">
+//           #{idx + 1} • {order.ducumentNumber}
+//         </div>
+//         <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
+//       </div>
+//       <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
+//         Customer: {order.customerName}
+//       </p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">
+//         Date: {new Date(order.postingDate || order.orderDate).toLocaleDateString('en-GB')}
+//       </p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">Status: {order.status}</p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">Total: ₹{order.grandTotal}</p>
+//     </div>
+//   );
+// }
+
+// /* ================================================================= */
+// /*  Row Action Menu (dropdown)                                       */
+// /* ================================================================= */
+// function RowMenu({ order, onDelete, onCopy }) {
+//   const [open, setOpen] = useState(false);
+//   const btnRef = useRef(null);
+//   const menuRef = useRef(null);
+//   const router = useRouter();
+
+//   /** ✅ Actions Array */
+//   const actions = [
+//     { icon: <FaEye />, label: "View", onClick: () => router.push(`/users/sales-order-view/view/${order._id}`) },
+//     { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/users/sales-order-view/new?editId=${order._id}`) },
+//     { icon: <FaCopy />, label: "Copy → Delivery", onClick: () => onCopy(order, "Delivery") },
+//     { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },
+//     {
+//       icon: <FaEnvelope />,
+//       label: "Email",
+//       onClick: async () => {
+//         try {
+//           const res = await axios.post("/api/email", { type: "order", id: order._id });
+//           if (res.data.success) toast.success("Email sent successfully!");
+//           else toast.error(res.data.message || "Failed to send email.");
+//         } catch {
+//           toast.error("Error sending email.");
+//         }
+//       },
+//     },
+//     // { icon: <FaEnvelope />, label: "Email", onClick: () => router.push(`/users/sales-order-email/${order._id}`) },
+//     { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/users/sales-order-whatsapp/${order._id}`) },
+//     { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(order._id) },
+//   ];
+//   return ( 
+//     <ActionMenu actions={actions} />
+//   )
+// }
+
+
+
+
+
+
+

@@ -66,7 +66,7 @@ export default function InvoiceDetail() {
     return (
       <div className="container mx-auto p-6">
         <p className="text-red-600 text-xl">{error}</p>
-        <Link href="/admin/sales-invoice-view">
+        <Link href="/users/sales-invoice-view">
           <button className="mt-4 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">
             Back to Invoice List
           </button>
@@ -79,7 +79,7 @@ export default function InvoiceDetail() {
     return (
       <div className="container mx-auto p-6">
         <p>Invoice not found</p>
-        <Link href="/admin/sales-invoice-view">
+        <Link href="/users/sales-invoice-view">
           <button className="mt-4 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">
             Back to Invoice List
           </button>
@@ -90,7 +90,7 @@ export default function InvoiceDetail() {
 
   return (
     <div className="container mx-auto p-6">
-      <Link href="/admin/sales-invoice-view">
+      <Link href="/users/sales-invoice-view">
         <button className="mb-4 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded transition">
           ← Back to Invoice List
         </button>
@@ -269,12 +269,12 @@ export default function InvoiceDetail() {
       </div>
 
       <div className="flex justify-end space-x-4">
-        <Link href="/admin/sales-invoice-view">
+        <Link href="/users/sales-invoice-view">
           <button className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded transition">
             Back to List
           </button>
         </Link>
-        <Link href={`/admin/sales-invoice-view/new?editId=${invoice._id}`}>
+        <Link href={`/users/sales-invoice-view/new?editId=${invoice._id}`}>
           <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
             Edit Invoice
           </button>
@@ -325,7 +325,7 @@ export default function InvoiceDetail() {
 
 //   return (
 //     <div className="container mx-auto p-6">
-//       <Link href="/admin/sales-invoice-view">
+//       <Link href="/users/sales-invoice-view">
 //         <button className="mb-4 px-4 py-2 bg-gray-300 rounded">Back to Order List</button>
 //       </Link>
 //       <h1 className="text-3xl font-bold mb-6">Order Detail</h1>
@@ -365,7 +365,7 @@ export default function InvoiceDetail() {
 //         )}
 //       </div>
 //       <div className="mt-4">
-//         <Link href={`/admin/sales-invoice-view/new?editId=${order._id}`}>
+//         <Link href={`/users/sales-invoice-view/new?editId=${order._id}`}>
 //           <button className="px-4 py-2 bg-blue-600 text-white rounded">Edit order</button>
 //         </Link>
 //       </div>

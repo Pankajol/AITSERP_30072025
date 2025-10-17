@@ -518,13 +518,13 @@ export default function PurchaseQuotationForm() {
   const handleCopyTo = useCallback((destination) => {
     if (destination === "GRN") {
       sessionStorage.setItem("purchaseQuotationData", JSON.stringify(quotationData));
-      router.push("/admin/GRN");
+      router.push("/users/GRN");
     } else if (destination === "PurchaseInvoice") {
       sessionStorage.setItem("purchaseQuotationData", JSON.stringify(quotationData));
-      router.push("/admin/purchase-invoice");
+      router.push("/users/purchase-invoice");
     } else if (destination === "DebitNote") {
       sessionStorage.setItem("purchaseQuotationData", JSON.stringify(quotationData));
-      router.push("/admin/debit-note");
+      router.push("/users/debit-note");
     }
   }, [quotationData, router]);
 
