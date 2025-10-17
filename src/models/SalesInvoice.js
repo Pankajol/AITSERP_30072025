@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Counter from "@/models/Counter";
+import Coustomer from "@/models/CustomerModel";
 import { type } from "os";
 
 
