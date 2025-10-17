@@ -103,7 +103,6 @@ async function processItemForInvoice(item, session, invoice, decoded, isCopiedSO
 // --- API Handler ---
 export async function POST(req) {
   await dbConnect();
-  const session = await mongoose.startSession();
 
   try {
     const token = getTokenFromHeader(req);
@@ -115,11 +114,10 @@ export async function POST(req) {
     const invoiceData = JSON.parse(fields.invoiceData || "{}");
     const isFromDelivery = invoiceData.sourceModel?.toLowerCase() === 'delivery';
 
+    // 1. Validate stock before transaction
     if (!isFromDelivery) await validateStockAvailability(invoiceData.items);
 
-    session.startTransaction();
-
-    // File uploads
+    // 2. Upload files **outside transaction**
     const newFiles = Array.isArray(files.newAttachments)
       ? files.newAttachments
       : files.newAttachments ? [files.newAttachments] : [];
@@ -131,73 +129,56 @@ export async function POST(req) {
     );
     invoiceData.attachments = [...(invoiceData.attachments || []), ...uploadedFiles];
 
-    // Generate unique invoice number with retry
-    const now = new Date();
-    const financialYear = now.getMonth() >= 3
-      ? `${now.getFullYear()}-${String(now.getFullYear() + 1).slice(-2)}`
-      : `${now.getFullYear() - 1}-${String(now.getFullYear()).slice(-2)}`;
+    // 3. Start transaction for DB operations only
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    let invoice;
-    let retry = 0;
-    while (retry < 5) {
-      // 1. Get latest invoice number for this company
-      const lastInvoice = await SalesInvoice.find({ companyId: user.companyId })
-        .sort({ createdAt: -1 })
-        .limit(1)
-        .lean();
+    try {
+      const now = new Date();
+      const financialYear = now.getMonth() >= 3
+        ? `${now.getFullYear()}-${String(now.getFullYear() + 1).slice(-2)}`
+        : `${now.getFullYear() - 1}-${String(now.getFullYear()).slice(-2)}`;
 
-      let nextSeq = 1;
-      if (lastInvoice.length > 0) {
-        const lastNum = parseInt(lastInvoice[0].invoiceNumber.split("/").pop());
-        nextSeq = lastNum + 1;
-      }
-
-      // 2. Update counter
-      await Counter.findOneAndUpdate(
+      // --- Generate invoice number atomically using Counter only ---
+      const counterDoc = await Counter.findOneAndUpdate(
         { id: "SalesInvoice", companyId: user.companyId },
-        { seq: nextSeq },
-        { upsert: true, session }
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true, session }
       );
 
-      invoiceData.invoiceNumber = `SALES-INV/${financialYear}/${String(nextSeq).padStart(5, "0")}`;
+      invoiceData.invoiceNumber = `SALES-INV/${financialYear}/${String(counterDoc.seq).padStart(5, "0")}`;
       invoiceData.companyId = user.companyId;
 
-      try {
-        [invoice] = await SalesInvoice.create([invoiceData], { session });
-        break; // Success
-      } catch (err) {
-        if (err.code === 11000) {
-          retry++;
-          continue; // Duplicate, retry
-        } else throw err;
+      const [invoice] = await SalesInvoice.create([invoiceData], { session });
+
+      // Deduct stock
+      if (!isFromDelivery) {
+        const isCopiedSO = invoiceData.sourceModel?.toLowerCase() === 'salesorder';
+        for (const item of invoiceData.items) {
+          await processItemForInvoice(item, session, invoice, user, isCopiedSO);
+        }
       }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Invoice created successfully", invoiceId: invoice._id }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      );
+
+    } catch (error) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      throw error;
     }
-
-    if (!invoice) throw new Error("Failed to create invoice after multiple retries.");
-
-    // Process stock
-    if (!isFromDelivery) {
-      const isCopiedSO = invoiceData.sourceModel?.toLowerCase() === 'salesorder';
-      for (const item of invoiceData.items) {
-        await processItemForInvoice(item, session, invoice, user, isCopiedSO);
-      }
-    }
-
-    await session.commitTransaction();
-    return new Response(
-      JSON.stringify({ success: true, message: "Invoice created successfully", invoiceId: invoice._id }),
-      { status: 201, headers: { "Content-Type": "application/json" } }
-    );
 
   } catch (error) {
-    if (session.inTransaction()) await session.abortTransaction();
     console.error("Error creating Invoice:", error);
     return new Response(
       JSON.stringify({ success: false, message: error.message }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
-  } finally {
-    session.endSession();
   }
 }
 
