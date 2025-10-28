@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Pencil, Trash2, Eye, Loader2 } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
+import { useRouter } from "next/navigation"; // Added for navigation
 
 // --- Helper Components ---
 
@@ -54,10 +55,17 @@ const CreateJobCardModal = ({ order, createdOpCounts, onClose, onConfirm }) => {
     setIsSubmitting(true);
 
     const opsToCreate = selectedOperations.map((uniqueKey) => {
-      const idx = parseInt(uniqueKey.split("-").pop(), 10);
-      return availableOperations[idx];
-    });
-
+      // Find the correct operation from availableOperations
+      const opIndex = parseInt(uniqueKey.split('-').pop(), 10);
+      const foundOp = availableOperations[opIndex];
+      // Ensure we use the same uniqueKey logic to find it
+      const opId = typeof foundOp.operation === "object" ? foundOp.operation._id : foundOp.operation;
+      if (`${opId}-${opIndex}` === uniqueKey) {
+        return foundOp;
+      }
+      return null;
+    }).filter(Boolean); // Filter out any nulls if logic mismatched
+    
     await onConfirm(opsToCreate);
     setIsSubmitting(false);
   };
@@ -69,40 +77,35 @@ const CreateJobCardModal = ({ order, createdOpCounts, onClose, onConfirm }) => {
       {availableOperations.length > 0 ? (
         <div className="space-y-2 max-h-80 overflow-y-auto border p-2 rounded">
           {availableOperations.map((op, idx) => {
-  console.log("DEBUG op:", op); // <--- Add this line
+            // Determine operation ID
+            const opId = typeof op.operation === "object" ? op.operation._id : op.operation;
+            
+            // Determine operation name
+            let opName = `Operation ${idx + 1}`;
+            if (op.operation && typeof op.operation === "object") opName = op.operation.name;
+            else if (op.name) opName = op.name;
 
-  // Determine operation ID
-  const opId = typeof op.operation === "object" ? op.operation._id : op.operation;
-  
-  // Determine operation name
-  let opName = `Operation ${idx + 1}`;
-  if (op.operation && typeof op.operation === "object") opName = op.operation.name;
-  else if (op.name) opName = op.name;
+            const uniqueKey = `${opId}-${idx}`;
+            const isSelected = selectedOperations.includes(uniqueKey);
 
-  console.log("DEBUG opId, opName:", opId, opName); // <--- And this
-
-  const uniqueKey = `${opId}-${idx}`;
-  const isSelected = selectedOperations.includes(uniqueKey);
-
-  return (
-    <div key={uniqueKey} className="flex justify-between items-center p-2 rounded hover:bg-gray-100">
-      <label htmlFor={uniqueKey} className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          id={uniqueKey}
-          checked={isSelected}
-          onChange={() => handleSelection(uniqueKey)}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <span className="font-medium text-gray-700">{opName}</span>
-      </label>
-      <span className={`px-2 py-1 text-xs rounded ${isSelected ? "bg-blue-200 text-blue-800" : "bg-gray-100 text-gray-600"}`}>
-        {isSelected ? "Selected" : "Available"}
-      </span>
-    </div>
-  );
-})}
-
+            return (
+              <div key={uniqueKey} className="flex justify-between items-center p-2 rounded hover:bg-gray-100">
+                <label htmlFor={uniqueKey} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id={uniqueKey}
+                    checked={isSelected}
+                    onChange={() => handleSelection(uniqueKey)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-medium text-gray-700">{opName}</span>
+                </label>
+                <span className={`px-2 py-1 text-xs rounded ${isSelected ? "bg-blue-200 text-blue-800" : "bg-gray-100 text-gray-600"}`}>
+                  {isSelected ? "Selected" : "Available"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-gray-600">All operations for this order already have job cards.</p>
@@ -128,6 +131,76 @@ const CreateJobCardModal = ({ order, createdOpCounts, onClose, onConfirm }) => {
   );
 };
 
+// --- NEW Quantity Modal (from File 2 logic) ---
+
+const QuantityModal = ({ order, type, onClose, onConfirm }) => {
+  const [title, setTitle] = useState("");
+  const [maxQty, setMaxQty] = useState(0);
+  const [quantity, setQuantity] = useState(0);
+
+  useEffect(() => {
+    let newTitle = "";
+    let newMaxQty = 0;
+
+    if (type === "stockTransfer") {
+      newTitle = "Confirm Stock Transfer";
+      newMaxQty = order.quantity - (order.transferqty || 0);
+    } else if (type === "issueProduction") {
+      newTitle = "Confirm Issue for Production";
+      newMaxQty = (order.transferqty || 0) - (order.issuforproductionqty || 0);
+    } else if (type === "receiptProduction") {
+      newTitle = "Confirm Receipt from Production";
+      newMaxQty = (order.issuforproductionqty || 0) - (order.reciptforproductionqty || 0);
+    }
+
+    setTitle(newTitle);
+    setMaxQty(newMaxQty);
+    setQuantity(newMaxQty); // Default to max available quantity
+  }, [order, type]);
+
+  const handleSubmit = () => {
+    if (quantity < 1 || quantity > maxQty) {
+      toast.error(`Please enter a quantity between 1 and ${maxQty}`);
+      return;
+    }
+    onConfirm(quantity);
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="text-xl font-bold mb-4">{title}</h2>
+      <div className="space-y-4">
+        <label className="block">
+          <span className="text-gray-700">Enter quantity (Max: {maxQty})</span>
+          <input
+            type="number"
+            min={1}
+            max={maxQty}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+            className="w-full border p-2 rounded mt-1"
+          />
+        </label>
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={maxQty <= 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 
 // --- Main Production Orders Page ---
 
@@ -136,6 +209,7 @@ export default function ProductionOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [jobCardDetails, setJobCardDetails] = useState({});
   const [modalState, setModalState] = useState({ isOpen: false, type: null, order: null });
+  const router = useRouter(); // Initialized router
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -191,8 +265,18 @@ export default function ProductionOrdersPage() {
   }, []);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
-  useEffect(() => { orders.forEach(order => fetchJobCardDetailsForOrder(order)); }, [orders, fetchJobCardDetailsForOrder]);
+  useEffect(() => { 
+    if (orders.length > 0) {
+      orders.forEach(order => {
+        if (!jobCardDetails[order._id]) { // Fetch only if not already fetched
+          fetchJobCardDetailsForOrder(order);
+        }
+      });
+    }
+  }, [orders, fetchJobCardDetailsForOrder, jobCardDetails]);
 
+
+  // --- Handler for Create Job Card Modal ---
   const handleCreateJobCards = async (operationsToCreate) => {
     const { order } = modalState;
     if (!order) return;
@@ -206,6 +290,8 @@ export default function ProductionOrdersPage() {
         operations: operationsToCreate.map(opFlow => ({
           operationId: opFlow.operation?._id || opFlow.operation,
           qtyToManufacture: order.quantity,
+          // Add other fields if needed, e.g., machineId
+          machineId: opFlow.machine?._id || opFlow.machine,
         })),
       };
 
@@ -213,7 +299,7 @@ export default function ProductionOrdersPage() {
 
       if (res.data.success) {
         toast.success(`${res.data.data.length} job card(s) created successfully.`);
-        fetchJobCardDetailsForOrder(order);
+        fetchJobCardDetailsForOrder(order); // Refresh details
         setModalState({ isOpen: false, type: null, order: null });
       } else {
         toast.error(res.data.error || "Failed to create job cards.");
@@ -223,6 +309,40 @@ export default function ProductionOrdersPage() {
       toast.error(err.response?.data?.error || "Server error while creating job cards.");
     }
   };
+
+  // --- NEW Handler for Quantity Modals ---
+  const handleQuantityModalSubmit = (quantity) => {
+    const { order, type } = modalState;
+    if (!order || !type || quantity <= 0) return;
+
+    let url = "";
+    if (type === "stockTransfer") {
+      url = `/admin/stock-transfer/${order._id}?qty=${quantity}`;
+    } else if (type === "issueProduction") {
+      url = `/admin/issue-production/${order._id}?qty=${quantity}`;
+    } else if (type === "receiptProduction") {
+      url = `/admin/receipt-production/${order._id}?qty=${quantity}`;
+    }
+
+    if (url) {
+      router.push(url);
+    }
+
+    setModalState({ isOpen: false, type: null, order: null });
+  };
+  
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure? This action cannot be undone.")) return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`/api/production-orders/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Deleted successfully");
+      fetchOrders(); // Refetch all orders
+    } catch (err) { 
+      toast.error(err.response?.data?.error || "Failed to delete"); 
+    }
+  };
+
 
   if (loading) return <p className="text-center mt-8">Loading Production Orders...</p>;
 
@@ -259,12 +379,16 @@ export default function ProductionOrdersPage() {
                 else if (order.reciptforproductionqty > 0) status = "partially received";
                 else if (order.issuforproductionqty > 0) status = "issued";
                 else if (order.transferqty > 0) status = "transferred";
+                
+                const canTransfer = order.quantity > (order.transferqty || 0);
+                const canIssue = (order.transferqty || 0) > (order.issuforproductionqty || 0);
+                const canReceipt = (order.issuforproductionqty || 0) > (order.reciptforproductionqty || 0);
 
                 return (
                   <tr key={order._id} className="hover:bg-gray-50 text-sm">
                     <td className="border p-2 text-center">{idx + 1}</td>
                     <td className="border p-2">
-                 {typeof order.productDesc === "string"
+                  {typeof order.productDesc === "string"
                     ? order.productDesc
                     : order.productDesc?.name ||
                       order.productDesc?.code ||
@@ -290,34 +414,34 @@ export default function ProductionOrdersPage() {
                       <div className="flex items-center gap-2">
                         <select
                           className="border p-1 rounded bg-gray-50 text-xs w-full"
-                          value=""
+                          value="" // Always reset to show placeholder
                           onChange={e => {
                             const action = e.target.value;
                             if (!action) return;
                             if (action === "viewJobCards") window.location.href = `/admin/ppc/jobcards/jobcardlists?productionOrderId=${order._id}`;
+                            // For all other actions, set modal state
                             else setModalState({ isOpen: true, type: action, order });
                           }}
                           disabled={status === "closed"}
                         >
                           <option value="">— Actions —</option>
-                          <option value="stockTransfer" disabled={order.quantity <= order.transferqty}>Stock Transfer</option>
-                          <option value="issueProduction" disabled={order.transferqty <= order.issuforproductionqty}>Issue for Production</option>
-                          <option value="receiptProduction" disabled={order.issuforproductionqty <= order.reciptforproductionqty}>Receipt from Production</option>
+                          <option value="stockTransfer" disabled={!canTransfer}>Stock Transfer</option>
+                          <option value="issueProduction" disabled={!canIssue}>Issue for Production</option>
+                          <option value="receiptProduction" disabled={!canReceipt}>Receipt from Production</option>
                           {details.createdCount > 0 && <option value="viewJobCards">View Job Cards</option>}
                           {order.operationFlow?.length > 0 && !allJobCardsCreated && <option value="createJobCard">Create Job Card</option>}
                         </select>
 
                         {status === "planned" && <a href={`/admin/ProductionOrder/${order._id}`} className="text-green-600" title="Edit Order"><Pencil size={16} /></a>}
                         <a href={`/admin/productionorderdetail-view/${order._id}`} className="text-blue-600" title="View Details"><Eye size={16} /></a>
-                        <button onClick={async () => {
-                          if (!window.confirm("Are you sure?")) return;
-                          try {
-                            const token = localStorage.getItem("token");
-                            await axios.delete(`/api/production-orders/${order._id}`, { headers: { Authorization: `Bearer ${token}` } });
-                            toast.success("Deleted successfully");
-                            fetchOrders();
-                          } catch (err) { toast.error("Failed to delete"); }
-                        }} disabled={status !== 'planned'} className={status !== 'planned' ? 'text-gray-400 cursor-not-allowed' : 'text-red-600'} title="Delete Order"><Trash2 size={16} /></button>
+                        <button 
+                          onClick={() => handleDelete(order._id)} 
+                          disabled={status !== 'planned'} 
+                          className={status !== 'planned' ? 'text-gray-400 cursor-not-allowed' : 'text-red-600'} 
+                          title="Delete Order"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -327,6 +451,7 @@ export default function ProductionOrdersPage() {
           </table>
         </div>
 
+        {/* --- Modal Rendering Logic --- */}
         {modalState.isOpen && modalState.type === 'createJobCard' && (
           <CreateJobCardModal
             order={modalState.order}
@@ -335,10 +460,21 @@ export default function ProductionOrdersPage() {
             onConfirm={handleCreateJobCards}
           />
         )}
+        
+        {modalState.isOpen && (modalState.type === 'stockTransfer' || modalVState.type === 'issueProduction' || modalState.type === 'receiptProduction') && (
+          <QuantityModal
+            order={modalState.order}
+            type={modalState.type}
+            onClose={() => setModalState({ isOpen: false, type: null, order: null })}
+            onConfirm={handleQuantityModalSubmit}
+          />
+        )}
       </div>
     </>
   );
 }
+
+
 
 
 
@@ -364,100 +500,24 @@ export default function ProductionOrdersPage() {
 // );
 
 // const Modal = ({ children, onClose }) => (
-//     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-//         <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-//             {children}
-//         </div>
+//   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+//     <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+//       {children}
 //     </div>
+//   </div>
 // );
 
-// // --- Child Components ---
-
-// const ActionMenu = ({ order, status, onActionSelect, hasJobCards, allJobCardsCreated }) => {
-//     const { quantity, transferqty = 0, issuforproductionqty = 0, reciptforproductionqty = 0, _id } = order;
-    
-//     const canTransfer = quantity > transferqty;
-//     const canIssue = transferqty > issuforproductionqty;
-//     const canReceipt = issuforproductionqty > reciptforproductionqty;
-
-//     return (
-//         <select
-//             className="border p-1 rounded bg-gray-50 text-xs w-full"
-//             value={""}
-//             onChange={(e) => onActionSelect(_id, e.target.value)}
-//             disabled={status === "closed"}
-//         >
-//             <option value="">— Actions —</option>
-//             <option value="stockTransfer" disabled={!canTransfer}>Stock Transfer</option>
-//             <option value="issueProduction" disabled={!canIssue}>Issue for Production</option>
-//             <option value="receiptProduction" disabled={!canReceipt}>Receipt from Production</option>
-//             {hasJobCards && <option value="viewJobCards">View Job Cards</option>}
-//             {order.operationFlow?.length > 0 && !allJobCardsCreated && <option value="createJobCard">Create Job Card</option>}
-//         </select>
-//     );
-// };
-
-// const OrderRow = ({ order, index, jobCardDetails, onActionSelect, onDelete }) => {
-//     const { createdCount = 0, totalCount = 0, status: jcStatus } = jobCardDetails[order._id] || {};
-//     const displayCreatedCount = Math.min(createdCount, totalCount);
-//     const allJobCardsCreated = totalCount > 0 && displayCreatedCount >= totalCount;
-
-//     let status = "planned";
-//     if (order.reciptforproductionqty === order.quantity) status = "closed";
-//     else if (order.reciptforproductionqty > 0) status = "partially received";
-//     else if (order.issuforproductionqty > 0) status = "issued";
-//     else if (order.transferqty > 0) status = "transferred";
-
-//     return (
-//         <tr className="hover:bg-gray-50 text-sm">
-//             <td className="border p-2 text-center">{index + 1}</td>
-//             <td className="border p-2">{order.productDesc?.name || order.bomId?.bomName || "N/A"}</td>
-//             <td className="border p-2 text-right">{order.quantity}</td>
-//             <td className="border p-2 text-right">{order.transferqty || 0}</td>
-//             <td className="border p-2 text-right">{order.issuforproductionqty || 0}</td>
-//             <td className="border p-2 text-right">{order.reciptforproductionqty || 0}</td>
-//             <td className="border p-2">{new Date(order.productionDate).toLocaleDateString()}</td>
-//             <td className="border p-2 capitalize">{status}</td>
-//             <td className="border p-2 text-center font-medium">
-//                 {jcStatus === 'loading' && <Loader2 className="animate-spin mx-auto" size={16} />}
-//                 {jcStatus === 'loaded' && totalCount > 0 && (
-//                     <span className={allJobCardsCreated ? "text-green-600" : "text-blue-600"}>
-//                         {displayCreatedCount} / {totalCount}
-//                     </span>
-//                 )}
-//                  {jcStatus === 'loaded' && totalCount === 0 && <span className="text-gray-400">N/A</span>}
-//             </td>
-//             <td className="border p-2">
-//                 <div className="flex items-center gap-2">
-//                     <ActionMenu 
-//                         order={order} 
-//                         status={status} 
-//                         onActionSelect={onActionSelect} 
-//                         hasJobCards={createdCount > 0} 
-//                         allJobCardsCreated={allJobCardsCreated}
-//                     />
-//                      {status === "planned" && (
-//                         <a href={`/admin/ProductionOrder/${order._id}`} className="text-green-600" title="Edit Order"><Pencil size={16} /></a>
-//                      )}
-//                      <a href={`/admin/productionorderdetail-view/${order._id}`} className="text-blue-600" title="View Details"><Eye size={16} /></a>
-//                      <button onClick={() => onDelete(order._id, status)} disabled={status !== 'planned'} className={status !== 'planned' ? 'text-gray-400 cursor-not-allowed' : 'text-red-600'} title="Delete Order">
-//                         <Trash2 size={16} />
-//                      </button>
-//                 </div>
-//             </td>
-//         </tr>
-//     );
-// };
+// // --- Create Job Card Modal ---
 
 // const CreateJobCardModal = ({ order, createdOpCounts, onClose, onConfirm }) => {
 //   const [selectedOperations, setSelectedOperations] = useState([]);
 //   const [isSubmitting, setIsSubmitting] = useState(false);
 
-//   // Filter out operations that already have job cards
+//   // Filter only operations without job cards
 //   const availableOperations = (order.operationFlow || []).filter((op, idx) => {
-//     const opId = op.operation._id || op.operation;
+//     const opId = typeof op.operation === "object" ? op.operation._id : op.operation;
 //     const createdCount = createdOpCounts[opId] || 0;
-//     return createdCount < 1; // show only if no job card yet
+//     return createdCount < 1; // show only if no job card exists
 //   });
 
 //   const handleSelection = (uniqueKey) => {
@@ -473,7 +533,6 @@ export default function ProductionOrdersPage() {
 //     }
 //     setIsSubmitting(true);
 
-//     // Map selected keys back to operations
 //     const opsToCreate = selectedOperations.map((uniqueKey) => {
 //       const idx = parseInt(uniqueKey.split("-").pop(), 10);
 //       return availableOperations[idx];
@@ -490,41 +549,50 @@ export default function ProductionOrdersPage() {
 //       {availableOperations.length > 0 ? (
 //         <div className="space-y-2 max-h-80 overflow-y-auto border p-2 rounded">
 //           {availableOperations.map((op, idx) => {
-//             const opId = op.operation._id || op.operation;
-//             const opName = op.operation.name;
-//             console.log("Available Operation:", opName, opId);
-//             const uniqueKey = `${opId}-${idx}`;
-//             const isSelected = selectedOperations.includes(uniqueKey);
+//   console.log("DEBUG op:", op); // <--- Add this line
 
-//             return (
-//               <div key={uniqueKey} className="flex justify-between items-center p-2 rounded hover:bg-gray-100">
-//                 <label htmlFor={uniqueKey} className="flex items-center gap-2 cursor-pointer">
-//                   <input
-//                     type="checkbox"
-//                     id={uniqueKey}
-//                     checked={isSelected}
-//                     onChange={() => handleSelection(uniqueKey)}
-//                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-//                   />
-//                   <span className="font-medium text-gray-700">{opName}</span>
-//                 </label>
-//                 <span
-//                   className={`px-2 py-1 text-xs rounded ${
-//                     isSelected ? "bg-blue-200 text-blue-800" : "bg-gray-100 text-gray-600"
-//                   }`}
-//                 >
-//                   {isSelected ? "Selected" : "Available"}
-//                 </span>
-//               </div>
-//             );
-//           })}
+//   // Determine operation ID
+//   const opId = typeof op.operation === "object" ? op.operation._id : op.operation;
+  
+//   // Determine operation name
+//   let opName = `Operation ${idx + 1}`;
+//   if (op.operation && typeof op.operation === "object") opName = op.operation.name;
+//   else if (op.name) opName = op.name;
+
+//   console.log("DEBUG opId, opName:", opId, opName); // <--- And this
+
+//   const uniqueKey = `${opId}-${idx}`;
+//   const isSelected = selectedOperations.includes(uniqueKey);
+
+//   return (
+//     <div key={uniqueKey} className="flex justify-between items-center p-2 rounded hover:bg-gray-100">
+//       <label htmlFor={uniqueKey} className="flex items-center gap-2 cursor-pointer">
+//         <input
+//           type="checkbox"
+//           id={uniqueKey}
+//           checked={isSelected}
+//           onChange={() => handleSelection(uniqueKey)}
+//           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+//         />
+//         <span className="font-medium text-gray-700">{opName}</span>
+//       </label>
+//       <span className={`px-2 py-1 text-xs rounded ${isSelected ? "bg-blue-200 text-blue-800" : "bg-gray-100 text-gray-600"}`}>
+//         {isSelected ? "Selected" : "Available"}
+//       </span>
+//     </div>
+//   );
+// })}
+
 //         </div>
 //       ) : (
 //         <p className="text-gray-600">All operations for this order already have job cards.</p>
 //       )}
 
 //       <div className="flex justify-end gap-3 mt-6">
-//         <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">
+//         <button
+//           onClick={onClose}
+//           className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+//         >
 //           Cancel
 //         </button>
 //         <button
@@ -541,240 +609,220 @@ export default function ProductionOrdersPage() {
 // };
 
 
-// const TransactionModal = ({ order, type, onClose }) => {
-//     const [quantity, setQuantity] = useState(0);
-//     const [maxQty, setMaxQty] = useState(0);
-//     const title = type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-
-//     useEffect(() => {
-//         let bal = 0;
-//         if (type === "stockTransfer") bal = order.quantity - (order.transferqty || 0);
-//         else if (type === "issueProduction") bal = (order.transferqty || 0) - (order.issuforproductionqty || 0);
-//         else if (type === "receiptProduction") bal = (order.issuforproductionqty || 0) - (order.reciptforproductionqty || 0);
-//         setQuantity(bal);
-//         setMaxQty(bal);
-//     }, [order, type]);
-
-//     const handleConfirm = () => {
-//         if (quantity <= 0 || quantity > maxQty) {
-//             toast.error(`Please enter a quantity between 1 and ${maxQty}.`);
-//             return;
-//         }
-//         let url = '';
-//         if (type === "stockTransfer") url = `/admin/stock-transfer/${order._id}?qty=${quantity}`;
-//         else if (type === "issueProduction") url = `/admin/issue-production/${order._id}?qty=${quantity}`;
-//         else if (type === "receiptProduction") url = `/admin/receipt-production/${order._id}?qty=${quantity}`;
-        
-//         if (url) window.location.href = url;
-//     };
-
-//     return (
-//         <Modal onClose={onClose}>
-//             <h2 className="text-xl font-bold mb-4">{title}</h2>
-//             <p className="mb-2 text-sm text-gray-600">Enter quantity (Maximum available: {maxQty}):</p>
-//             <input
-//                 type="number"
-//                 min={1}
-//                 max={maxQty}
-//                 value={quantity}
-//                 onChange={(e) => setQuantity(Number(e.target.value))}
-//                 className="w-full border p-2 rounded mb-4"
-//             />
-//             <div className="flex justify-end gap-3 mt-4">
-//                 <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
-//                 <button onClick={handleConfirm} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Proceed</button>
-//             </div>
-//         </Modal>
-//     );
-// };
+// // --- Main Production Orders Page ---
 
 // export default function ProductionOrdersPage() {
-//     const [orders, setOrders] = useState([]);
-//     const [loading, setLoading] = useState(true);
-//     const [jobCardDetails, setJobCardDetails] = useState({});
-//     const [modalState, setModalState] = useState({ isOpen: false, type: null, order: null });
+//   const [orders, setOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
+//   const [jobCardDetails, setJobCardDetails] = useState({});
+//   const [modalState, setModalState] = useState({ isOpen: false, type: null, order: null });
 
-//     const fetchOrders = useCallback(async () => {
-//         try {
-//             setLoading(true);
-//             const token = localStorage.getItem("token");
-//             if (!token) { toast.error("Authentication token not found."); return; }
-//             const res = await axios.get("/api/production-orders", { headers: { Authorization: `Bearer ${token}` } });
-//             setOrders(res.data);
-//         } catch (error) {
-//             toast.error("Failed to fetch production orders.");
-//             console.error(error);
-//         } finally {
-//             setLoading(false);
-//         }
-//     }, []);
+//   const fetchOrders = useCallback(async () => {
+//     setLoading(true);
+//     try {
+//       const token = localStorage.getItem("token");
+//       if (!token) return toast.error("Authentication token not found.");
+//       const res = await axios.get("/api/production-orders", { headers: { Authorization: `Bearer ${token}` } });
+//       setOrders(res.data);
+//     } catch (err) {
+//       toast.error("Failed to fetch production orders.");
+//       console.error(err);
+//     } finally {
+//       setLoading(false);
+//     }
+//   }, []);
 
-//     const fetchJobCardDetailsForOrder = useCallback(async (order) => {
-//         const orderId = order._id;
-//         setJobCardDetails(prev => ({...prev, [orderId]: { status: 'loading' } }));
-//         try {
-//             const token = localStorage.getItem("token");
-//             if (!token) return;
-//             const res = await axios.get(`/api/ppc/jobcards/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
-//             const jobCards = Array.isArray(res.data) ? res.data : [];
-            
-//             // ✅ FIX: Count occurrences of each created operation ID
-//             const createdOpCounts = jobCards.reduce((acc, jc) => {
-//                 acc[jc.operationId] = (acc[jc.operationId] || 0) + 1;
-//                 return acc;
-//             }, {});
+//   const fetchJobCardDetailsForOrder = useCallback(async (order) => {
+//     const orderId = order._id;
+//     setJobCardDetails(prev => ({ ...prev, [orderId]: { status: 'loading' } }));
+//     try {
+//       const token = localStorage.getItem("token");
+//       if (!token) return;
+//       const res = await axios.get(`/api/ppc/jobcards?productionOrderId=${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+//       const jobCards = res.data.data || [];
 
-//             setJobCardDetails(prev => ({
-//                 ...prev,
-//                 [orderId]: {
-//                     status: 'loaded',
-//                     createdCount: jobCards.length,
-//                     totalCount: order?.operationFlow?.length || 0,
-//                     createdOpCounts: createdOpCounts,
-//                 }
-//             }));
-//         } catch (err) {
-//             setJobCardDetails(prev => ({
-//                 ...prev,
-//                 [orderId]: {
-//                     status: 'loaded',
-//                     createdCount: 0,
-//                     totalCount: order?.operationFlow?.length || 0,
-//                     createdOpCounts: {},
-//                 }
-//             }));
-//         }
-//     }, []);
+//       const createdOpCounts = jobCards.reduce((acc, jc) => {
+//         const opId = jc.operation?._id?.toString() || jc.operation?.toString();
+//         if (opId) acc[opId] = (acc[opId] || 0) + 1;
+//         return acc;
+//       }, {});
 
-//     useEffect(() => {
-//         fetchOrders();
-//     }, [fetchOrders]);
-    
-//     useEffect(() => {
-//         if (orders.length > 0) {
-//             orders.forEach(order => fetchJobCardDetailsForOrder(order));
+//       setJobCardDetails(prev => ({
+//         ...prev,
+//         [orderId]: {
+//           status: 'loaded',
+//           createdCount: jobCards.length,
+//           totalCount: order?.operationFlow?.length || 0,
+//           createdOpCounts,
 //         }
-//     }, [orders, fetchJobCardDetailsForOrder]);
+//       }));
+//     } catch (err) {
+//       console.error(err);
+//       setJobCardDetails(prev => ({
+//         ...prev,
+//         [orderId]: {
+//           status: 'loaded',
+//           createdCount: 0,
+//           totalCount: order?.operationFlow?.length || 0,
+//           createdOpCounts: {},
+//         }
+//       }));
+//     }
+//   }, []);
 
-//     const handleActionSelect = (orderId, action) => {
-//         const order = orders.find(o => o._id === orderId);
-//         if (!order || !action) return;
-//         if (action === "viewJobCards") {
-//             window.location.href = `/admin/ppc/jobcards/jobcardlists?productionOrderId=${orderId}`;
-//         } else {
-//             setModalState({ isOpen: true, type: action, order });
-//         }
-//     };
-    
-//     const handleDelete = async (orderId, status) => {
-//         if (status !== 'planned') {
-//             toast.warn("Only orders with 'planned' status can be deleted.");
-//             return;
-//         }
-//         if (window.confirm("Are you sure you want to delete this production order? This cannot be undone.")) {
-//             try {
-//                 const token = localStorage.getItem("token");
-//                 await axios.delete(`/api/production-orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
-//                 toast.success("Production order deleted successfully.");
-//                 fetchOrders();
-//             } catch (error) {
-//                 toast.error("Failed to delete the order.");
-//             }
-//         }
-//     };
+//   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+//   useEffect(() => { orders.forEach(order => fetchJobCardDetailsForOrder(order)); }, [orders, fetchJobCardDetailsForOrder]);
 
 //   const handleCreateJobCards = async (operationsToCreate) => {
-//   const { order } = modalState;
+//     const { order } = modalState;
+//     if (!order) return;
 
-//   try {
-//     const token = localStorage.getItem("token");
-//     if (!token) return toast.error("Missing token");
+//     try {
+//       const token = localStorage.getItem("token");
+//       if (!token) return toast.error("Missing token");
 
-//     // Prepare payload in the format backend expects
-//     const payload = {
-//       productionOrderId: order._id,
-//       operations: operationsToCreate.map((opFlow) => ({
-//         operationId: opFlow.operation._id || opFlow.operation,
-//         qtyToManufacture: order.quantity,
-//       })),
-//     };
+//       const payload = {
+//         productionOrderId: order._id,
+//         operations: operationsToCreate.map(opFlow => ({
+//           operationId: opFlow.operation?._id || opFlow.operation,
+//           qtyToManufacture: order.quantity,
+//         })),
+//       };
 
-//     const res = await axios.post("/api/ppc/jobcards", payload, {
-//       headers: { Authorization: `Bearer ${token}` },
-//     });
+//       const res = await axios.post("/api/ppc/jobcards", payload, { headers: { Authorization: `Bearer ${token}` } });
 
-//     if (res.data.success) {
-//       toast.success(`${res.data.data.length} job card(s) created successfully.`);
-//       fetchJobCardDetailsForOrder(order);
-//       setModalState({ isOpen: false, type: null, order: null });
-//     } else {
-//       toast.error(res.data.error || "Failed to create job cards.");
+//       if (res.data.success) {
+//         toast.success(`${res.data.data.length} job card(s) created successfully.`);
+//         fetchJobCardDetailsForOrder(order);
+//         setModalState({ isOpen: false, type: null, order: null });
+//       } else {
+//         toast.error(res.data.error || "Failed to create job cards.");
+//       }
+//     } catch (err) {
+//       console.error(err);
+//       toast.error(err.response?.data?.error || "Server error while creating job cards.");
 //     }
-//   } catch (err) {
-//     console.error(err);
-//     toast.error(err.response?.data?.error || "Server error while creating job cards.");
-//   }
-// };
+//   };
 
+//   if (loading) return <p className="text-center mt-8">Loading Production Orders...</p>;
 
-//     if (loading) return <p className="text-center mt-8">Loading Production Orders...</p>;
+//   return (
+//     <>
+//       <ToastifyCSS />
+//       <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} />
+//       <div className="max-w-7xl mx-auto p-6 bg-white shadow-lg rounded-lg">
+//         <h1 className="text-3xl font-bold mb-6 text-gray-800">Production Orders</h1>
+//         <div className="overflow-x-auto">
+//           <table className="w-full table-auto border-collapse">
+//             <thead className="bg-gray-100">
+//               <tr>
+//                 <th className="border p-2 text-left">#</th>
+//                 <th className="border p-2 text-left">Product</th>
+//                 <th className="border p-2 text-right">Qty</th>
+//                 <th className="border p-2 text-right">Transferred</th>
+//                 <th className="border p-2 text-right">Issued</th>
+//                 <th className="border p-2 text-right">Received</th>
+//                 <th className="border p-2 text-left">Date</th>
+//                 <th className="border p-2 text-left">Status</th>
+//                 <th className="border p-2 text-center">Job Cards</th>
+//                 <th className="border p-2 text-left">Actions</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {orders.map((order, idx) => {
+//                 const details = jobCardDetails[order._id] || {};
+//                 const displayCreatedCount = Math.min(details.createdCount || 0, details.totalCount || 0);
+//                 const allJobCardsCreated = details.totalCount > 0 && displayCreatedCount >= details.totalCount;
 
-//     return (
-//         <>
-//             <ToastifyCSS />
-//             <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} />
-//             <div className="max-w-7xl mx-auto p-6 bg-white shadow-lg rounded-lg">
-//                 <h1 className="text-3xl font-bold mb-6 text-gray-800">Production Orders</h1>
-//                 <div className="overflow-x-auto">
-//                     <table className="w-full table-auto border-collapse">
-//                         <thead className="bg-gray-100">
-//                             <tr>
-//                                 <th className="border p-2 text-left">#</th>
-//                                 <th className="border p-2 text-left">Product</th>
-//                                 <th className="border p-2 text-right">Qty</th>
-//                                 <th className="border p-2 text-right">Transferred</th>
-//                                 <th className="border p-2 text-right">Issued</th>
-//                                 <th className="border p-2 text-right">Received</th>
-//                                 <th className="border p-2 text-left">Date</th>
-//                                 <th className="border p-2 text-left">Status</th>
-//                                 <th className="border p-2 text-center">Job Cards</th>
-//                                 <th className="border p-2 text-left">Actions</th>
-//                             </tr>
-//                         </thead>
-//                         <tbody>
-//                             {orders.map((order, idx) => (
-//                                 <OrderRow 
-//                                     key={order._id} 
-//                                     order={order} 
-//                                     index={idx} 
-//                                     jobCardDetails={jobCardDetails}
-//                                     onActionSelect={handleActionSelect}
-//                                     onDelete={handleDelete}
-//                                 />
-//                             ))}
-//                         </tbody>
-//                     </table>
-//                 </div>
+//                 let status = "planned";
+//                 if (order.reciptforproductionqty === order.quantity) status = "closed";
+//                 else if (order.reciptforproductionqty > 0) status = "partially received";
+//                 else if (order.issuforproductionqty > 0) status = "issued";
+//                 else if (order.transferqty > 0) status = "transferred";
 
-//                 {modalState.isOpen && modalState.type === 'createJobCard' && (
-//                     <CreateJobCardModal
-//                         order={modalState.order}
-//                         createdOpCounts={jobCardDetails[modalState.order._id]?.createdOpCounts || {}}
-//                         onClose={() => setModalState({ isOpen: false, type: null, order: null })}
-//                         onConfirm={handleCreateJobCards}
-//                     />
-//                 )}
-//                  {modalState.isOpen && ['stockTransfer', 'issueProduction', 'receiptProduction'].includes(modalState.type) && (
-//                     <TransactionModal
-//                         order={modalState.order}
-//                         type={modalState.type}
-//                         onClose={() => setModalState({ isOpen: false, type: null, order: null })}
-//                     />
-//                 )}
-//             </div>
-//         </>
-//     );
+//                 return (
+//                   <tr key={order._id} className="hover:bg-gray-50 text-sm">
+//                     <td className="border p-2 text-center">{idx + 1}</td>
+//                     <td className="border p-2">
+//                  {typeof order.productDesc === "string"
+//                     ? order.productDesc
+//                     : order.productDesc?.name ||
+//                       order.productDesc?.code ||
+//                       order.bomId?.bomName ||
+//                       "N/A"}
+//                 </td>
+//                     <td className="border p-2 text-right">{order.quantity}</td>
+//                     <td className="border p-2 text-right">{order.transferqty || 0}</td>
+//                     <td className="border p-2 text-right">{order.issuforproductionqty || 0}</td>
+//                     <td className="border p-2 text-right">{order.reciptforproductionqty || 0}</td>
+//                     <td className="border p-2">{new Date(order.productionDate).toLocaleDateString()}</td>
+//                     <td className="border p-2 capitalize">{status}</td>
+//                     <td className="border p-2 text-center font-medium">
+//                       {details.status === 'loading' && <Loader2 className="animate-spin mx-auto" size={16} />}
+//                       {details.status === 'loaded' && details.totalCount > 0 && (
+//                         <span className={allJobCardsCreated ? "text-green-600" : "text-blue-600"}>
+//                           {displayCreatedCount} / {details.totalCount}
+//                         </span>
+//                       )}
+//                       {details.status === 'loaded' && details.totalCount === 0 && <span className="text-gray-400">N/A</span>}
+//                     </td>
+//                     <td className="border p-2">
+//                       <div className="flex items-center gap-2">
+//                         <select
+//                           className="border p-1 rounded bg-gray-50 text-xs w-full"
+//                           value=""
+//                           onChange={e => {
+//                             const action = e.target.value;
+//                             if (!action) return;
+//                             if (action === "viewJobCards") window.location.href = `/admin/ppc/jobcards/jobcardlists?productionOrderId=${order._id}`;
+//                             else setModalState({ isOpen: true, type: action, order });
+//                           }}
+//                           disabled={status === "closed"}
+//                         >
+//                           <option value="">— Actions —</option>
+//                           <option value="stockTransfer" disabled={order.quantity <= order.transferqty}>Stock Transfer</option>
+//                           <option value="issueProduction" disabled={order.transferqty <= order.issuforproductionqty}>Issue for Production</option>
+//                           <option value="receiptProduction" disabled={order.issuforproductionqty <= order.reciptforproductionqty}>Receipt from Production</option>
+//                           {details.createdCount > 0 && <option value="viewJobCards">View Job Cards</option>}
+//                           {order.operationFlow?.length > 0 && !allJobCardsCreated && <option value="createJobCard">Create Job Card</option>}
+//                         </select>
+
+//                         {status === "planned" && <a href={`/admin/ProductionOrder/${order._id}`} className="text-green-600" title="Edit Order"><Pencil size={16} /></a>}
+//                         <a href={`/admin/productionorderdetail-view/${order._id}`} className="text-blue-600" title="View Details"><Eye size={16} /></a>
+//                         <button onClick={async () => {
+//                           if (!window.confirm("Are you sure?")) return;
+//                           try {
+//                             const token = localStorage.getItem("token");
+//                             await axios.delete(`/api/production-orders/${order._id}`, { headers: { Authorization: `Bearer ${token}` } });
+//                             toast.success("Deleted successfully");
+//                             fetchOrders();
+//                           } catch (err) { toast.error("Failed to delete"); }
+//                         }} disabled={status !== 'planned'} className={status !== 'planned' ? 'text-gray-400 cursor-not-allowed' : 'text-red-600'} title="Delete Order"><Trash2 size={16} /></button>
+//                       </div>
+//                     </td>
+//                   </tr>
+//                 );
+//               })}
+//             </tbody>
+//           </table>
+//         </div>
+
+//         {modalState.isOpen && modalState.type === 'createJobCard' && (
+//           <CreateJobCardModal
+//             order={modalState.order}
+//             createdOpCounts={jobCardDetails[modalState.order._id]?.createdOpCounts || {}}
+//             onClose={() => setModalState({ isOpen: false, type: null, order: null })}
+//             onConfirm={handleCreateJobCards}
+//           />
+//         )}
+//       </div>
+//     </>
+//   );
 // }
+
+
+
+
 
 
 
@@ -940,8 +988,8 @@ export default function ProductionOrdersPage() {
 
 //       toast.success("Job cards created successfully for all operations.");
 
-      // // Redirect to Job Card list page
-      // router.push(`/admin/ppc/jobcards/jobcardlists?productionOrderId=${currentOrder._id}`);
+//       // Redirect to Job Card list page
+//       router.push(`/admin/ppc/jobcards/jobcardlists?productionOrderId=${currentOrder._id}`);
 //     }
 //   } catch (err) {
 //     console.error("Error creating job cards:", err);
@@ -1058,14 +1106,14 @@ export default function ProductionOrdersPage() {
 //             return (
 //               <tr key={o._id} className="hover:bg-gray-50">
 //                 <td className="border p-2 text-center">{idx + 1}</td>
-                // <td className="border p-2">
-                //   {typeof o.productDesc === "string"
-                //     ? o.productDesc
-                //     : o.productDesc?.name ||
-                //       o.productDesc?.code ||
-                //       o.bomId?.bomName ||
-                //       "N/A"}
-                // </td>
+//                 <td className="border p-2">
+//                   {typeof o.productDesc === "string"
+//                     ? o.productDesc
+//                     : o.productDesc?.name ||
+//                       o.productDesc?.code ||
+//                       o.bomId?.bomName ||
+//                       "N/A"}
+//                 </td>
 //                 <td className="border p-2 text-right">{quantity}</td>
 //                 <td className="border p-2 text-right">{transfer}</td>
 //                 <td className="border p-2 text-right">{issue}</td>

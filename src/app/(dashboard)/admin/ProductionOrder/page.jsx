@@ -44,63 +44,159 @@ function ProductionOrderPage() {
     if (tk) setToken(tk);
   }, []);
 
+  // useEffect(() => {
+  //   if (!token) return;
+  //   const config = { headers: { Authorization: `Bearer ${token}` } };
+
+  //   const fetchAllData = async () => {
+  //     try {
+  //       const [
+  //         operationsRes,
+  //         bomRes,
+  //         itemsRes,
+  //         warehouseRes,
+  //         resourcesRes,
+  //         machinesRes,
+  //         leaveRes,
+  //         operatorsRes,
+  //       ] = await Promise.all([
+  //         axios.get("/api/ppc/operations", config),
+  //         axios.get("/api/bom", config),
+  //         axios.get("/api/items", config),
+  //         axios.get("/api/warehouse", config),
+  //         axios.get("/api/ppc/resources", config),
+  //         axios.get("/api/ppc/machines", config),
+  //         axios.get("/api/hr/leave", config),
+  //         axios.get("/api/ppc/operators", config),
+  //       ]);
+
+  //       setOperationOptions(
+  //         (operationsRes.data.data || operationsRes.data).map((op) => ({
+  //           label: op.operationName || op.name,
+  //           value: op._id || op.value || op.name,
+  //         }))
+  //       );
+  //       setBoms(bomRes.data.data || bomRes.data);
+  //       setAllItems(itemsRes.data.data || itemsRes.data);
+  //       setResources(resourcesRes.data.data || resourcesRes.data);
+  //       setMachines(
+  //         (machinesRes.data.data || machinesRes.data).map((m) => ({
+  //           label: m.machineName || m.name,
+  //           value: m._id,
+  //         }))
+  //       );
+  //       setOperators(
+  //         (operatorsRes.data.data || operatorsRes.data).map((o) => ({
+  //           label: o.operatorName || o.name,
+  //           value: o._id,
+  //         }))
+  //       );
+  //       const whData = warehouseRes.data.data || warehouseRes.data;
+  //       setWarehouseOptions(
+  //         whData.map((w) => ({ value: w._id, label: w.warehouseName }))
+  //       );
+  //     } catch (err) {
+  //       console.error("Error loading master data", err);
+  //       toast.error("Failed to load master data");
+  //     }
+  //   };
+
+  //   fetchAllData();
+  // }, [token])
+
+
   useEffect(() => {
-    if (!token) return;
-    const config = { headers: { Authorization: `Bearer ${token}` } };
+  if (!token) return;
+  const config = { headers: { Authorization: `Bearer ${token}` } };
 
-    const fetchAllData = async () => {
-      try {
-        const [
-          operationsRes,
-          bomRes,
-          itemsRes,
-          warehouseRes,
-          resourcesRes,
-          machinesRes,
-          operatorsRes,
-        ] = await Promise.all([
-          axios.get("/api/ppc/operations", config),
-          axios.get("/api/bom", config),
-          axios.get("/api/items", config),
-          axios.get("/api/warehouse", config),
-          axios.get("/api/ppc/resources", config),
-          axios.get("/api/ppc/machines", config),
-          axios.get("/api/ppc/operators", config),
-        ]);
+  const fetchAllData = async () => {
+    try {
+      const [
+        operationsRes,
+        bomRes,
+        itemsRes,
+        warehouseRes,
+        resourcesRes,
+        machinesRes,
+        leaveRes,
+        operatorsRes,
+      ] = await Promise.all([
+        axios.get("/api/ppc/operations", config),
+        axios.get("/api/bom", config),
+        axios.get("/api/items", config),
+        axios.get("/api/warehouse", config),
+        axios.get("/api/ppc/resources", config),
+        axios.get("/api/ppc/machines", config),
+        axios.get("/api/hr/leave", config),
+        axios.get("/api/ppc/operators", config),
+      ]);
 
-        setOperationOptions(
-          (operationsRes.data.data || operationsRes.data).map((op) => ({
-            label: op.operationName || op.name,
-            value: op._id || op.value || op.name,
-          }))
-        );
-        setBoms(bomRes.data.data || bomRes.data);
-        setAllItems(itemsRes.data.data || itemsRes.data);
-        setResources(resourcesRes.data.data || resourcesRes.data);
-        setMachines(
-          (machinesRes.data.data || machinesRes.data).map((m) => ({
-            label: m.machineName || m.name,
-            value: m._id,
-          }))
-        );
-        setOperators(
-          (operatorsRes.data.data || operatorsRes.data).map((o) => ({
-            label: o.operatorName || o.name,
-            value: o._id,
-          }))
-        );
-        const whData = warehouseRes.data.data || warehouseRes.data;
-        setWarehouseOptions(
-          whData.map((w) => ({ value: w._id, label: w.warehouseName }))
-        );
-      } catch (err) {
-        console.error("Error loading master data", err);
-        toast.error("Failed to load master data");
-      }
-    };
+      // ✅ Extract all data safely
+      const operations = operationsRes.data.data || operationsRes.data || [];
+      const boms = bomRes.data.data || bomRes.data || [];
+      const items = itemsRes.data.data || itemsRes.data || [];
+      const warehouses = warehouseRes.data.data || warehouseRes.data || [];
+      const resources = resourcesRes.data.data || resourcesRes.data || [];
+      const machines = machinesRes.data.data || machinesRes.data || [];
+      const leaves = leaveRes.data.data || leaveRes.data || [];
+      const operators = operatorsRes.data.data || operatorsRes.data || [];
 
-    fetchAllData();
-  }, [token])
+      // ✅ Filter out operators currently on leave (today’s date)
+      const today = new Date();
+      const availableOperators = operators.filter((op) => {
+        const isOnLeave = leaves.some((leave) => {
+          const from = new Date(leave.fromDate);
+          const to = new Date(leave.toDate);
+          return (
+            (op._id === leave.employeeId || op.id === leave.employeeId) &&
+            today >= from &&
+            today <= to
+          );
+        });
+        return !isOnLeave;
+      });
+
+      // ✅ Set formatted dropdown options
+      setOperationOptions(
+        operations.map((op) => ({
+          label: op.operationName || op.name,
+          value: op._id || op.value || op.name,
+        }))
+      );
+
+      setBoms(boms);
+      setAllItems(items);
+      setResources(resources);
+
+      setMachines(
+        machines.map((m) => ({
+          label: m.machineName || m.name,
+          value: m._id,
+        }))
+      );
+
+      setOperators(
+        availableOperators.map((o) => ({
+          label: o.operatorName || o.name,
+          value: o._id,
+        }))
+      );
+
+      setWarehouseOptions(
+        warehouses.map((w) => ({
+          value: w._id,
+          label: w.warehouseName,
+        }))
+      );
+    } catch (err) {
+      console.error("Error loading master data", err);
+      toast.error("Failed to load master data");
+    }
+  };
+
+  fetchAllData();
+}, [token]);
+
 
   useEffect(() => {
     if (!selectedBomId || !token) return;
@@ -491,7 +587,7 @@ function ProductionOrderPage() {
       </div>
 
       {/* ---------- OPERATION FLOW SECTION ---------- */}
-      <div className="overflow-x-auto mb-6">
+      <div className="overflow-x-auto mb-6 z-20">
         <h3 className="text-lg font-semibold mb-2">Operation Flow</h3>
         {operationFlow.map((flow, idx) => (
           <div key={flow.id} className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2 items-end">
@@ -501,6 +597,12 @@ function ProductionOrderPage() {
                 options={operationOptions}
                 value={flow.operation}
                 onChange={(opt) => handleOperationChange(idx, "operation", opt)}
+                  className="z-50"
+  menuPortalTarget={document.body} // 👈 renders dropdown at body level
+  styles={{
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }), // 👈 ensures visibility
+  }}
+               
               />
             </div>
             <div>
@@ -509,6 +611,11 @@ function ProductionOrderPage() {
                 options={machines}
                 value={flow.machine}
                 onChange={(opt) => handleOperationChange(idx, "machine", opt)}
+                 menuPortalTarget={document.body} // 👈 renders dropdown at body level
+  styles={{
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }), // 👈 ensures visibility
+  }}
+               
               />
             </div>
             <div>
@@ -517,6 +624,11 @@ function ProductionOrderPage() {
                 options={operators}
                 value={flow.operator}
                 onChange={(opt) => handleOperationChange(idx, "operator", opt)}
+                 menuPortalTarget={document.body} // 👈 renders dropdown at body level
+  styles={{
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }), // 👈 ensures visibility
+  }}
+               
               />
             </div>
             <div>

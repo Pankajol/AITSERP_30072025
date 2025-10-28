@@ -5,6 +5,7 @@ import dbConnect from "@/lib/db";
 import Inventory from "@/models/Inventory";
 import StockMovement from "@/models/StockMovement";
 import SalesInvoice from "@/models/SalesInvoice";
+import Customer from "@/models/CustomerModel";
 import Warehouse from "@/models/warehouseModels";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import { v2 as cloudinary } from "cloudinary";

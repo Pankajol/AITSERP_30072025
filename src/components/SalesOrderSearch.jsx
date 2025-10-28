@@ -52,7 +52,7 @@ export default function SalesOrderSearch({
     };
 
     fetchOrders();
-  }, [initialSalesOrder]);
+  }, []);
 
   const handleChange = (selectedOptions) => {
     setSelected(selectedOptions);
