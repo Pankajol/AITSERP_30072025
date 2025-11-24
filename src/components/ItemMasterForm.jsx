@@ -108,7 +108,7 @@ const ItemMasterForm = () => {
         {/* Form Fields... */}
         {/* The rest of your form fields go here as in the previous JSX example */}
         <h1 className="text-3xl font-bold text-center text-blue-600 mb-6">
-      Item Management
+      Item Management 
     </h1>
 
 

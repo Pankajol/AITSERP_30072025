@@ -171,77 +171,79 @@
 
 
 
-
 "use client";
 
-import { useState, useEffect, useMemo, useRef,useCallback  } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-
 import {
-  FaEllipsisV,
   FaEdit,
   FaTrash,
   FaCopy,
   FaEye,
   FaSearch,
   FaEnvelope,
+  FaEllipsisV,
 } from "react-icons/fa";
+
 import ActionMenu from "@/components/ActionMenu";
+
+const hasPermission = (user, moduleName, permissionType) => {
+  return (
+    user?.modules?.[moduleName]?.selected &&
+    user.modules[moduleName]?.permissions?.[permissionType] === true
+  );
+};
 
 export default function PurchaseOrderList() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const router = useRouter();
 
-  // ✅ Fetch Orders
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) setUser(JSON.parse(storedUser));
+  }, []);
 
-const fetchOrders = useCallback(async () => {
-  setLoading(true);
-  try {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast.error("Unauthorized! Please log in.");
-      return;
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Unauthorized! Please log in.");
+        return;
+      }
+
+      const res = await axios.get("/api/purchase-order", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setOrders(res.data.data);
+      } else {
+        toast.warning("Unexpected response while fetching orders");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to fetch purchase orders");
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    const res = await axios.get("/api/purchase-order", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
-    if (res.data?.success && Array.isArray(res.data.data)) {
-      setOrders(res.data.data);
-    } else {
-      console.warn("Unexpected response:", res.data);
-      toast.warning("Unexpected response while fetching orders");
-    }
-  } catch (error) {
-    console.error("Error fetching purchase orders:", error);
-    toast.error(
-      error.response?.data?.message || "Failed to fetch purchase orders"
-    );
-  } finally {
-    setLoading(false);
-  }
-}, []);
-
-useEffect(() => {
-  fetchOrders();
-}, [fetchOrders]);
-
-  // ✅ Search filter
   const displayOrders = useMemo(() => {
     if (!search.trim()) return orders;
     const q = search.toLowerCase();
-    return orders.filter((o) =>
-      (o.supplierName || "").toLowerCase().includes(q)
-    );
+    return orders.filter((o) => (o.supplierName || "").toLowerCase().includes(q));
   }, [orders, search]);
 
-  // ✅ Delete
   const handleDelete = async (id) => {
     if (!confirm("Delete this purchase order?")) return;
     try {
@@ -256,41 +258,29 @@ useEffect(() => {
     }
   };
 
-  // ✅ Copy to GRN / Invoice
-// ✅ Copy to GRN or Purchase Invoice
-const handleCopyTo = (order, destination) => {
-  if (!order || typeof order !== "object") {
-    console.error("Invalid order data:", order);
-    return;
-  }
+  const handleCopyTo = (order, destination) => {
+    if (!order || typeof order !== "object") return;
 
-  const dataToStore = {
-    ...order,
-    purchaseOrderId: order._id || "",
-    attachments: order.attachments || [], // ✅ Preserve attachments
-    items: Array.isArray(order.items) ? order.items : [], // ✅ Ensure items are array
+    const dataToStore = {
+      ...order,
+      purchaseOrderId: order._id || "",
+      attachments: order.attachments || [],
+      items: Array.isArray(order.items) ? order.items : [],
+    };
+
+    const key = destination === "GRN" ? "grnData" : "purchaseInvoiceData";
+    sessionStorage.setItem(key, JSON.stringify(dataToStore));
+
+    router.push(
+      destination === "GRN"
+        ? "/users/grn-view/new"
+        : "/users/purchaseInvoice-view/new"
+    );
   };
-
-  const key =
-    destination === "GRN" ? "grnData" : "purchaseInvoiceData";
-
-  // ✅ Save order details in sessionStorage
-  sessionStorage.setItem(key, JSON.stringify(dataToStore));
-
-  // ✅ Redirect user to the target page
-  router.push(
-    destination === "GRN"
-      ? "/users/grn-view/new"
-      : "/users/purchaseInvoice-view/new"
-  );
-};
-
-
-
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
+      <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">
         Purchase Orders
       </h1>
 
@@ -302,34 +292,32 @@ const handleCopyTo = (order, destination) => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search supplier…"
-            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
-        <Link href="/users/purchase-order-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaEdit /> New Order
-          </button>
-        </Link>
+        {hasPermission(user, "Purchase Order", "create") && (
+          <Link href="/users/purchase-order-view/new" className="sm:w-auto">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+              <FaEdit /> Create Order
+            </button>
+          </Link>
+        )}
       </div>
 
-      {/* Table / Cards */}
       {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">
-          Loading…
-        </p>
+        <p className="text-center text-gray-500">Loading…</p>
       ) : (
         <>
-          {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto">
             <Table
               orders={displayOrders}
               onDelete={handleDelete}
               onCopy={handleCopyTo}
+              user={user}
             />
           </div>
 
-          {/* Mobile Cards */}
           <div className="md:hidden space-y-4">
             {displayOrders.map((o, i) => (
               <Card
@@ -338,12 +326,11 @@ const handleCopyTo = (order, destination) => {
                 idx={i}
                 onDelete={handleDelete}
                 onCopy={handleCopyTo}
+                user={user}
               />
             ))}
             {!displayOrders.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
-                No matching orders
-              </p>
+              <p className="text-center text-gray-500">No matching orders</p>
             )}
           </div>
         </>
@@ -352,122 +339,68 @@ const handleCopyTo = (order, destination) => {
   );
 }
 
-/* ================= Desktop Table ================= */
-function Table({ orders, onDelete, onCopy }) {
+function Table({ orders, onDelete, onCopy, user }) {
   return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
+    <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
+      <thead className="bg-gray-100 text-sm">
         <tr>
-          {["#", "Document No.", "Supplier", "Date", "Status", "Total", ""].map(
-            (h) => (
-              <th
-                key={h}
-                className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-              >
-                {h}
-              </th>
-            )
-          )}
+          {['#','Document No.','Supplier','Date','Status','Total','Actions'].map(h => (
+            <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700">{h}</th>
+          ))}
         </tr>
       </thead>
       <tbody>
         {orders.map((o, i) => (
-          <tr
-            key={o._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-          >
+          <tr key={o._id} className="border-b hover:bg-gray-50">
             <td className="px-4 py-3">{i + 1}</td>
             <td className="px-4 py-3">{o.documentNumberPurchaseOrder}</td>
             <td className="px-4 py-3">{o.supplierName}</td>
-            <td className="px-4 py-3">
-              {o.postingDate ? new Date(o.postingDate).toLocaleDateString() : ""}
-            </td>
+            <td className="px-4 py-3">{o.postingDate ? new Date(o.postingDate).toLocaleDateString() : ''}</td>
             <td className="px-4 py-3">{o.orderStatus}</td>
             <td className="px-4 py-3">₹{o.grandTotal}</td>
-            <td className="px-4 py-3">
-              <RowMenu order={o} onDelete={onDelete} onCopy={onCopy} />
-            </td>
+            <td className="px-4 py-3"><RowMenu order={o} onDelete={onDelete} onCopy={onCopy} user={user} /></td>
           </tr>
         ))}
-        {!orders.length && (
-          <tr>
-            <td
-              colSpan={7}
-              className="text-center py-6 text-gray-500 dark:text-gray-400"
-            >
-              No orders found.
-            </td>
-          </tr>
-        )}
       </tbody>
     </table>
   );
 }
 
-/* ================= Mobile Card ================= */
-function Card({ order, idx, onDelete, onCopy }) {
+function Card({ order, idx, onDelete, onCopy, user }) {
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+    <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
       <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {order.documentNumberPurchaseOrder}
-        </div>
-        <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
+        <div className="font-semibold text-gray-700">#{idx + 1} • {order.documentNumberPurchaseOrder}</div>
+        <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} user={user} isMobile />
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-        Supplier: {order.supplierName}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Date: {order.postingDate ? new Date(order.postingDate).toLocaleDateString() : ""}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Status: {order.orderStatus}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Total: ₹{order.grandTotal}
-      </p>
+      <p className="text-sm text-gray-500 mt-1">Supplier: {order.supplierName}</p>
+      <p className="text-sm text-gray-500">Date: {order.postingDate ? new Date(order.postingDate).toLocaleDateString() : ''}</p>
+      <p className="text-sm text-gray-500">Status: {order.orderStatus}</p>
+      <p className="text-sm text-gray-500">Total: ₹{order.grandTotal}</p>
     </div>
   );
 }
 
-/* ================= Dropdown Menu ================= */
-function RowMenu({ order, onDelete, onCopy }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
+function RowMenu({ order, onDelete, onCopy, user }) {
   const router = useRouter();
-
- // ✅ Actions array for Purchase Order
   const actions = [
-    {
-      icon: <FaEye />,
-      label: "View",
-      onClick: () => router.push(`/users/purchase-order-view/view/${order._id}`),
-    },
-    {
-      icon: <FaEdit />,
-      label: "Edit",
-      onClick: () => router.push(`/users/purchase-order-view/new?editId=${order._id}`),
-    },
-    { icon: <FaCopy />, label: "Copy → GRN", onClick: () => onCopy(order, "GRN") },
-    { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },
-    {
-      icon: <FaEnvelope />,
-      label: "Email",
-      onClick: async () => {
+    hasPermission(user, "Purchase Order", "view") && { icon: <FaEye />, label: 'View', onClick: () => router.push(`/users/purchase-order-view/view/${order._id}`) },
+    hasPermission(user, "Purchase Order", "edit") && { icon: <FaEdit />, label: 'Edit', onClick: () => router.push(`/users/purchase-order-view/new?editId=${order._id}`) },
+    hasPermission(user, "Purchase Order", "create") && { icon: <FaCopy />, label: 'Copy → GRN', onClick: () => onCopy(order, 'GRN') },
+    hasPermission(user, "Purchase Order", "create") && { icon: <FaCopy />, label: 'Copy → Invoice', onClick: () => onCopy(order, 'Invoice') },
+    hasPermission(user, "Purchase Order", "email") && { icon: <FaEnvelope />, label: 'Email', onClick: async () => {
         try {
-          const res = await axios.post("/api/email", { type: "purchase-order", id: order._id });
-          if (res.data.success) toast.success("Email sent successfully!");
-          else toast.error(res.data.message || "Failed to send email.");
-        } catch (error) {
-          toast.error("Error sending email.");
+          const res = await axios.post('/api/email', { type: 'purchase-order', id: order._id });
+          res.data.success ? toast.success('Email sent successfully!') : toast.error(res.data.message || 'Failed to send email.');
+        } catch {
+          toast.error('Error sending email.');
         }
-      },
+      }
     },
-    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(order._id) },
+    hasPermission(user, "Purchase Order", "delete") && { icon: <FaTrash />, label: 'Delete', color: 'text-red-600', onClick: () => onDelete(order._id) },
   ];
 
-  return (
-    <ActionMenu actions={actions} />
-  )
+  if (!actions.length) return null; // hide menu if no permission
+  
+    return <ActionMenu actions={actions} />;
 }

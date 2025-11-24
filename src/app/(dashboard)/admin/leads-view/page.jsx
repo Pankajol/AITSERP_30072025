@@ -6,7 +6,6 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import {
-  FaEllipsisV,
   FaEdit,
   FaTrash,
   FaEye,
@@ -18,7 +17,29 @@ export default function LeadsListPage() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
   const router = useRouter();
+
+  // ✅ Copy Lead to Opportunity (sessionStorage)
+  const handleCopyToOpportunity = (lead) => {
+    if (!lead || typeof lead !== "object") {
+      console.error("Invalid lead:", lead);
+      return;
+    }
+
+    const dataToStore = {
+      ...lead,
+      leadId: lead._id,
+    };
+
+    sessionStorage.setItem(
+      "opportunityCopyData",
+      JSON.stringify(dataToStore)
+    );
+
+    // redirect to Opportunity NEW form
+    router.push("/admin/OpportunityDetailsForm");
+  };
 
   // ✅ Fetch Leads
   const fetchLeads = useCallback(async () => {
@@ -37,11 +58,9 @@ export default function LeadsListPage() {
       if (Array.isArray(res.data)) {
         setLeads(res.data);
       } else {
-        console.warn("Unexpected response:", res.data);
         toast.warning("Unexpected response while fetching leads");
       }
     } catch (error) {
-      console.error("Error fetching leads:", error);
       toast.error(error.response?.data?.message || "Failed to fetch leads");
     } finally {
       setLoading(false);
@@ -98,7 +117,7 @@ export default function LeadsListPage() {
         </div>
 
         <Link href="/admin/LeadDetailsFormMaster" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+          <button className="w-full sm:w-auto flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
             <FaEdit /> New Lead
           </button>
         </Link>
@@ -111,17 +130,24 @@ export default function LeadsListPage() {
         <>
           {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto">
-            <Table leads={displayLeads} onDelete={handleDelete} />
+            <Table
+              leads={displayLeads}
+              onDelete={handleDelete}
+              onCopy={handleCopyToOpportunity}
+            />
           </div>
 
           {/* Mobile Cards */}
           <div className="md:hidden space-y-4">
             {displayLeads.map((lead, i) => (
-              <Card key={lead._id} lead={lead} idx={i} onDelete={handleDelete} />
+              <Card
+                key={lead._id}
+                lead={lead}
+                idx={i}
+                onDelete={handleDelete}
+                onCopy={handleCopyToOpportunity}
+              />
             ))}
-            {!displayLeads.length && (
-              <p className="text-center text-gray-500">No matching leads</p>
-            )}
           </div>
         </>
       )}
@@ -130,7 +156,7 @@ export default function LeadsListPage() {
 }
 
 /* ================= Desktop Table ================= */
-function Table({ leads, onDelete }) {
+function Table({ leads, onDelete, onCopy }) {
   return (
     <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
       <thead className="bg-gray-100 text-sm">
@@ -147,44 +173,31 @@ function Table({ leads, onDelete }) {
       </thead>
       <tbody>
         {leads.map((l, i) => (
-          <tr
-            key={l._id}
-            className="border-b hover:bg-gray-50"
-          >
+          <tr key={l._id} className="border-b hover:bg-gray-50">
             <td className="px-4 py-3">{i + 1}</td>
             <td className="px-4 py-3">{l.firstName} {l.lastName}</td>
             <td className="px-4 py-3">{l.email || "-"}</td>
             <td className="px-4 py-3">{l.mobileNo || "-"}</td>
             <td className="px-4 py-3">{l.status || "-"}</td>
             <td className="px-4 py-3">
-              <RowMenu lead={l} onDelete={onDelete} />
+              <RowMenu lead={l} onDelete={onDelete} onCopy={onCopy} />
             </td>
           </tr>
         ))}
-        {!leads.length && (
-          <tr>
-            <td
-              colSpan={6}
-              className="text-center py-6 text-gray-500"
-            >
-              No leads found.
-            </td>
-          </tr>
-        )}
       </tbody>
     </table>
   );
 }
 
 /* ================= Mobile Card ================= */
-function Card({ lead, idx, onDelete }) {
+function Card({ lead, idx, onDelete, onCopy }) {
   return (
     <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
       <div className="flex justify-between">
         <div className="font-semibold text-gray-700">
           #{idx + 1} • {lead.firstName} {lead.lastName}
         </div>
-        <RowMenu lead={lead} onDelete={onDelete} isMobile />
+        <RowMenu lead={lead} onDelete={onDelete} onCopy={onCopy} />
       </div>
       <p className="text-sm text-gray-500">Email: {lead.email || "-"}</p>
       <p className="text-sm text-gray-500">Mobile: {lead.mobileNo || "-"}</p>
@@ -194,7 +207,7 @@ function Card({ lead, idx, onDelete }) {
 }
 
 /* ================= Dropdown Menu ================= */
-function RowMenu({ lead, onDelete }) {
+function RowMenu({ lead, onDelete, onCopy }) {
   const router = useRouter();
 
   const actions = [
@@ -209,9 +222,14 @@ function RowMenu({ lead, onDelete }) {
       onClick: () => router.push(`/admin/LeadDetailsFormMaster/${lead._id}`),
     },
     {
+      icon: <FaEdit />,
+      label: "Copy Lead to Opportunity",
+      onClick: () => onCopy(lead),
+    },
+    {
       icon: <FaTrash />,
-      label: "Delete",
       color: "text-red-600",
+      label: "Delete",
       onClick: () => onDelete(lead._id),
     },
   ];

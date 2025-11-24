@@ -253,7 +253,7 @@ const MachineOutputPage = () => {
   }
   options={machines.map((machine) => ({
     value: machine._id,
-    label: `${machine.machineCode} - ${machine.name}`,
+    label: `${machine.code} - ${machine.name}`,
   }))}
   onChange={(selected) =>
     setCurrentOutput((prev) => ({

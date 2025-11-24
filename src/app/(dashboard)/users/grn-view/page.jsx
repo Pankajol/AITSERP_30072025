@@ -1,14 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import axios from "axios";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-import ActionMenu from "@/components/ActionMenu";
 import {
-  FaEllipsisV,
   FaEye,
   FaEdit,
   FaTrash,
@@ -16,20 +13,39 @@ import {
   FaEnvelope,
   FaPrint,
   FaSearch,
+  FaPlus,
 } from "react-icons/fa";
+import ActionMenu from "@/components/ActionMenu";
+
+/* ================= Permission Check ================= */
+const hasPermission = (user, moduleName, permissionType) => {
+  return (
+    user?.modules?.[moduleName]?.selected &&
+    user.modules[moduleName]?.permissions?.[permissionType] === true
+  );
+};
 
 export default function GRNList() {
   const [grns, setGRNs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) setUser(JSON.parse(storedUser));
+  }, []);
 
   // ✅ Fetch GRNs
   const fetchGRNs = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      if (!token) return toast.error("Unauthorized! Please log in.");
+      if (!token) {
+        toast.error("Unauthorized! Please log in.");
+        return;
+      }
 
       const res = await axios.get("/api/grn", {
         headers: { Authorization: `Bearer ${token}` },
@@ -39,10 +55,11 @@ export default function GRNList() {
         setGRNs(res.data.data);
       } else {
         console.warn("Unexpected response:", res.data);
+        setGRNs([]);
       }
     } catch (error) {
       console.error("Error fetching GRNs:", error);
-      toast.error("Failed to fetch GRNs");
+      toast.error("Failed to fetch GRNs.");
     } finally {
       setLoading(false);
     }
@@ -52,138 +69,68 @@ export default function GRNList() {
     fetchGRNs();
   }, []);
 
-//   const handleCopyToInvoice = (grn) => {
-//   if (!grn?._id) {
-//     toast.error("Invalid GRN data");
-//     return;
-//   }
-
-//   const today = new Date().toISOString().split("T")[0];
-
-//   const dataToStore = {
-//     supplier: grn.supplier?._id || grn.supplier,
-//     supplierName: grn.supplier?.supplierName || "",
-//     postingDate: today,
-//     documentDate: today,
-//     validUntil: today,
-//     grn: grn._id,
-//     invoiceType: "GRNCopy", // ✅ Important flag
-//     refNumber: grn.refNumber || "",
-//     remarks: grn.remarks || "",
-//     freight: Number(grn.freight) || 0,
-
-//     items: (grn.items || []).map(item => ({
-//       item: item.item?._id || item.item,
-//       itemCode: item.itemCode || item.item?.itemCode || "",
-//       itemName: item.itemName || item.item?.itemName || "",
-//       itemDescription: item.itemDescription || "",
-//       quantity: Number(item.receivedQuantity || item.quantity || 0),
-//       unitPrice: Number(item.unitPrice) || 0,
-//       discount: Number(item.discount) || 0,
-//       gstRate: Number(item.gstRate) || 0,
-//       managedBy: item.managedBy || "",
-//       batches: Array.isArray(item.batches) ? item.batches : [],
-//       warehouse: item.warehouse?._id || item.warehouse,
-//     })),
-
-//     attachments: [], // ✅ No attachments copied
-//   };
-
-//   // Clear previous GRN copy data to avoid stale session issues
-//   sessionStorage.removeItem("grnDataForInvoice");
-//   sessionStorage.setItem("grnDataForInvoice", JSON.stringify(dataToStore));
-
-//   toast.success("GRN data copied to Purchase Invoice");
-//   router.push(`/users/purchaseInvoice-view/new`);
-// };
-
-  
-
-  // ✅ Search filter
-  
-  
-const handleCopyToInvoice = (grn, destination) => {
-  if (!grn || typeof grn !== "object") {
-    console.error("Invalid GRN data:", grn);
-    return;
-  }
-
-  const dataToStore = {
-    ...grn,
-    invoiceType: "GRNCopy",
-    attachments: grn.attachments || [],
-    items: Array.isArray(grn.items) ? grn.items : [],
-  };
-
-  const key = destination === "invoice" ? "grnDataForInvoice" : "purchaseInvoiceData";
-
-  sessionStorage.setItem(key, JSON.stringify(dataToStore));
-
-  router.push("/users/purchaseInvoice-view/new");
-};
-
-
-  
-  
+  // ✅ Filter for search
   const displayGRNs = useMemo(() => {
     if (!search.trim()) return grns;
     const q = search.toLowerCase();
-    return grns.filter((g) =>
-      (g.supplierName || "").toLowerCase().includes(q)
+    return grns.filter(
+      (g) =>
+        (g.supplierName || "").toLowerCase().includes(q) ||
+        (g.documentNumberGrn || "").toLowerCase().includes(q) ||
+        (g.status || "").toLowerCase().includes(q)
     );
   }, [grns, search]);
 
-  // ✅ Delete
+  // ✅ Delete GRN
   const handleDelete = async (id) => {
-    if (!confirm("Delete this GRN?")) return;
+    if (!confirm("Are you sure you want to delete this GRN?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`/api/grn?id=${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setGRNs((prev) => prev.filter((g) => g._id !== id));
-      toast.success("Deleted successfully");
-    } catch {
-      toast.error("Failed to delete");
+      toast.success("GRN deleted successfully.");
+    } catch (err) {
+      toast.error("Failed to delete GRN.");
+      console.error(err);
     }
   };
 
-  // ✅ Copy to Invoice
+  // ✅ Copy → Invoice
+  const handleCopyToInvoice = (grn) => {
+    if (!grn) return toast.error("Invalid GRN data.");
+    sessionStorage.setItem(
+      "grnDataForInvoice",
+      JSON.stringify({
+        ...grn,
+        sourceType: "GRN",
+        invoiceType: "GRN Copy",
+      })
+    );
+    router.push("/users/purchaseInvoice-view/new");
+  };
 
-
-
-
-
-
-
-
-  // ✅ Print PDF
+  // ✅ Print GRN
   const handlePrint = (id) => {
     window.open(`/users/grn-view/print/${id}`, "_blank");
   };
 
-  // ✅ Email Send
+  // ✅ Email GRN
   const handleEmail = async (id) => {
     try {
-      const res = await axios.post("/api/email", {
-        type: "grn",
-        id: id,
-      });
-
-      if (res.data.success) {
-        toast.success("Email sent successfully!");
-      } else {
-        toast.error(res.data.message || "Failed to send email.");
-      }
+      const res = await axios.post("/api/email", { type: "grn", id });
+      if (res.data.success) toast.success("Email sent successfully!");
+      else toast.error(res.data.message || "Failed to send email.");
     } catch (error) {
-      console.error("Error sending email:", error);
       toast.error("Error sending email.");
+      console.error(error);
     }
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
+      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center text-gray-800">
         Goods Receipt Notes (GRN)
       </h1>
 
@@ -194,21 +141,23 @@ const handleCopyToInvoice = (grn, destination) => {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search supplier…"
-            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Search supplier, GRN no, or status…"
+            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
-        <Link href="/users/grn-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            + New GRN
-          </button>
-        </Link>
+        {user && hasPermission(user, "GRN", "create") && (
+          <Link href="/users/grn-view/new" className="sm:w-auto">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+              <FaPlus /> New GRN
+            </button>
+          </Link>
+        )}
       </div>
 
       {/* Table / Cards */}
       {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-center text-gray-500">Loading…</p>
       ) : (
         <>
           {/* Desktop Table */}
@@ -219,6 +168,7 @@ const handleCopyToInvoice = (grn, destination) => {
               onCopy={handleCopyToInvoice}
               onEmail={handleEmail}
               onPrint={handlePrint}
+              user={user}
             />
           </div>
 
@@ -233,12 +183,11 @@ const handleCopyToInvoice = (grn, destination) => {
                 onCopy={handleCopyToInvoice}
                 onEmail={handleEmail}
                 onPrint={handlePrint}
+                user={user}
               />
             ))}
             {!displayGRNs.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
-                No matching GRNs
-              </p>
+              <p className="text-center text-gray-500">No GRNs found.</p>
             )}
           </div>
         </>
@@ -248,34 +197,38 @@ const handleCopyToInvoice = (grn, destination) => {
 }
 
 /* ================= Desktop Table ================= */
-function Table({ grns, onDelete, onCopy, onEmail, onPrint }) {
+function Table({ grns, onDelete, onCopy, onEmail, onPrint, user }) {
   return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
+    <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
+      <thead className="bg-gray-100 text-sm">
         <tr>
-          {["#", "GRN No.", "Supplier", "Date", "Status", "Total", ""].map((h) => (
-            <th
-              key={h}
-              className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-            >
-              {h}
-            </th>
-          ))}
+          {["#", "GRN No.", "Supplier", "Date", "Status", "Total", "Action"].map(
+            (h) => (
+              <th
+                key={h}
+                className="px-4 py-3 text-left font-semibold text-gray-700"
+              >
+                {h}
+              </th>
+            )
+          )}
         </tr>
       </thead>
       <tbody>
         {grns.map((g, i) => (
           <tr
             key={g._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="border-b hover:bg-gray-50 transition"
           >
             <td className="px-4 py-3">{i + 1}</td>
             <td className="px-4 py-3">{g.documentNumberGrn}</td>
             <td className="px-4 py-3">{g.supplierName}</td>
             <td className="px-4 py-3">
-              {g.postingDate ? new Date(g.postingDate).toLocaleDateString() : ""}
+              {g.postingDate
+                ? new Date(g.postingDate).toLocaleDateString("en-GB")
+                : ""}
             </td>
-            <td className="px-4 py-3">{g.status}</td>
+            <td className="px-4 py-3 capitalize">{g.status || "Pending"}</td>
             <td className="px-4 py-3">₹{g.grandTotal || 0}</td>
             <td className="px-4 py-3">
               <RowMenu
@@ -284,6 +237,7 @@ function Table({ grns, onDelete, onCopy, onEmail, onPrint }) {
                 onCopy={onCopy}
                 onEmail={onEmail}
                 onPrint={onPrint}
+                user={user}
               />
             </td>
           </tr>
@@ -292,7 +246,7 @@ function Table({ grns, onDelete, onCopy, onEmail, onPrint }) {
           <tr>
             <td
               colSpan={7}
-              className="text-center py-6 text-gray-500 dark:text-gray-400"
+              className="text-center py-6 text-gray-500"
             >
               No GRNs found.
             </td>
@@ -304,11 +258,11 @@ function Table({ grns, onDelete, onCopy, onEmail, onPrint }) {
 }
 
 /* ================= Mobile Card ================= */
-function Card({ grn, idx, onDelete, onCopy, onEmail, onPrint }) {
+function Card({ grn, idx, onDelete, onCopy, onEmail, onPrint, user }) {
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
+    <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+      <div className="flex justify-between items-start">
+        <div className="font-semibold text-gray-700">
           #{idx + 1} • {grn.documentNumberGrn}
         </div>
         <RowMenu
@@ -317,138 +271,66 @@ function Card({ grn, idx, onDelete, onCopy, onEmail, onPrint }) {
           onCopy={onCopy}
           onEmail={onEmail}
           onPrint={onPrint}
+          user={user}
           isMobile
         />
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
+      <p className="text-sm text-gray-600 mt-1">
         Supplier: {grn.supplierName}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Date: {grn.postingDate ? new Date(grn.postingDate).toLocaleDateString() : ""}
+      <p className="text-sm text-gray-600">
+        Date:{" "}
+        {grn.postingDate
+          ? new Date(grn.postingDate).toLocaleDateString("en-GB")
+          : ""}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
+      <p className="text-sm text-gray-600">
         Status: {grn.status}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
+      <p className="text-sm text-gray-600">
         Total: ₹{grn.grandTotal || 0}
       </p>
     </div>
   );
 }
 
-/* ================= Dropdown Menu ================= */
-// function RowMenu({ grn, onDelete, onCopy, onEmail, onPrint }) {
-//   const [open, setOpen] = useState(false);
-//   const btnRef = useRef(null);
-//   const [coords, setCoords] = useState({ top: 0, left: 0 });
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     if (open && btnRef.current) {
-//       const { bottom, right } = btnRef.current.getBoundingClientRect();
-//       setCoords({ top: bottom + 8, left: right - 192 });
-//     }
-//   }, [open]);
-
-//   const MenuItem = ({ icon, label, onClick, color = "" }) => (
-//     <button
-//       onClick={() => {
-//         onClick();
-//         setOpen(false);
-//       }}
-//       className="flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
-//     >
-//       <span className={`${color}`}>{icon}</span> {label}
-//     </button>
-//   );
-
-//   return (
-//     <>
-//       <button
-//         ref={btnRef}
-//         onClick={() => setOpen(!open)}
-//         className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full focus:ring-2 focus:ring-blue-500"
-//       >
-//         <FaEllipsisV size={16} />
-//       </button>
-
-//       {open && (
-//         <div
-//           style={{ top: coords.top, left: coords.left }}
-//           className="fixed z-50 w-48 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg"
-//         >
-//           <MenuItem
-//             icon={<FaEye />}
-//             label="View"
-//             onClick={() => router.push(`/users/grn-view/view/${grn._id}`)}
-//           />
-//           <MenuItem
-//             icon={<FaEdit />}
-//             label="Edit"
-//             onClick={() =>
-//               router.push(`/users/grn-view/new?editId=${grn._id}`)
-//             }
-//           />
-//           <MenuItem
-//             icon={<FaCopy />}
-//             label="Copy → Invoice"
-//             onClick={() => onCopy(grn)}
-//           />
-//           <MenuItem
-//             icon={<FaEnvelope />}
-//             label="Email"
-//             onClick={() => onEmail(grn._id)}
-//           />
-//           <MenuItem
-//             icon={<FaPrint />}
-//             label="Print"
-//             onClick={() => onPrint(grn._id)}
-//           />
-//           <MenuItem
-//             icon={<FaTrash />}
-//             label="Delete"
-//             color="text-red-600"
-//             onClick={() => onDelete(grn._id)}
-//           />
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-
-function RowMenu({ grn, onDelete, onCopy, onEmail, onPrint }) {
-  const [open, setOpen] = useState(false);
-  const [style, setStyle] = useState({});
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
+/* ================= Action Menu ================= */
+function RowMenu({ grn, onDelete, onCopy, onEmail, onPrint, user }) {
   const router = useRouter();
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/users/grn-view/view/${grn._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/users/grn-view/new?editId=${grn._id}`) },
-    { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(grn) },
-    {
+    hasPermission(user, "GRN", "view") && {
+      icon: <FaEye />,
+      label: "View",
+      onClick: () => router.push(`/users/grn-view/view/${grn._id}`),
+    },
+    hasPermission(user, "GRN", "edit") && {
+      icon: <FaEdit />,
+      label: "Edit",
+      onClick: () => router.push(`/users/grn-view/new?editId=${grn._id}`),
+    },
+    hasPermission(user, "GRN", "create") && {
+      icon: <FaCopy />,
+      label: "Copy → Invoice",
+      onClick: () => onCopy(grn),
+    },
+    hasPermission(user, "GRN", "email") && {
       icon: <FaEnvelope />,
       label: "Email",
-      onClick: async () => {
-        try {
-          const res = await axios.post("/api/email", {
-            type: "grn",
-            id:grn._id,
-           
-          });
-          if (res.data.success) toast.success("Email sent successfully!");
-          else toast.error(res.data.message || "Failed to send email.");
-        } catch {
-          toast.error("Error sending email.");
-        }
-      },
+      onClick: () => onEmail(grn._id),
     },
-    // { icon: <FaEnvelope />, label: "Email", onClick: () => onEmail(grn._id) },
-    { icon: <FaPrint />, label: "Print", onClick: () => onPrint(grn._id) },
-    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(grn._id) },
-  ];
+    hasPermission(user, "GRN", "print") && {
+      icon: <FaPrint />,
+      label: "Print",
+      onClick: () => onPrint(grn._id),
+    },
+    hasPermission(user, "GRN", "delete") && {
+      icon: <FaTrash />,
+      label: "Delete",
+      className: "text-red-600",
+      onClick: () => onDelete(grn._id),
+    },
+  ].filter(Boolean);
 
- return <ActionMenu actions={actions} />;
+  return <ActionMenu actions={actions} />;
 }

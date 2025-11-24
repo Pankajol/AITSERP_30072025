@@ -12,6 +12,12 @@ const ProductionOrderSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "companyUser",
     },
+    productionDocNo: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+
 
     // BOM Reference
     bomId: {
@@ -95,6 +101,8 @@ const ProductionOrderSchema = new Schema(
         operation: { type: Schema.Types.ObjectId, ref: "Operation" },
         machine: { type: Schema.Types.ObjectId, ref: "Machine" },
         operator: { type: Schema.Types.ObjectId, ref: "Operator" },
+        expectedStartDate: { type: Date },
+        expectedEndDate: { type: Date },
       },
     ],
   },

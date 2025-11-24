@@ -77,7 +77,7 @@ const fetchAccounts = async () => {
     <div className="mb-4">
       <div className="flex justify-between items-center mb-1">
         <label className="text-sm font-medium text-gray-700">
-          GL Account <span className="text-red-500">*</span>
+          GL Account 
         </label>
         
       </div>

@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-
-
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { toast } from "react-toastify"; // Assuming you have react-toastify installed for notifications
-
+import { toast } from "react-toastify";
 import {
   FaEllipsisV,
   FaEdit,
@@ -17,30 +14,43 @@ import {
   FaEnvelope,
   FaWhatsapp,
   FaSearch,
-  FaPlus, // Changed from FaEdit for "Create New" button
+  FaPlus,
 } from "react-icons/fa";
 import ActionMenu from "@/components/ActionMenu";
 
+/* ================= Permission Check ================= */
+const hasPermission = (user, moduleName, permissionType) => {
+  return (
+    user?.modules?.[moduleName]?.selected &&
+    user.modules[moduleName]?.permissions?.[permissionType] === true
+  );
+};
+
+/* ================= Main Component ================= */
 export default function InvoiceView() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [search, setSearch] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) setUser(JSON.parse(storedUser));
+  }, []);
 
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      // Assuming you might need a token for fetching invoices as well
-      const token = localStorage.getItem("token"); 
-      const res = await axios.get("/api/purchaseInvoice"
-      , { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/api/purchaseInvoice", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (res.data?.success && Array.isArray(res.data.data)) {
         setInvoices(res.data.data);
       } else {
-        console.warn("Unexpected response:", res.data);
-        setInvoices([]); // Ensure invoices is an array even if API response is not as expected
+        setInvoices([]);
       }
     } catch (error) {
       console.error("Error fetching invoices:", error);
@@ -67,18 +77,14 @@ export default function InvoiceView() {
   const handleDelete = async (id) => {
     if (!confirm("Are you sure you want to delete this invoice?")) return;
     try {
-      // const token = localStorage.getItem("token");
-      const res = await axios.delete(`/api/purchaseInvoice/${id}`
-      // , { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await axios.delete(`/api/purchaseInvoice/${id}`);
       if (res.data.success) {
         toast.success("Invoice deleted successfully!");
-        fetchInvoices(); // Re-fetch to update the list
+        fetchInvoices();
       } else {
         toast.error(res.data.message || "Failed to delete invoice.");
       }
     } catch (error) {
-      console.error("Error deleting invoice:", error);
       toast.error("Failed to delete invoice.");
     }
   };
@@ -92,7 +98,7 @@ export default function InvoiceView() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
+      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center text-gray-800">
         Invoice List
       </h1>
 
@@ -104,22 +110,22 @@ export default function InvoiceView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search invoice or supplier…"
-            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
-        <Link href="/users/purchaseInvoice-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaPlus /> New Invoice
-          </button>
-        </Link>
+        {hasPermission(user, "Purchase Invoice", "create") && (
+          <Link href="/users/purchaseInvoice-view/new" className="sm:w-auto">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+              <FaEdit /> Create Order
+            </button>
+          </Link>
+        )}
       </div>
 
       {/* Table / Cards */}
       {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">
-          Loading invoices…
-        </p>
+        <p className="text-center text-gray-500">Loading invoices…</p>
       ) : (
         <>
           {/* Desktop Table */}
@@ -128,6 +134,7 @@ export default function InvoiceView() {
               invoices={displayInvoices}
               onDelete={handleDelete}
               onCopyTo={handleCopyTo}
+              user={user}
             />
           </div>
 
@@ -140,10 +147,11 @@ export default function InvoiceView() {
                 idx={i}
                 onDelete={handleDelete}
                 onCopyTo={handleCopyTo}
+                user={user}
               />
             ))}
             {!displayInvoices.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
+              <p className="text-center text-gray-500">
                 No matching invoices found.
               </p>
             )}
@@ -155,17 +163,14 @@ export default function InvoiceView() {
 }
 
 /* ================= Desktop Table ================= */
-function InvoiceTable({ invoices, onDelete, onCopyTo }) {
+function InvoiceTable({ invoices, onDelete, onCopyTo, user }) {
   return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
+    <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
+      <thead className="bg-gray-100 text-sm">
         <tr>
-          {["#", "Invoice No.", "Supplier", "Date", "Grand Total", ""].map(
+          {["#", "Invoice No.", "Supplier", "Date", "Grand Total", "Action"].map(
             (h) => (
-              <th
-                key={h}
-                className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-              >
+              <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700">
                 {h}
               </th>
             )
@@ -176,7 +181,7 @@ function InvoiceTable({ invoices, onDelete, onCopyTo }) {
         {invoices.map((invoice, i) => (
           <tr
             key={invoice._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="border-b hover:bg-gray-50 transition"
           >
             <td className="px-4 py-3">{i + 1}</td>
             <td className="px-4 py-3">{invoice.documentNumberPurchaseInvoice}</td>
@@ -188,16 +193,18 @@ function InvoiceTable({ invoices, onDelete, onCopyTo }) {
             </td>
             <td className="px-4 py-3">₹{invoice.grandTotal}</td>
             <td className="px-4 py-3">
-              <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} />
+              <InvoiceRowMenu
+                invoice={invoice}
+                onDelete={onDelete}
+                onCopyTo={onCopyTo}
+                user={user}
+              />
             </td>
           </tr>
         ))}
         {!invoices.length && (
           <tr>
-            <td
-              colSpan={6} // Adjusted colspan to match number of columns
-              className="text-center py-6 text-gray-500 dark:text-gray-400"
-            >
+            <td colSpan={6} className="text-center py-6 text-gray-500">
               No invoices found.
             </td>
           </tr>
@@ -208,159 +215,63 @@ function InvoiceTable({ invoices, onDelete, onCopyTo }) {
 }
 
 /* ================= Mobile Card ================= */
-function InvoiceCard({ invoice, idx, onDelete, onCopyTo }) {
+function InvoiceCard({ invoice, idx, onDelete, onCopyTo, user }) {
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
+    <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+      <div className="flex justify-between items-start">
+        <div className="font-semibold text-gray-700">
           #{idx + 1} • {invoice.documentNumberPurchaseInvoice}
         </div>
-        <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} isMobile />
+        <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} user={user} />
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
+      <p className="text-sm text-gray-600 mt-1">
         Supplier: {invoice.supplierName}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
+      <p className="text-sm text-gray-600">
         Date:{" "}
         {invoice.documentDate
           ? new Date(invoice.documentDate).toLocaleDateString("en-GB")
           : ""}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
+      <p className="text-sm text-gray-600">
         Grand Total: ₹{invoice.grandTotal}
       </p>
     </div>
   );
 }
 
-/* ================= Dropdown Menu for Invoice Actions ================= */
-// function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
-//   const [open, setOpen] = useState(false);
-//   const btnRef = useRef(null);
-//   const [coords, setCoords] = useState({ top: 0, left: 0 });
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     if (open && btnRef.current) {
-//       const { bottom, right } = btnRef.current.getBoundingClientRect();
-//       setCoords({ top: bottom + 8, left: right - 192 }); // Adjust left for menu width
-//     }
-//   }, [open]);
-
-//   // Close dropdown if clicked outside
-//   useEffect(() => {
-//     const handleClickOutside = (event) => {
-//       if (btnRef.current && !btnRef.current.contains(event.target) && !event.target.closest('.fixed.z-50')) {
-//         setOpen(false);
-//       }
-//     };
-//     document.addEventListener("mousedown", handleClickOutside);
-//     return () => {
-//       document.removeEventListener("mousedown", handleClickOutside);
-//     };
-//   }, [btnRef]);
-
-//   const MenuItem = ({ icon, label, onClick, color = "" }) => (
-//     <button
-//       onClick={() => {
-//         onClick();
-//         setOpen(false);
-//       }}
-//       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-//     >
-//       <span className={`${color}`}>{icon}</span> {label}
-//     </button>
-//   );
-
-//   return (
-//     <>
-//       <button
-//         ref={btnRef}
-//         onClick={() => setOpen(!open)}
-//         className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full focus:ring-2 focus:ring-blue-500"
-//         title="More Actions"
-//       >
-//         <FaEllipsisV size={16} />
-//       </button>
-
-//       {open && (
-//         <div
-//           style={{ top: coords.top, left: coords.left }}
-//           className="fixed z-50 w-48 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg"
-//         >
-//           <MenuItem
-//             icon={<FaEye />}
-//             label="View"
-//             onClick={() => router.push(`/users/purchaseInvoice-view/${invoice._id}`)}
-//           />
-//           <MenuItem
-//             icon={<FaEdit />}
-            
-//             label="Edit"
-//             onClick={() => router.push(`/users/purchaseInvoice-view/new/?editId=${invoice._id}`)}
-//           />
-//           <MenuItem
-//             icon={<FaCopy />}
-//             label="Copy → Debit Note"
-//             onClick={() => onCopyTo(invoice, "debitNote")}
-//           />
-//           <MenuItem
-//             icon={<FaEnvelope />}
-//             label="Email"
-//             onClick={async () => {
-//               try {
-//                 // Assuming an email API similar to purchase quotation
-//                 const res = await axios.post("/api/email", {
-//                   type: "purchase-invoice", // A new type for purchase invoices
-//                   id: invoice._id,
-//                 });
-
-//                 if (res.data.success) {
-//                   toast.success("Email sent successfully!");
-//                 } else {
-//                   toast.error(res.data.message || "Failed to send email.");
-//                 }
-//               } catch (error) {
-//                 console.error("Error sending email:", error);
-//                 toast.error("Error sending email.");
-//               }
-//             }}
-//           />
-//           <MenuItem
-//             icon={<FaWhatsapp />}
-//             label="WhatsApp"
-//             onClick={() => router.push(`/users/purchaseInvoice-view/${invoice._id}/send-whatsapp`)}
-//           />
-//           <MenuItem
-//             icon={<FaTrash />}
-//             label="Delete"
-//             color="text-red-600"
-//             onClick={() => onDelete(invoice._id)}
-//           />
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-
-function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
-  const [open, setOpen] = useState(false);
-  const [style, setStyle] = useState({});
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
+/* ================= Row Menu ================= */
+function InvoiceRowMenu({ invoice, onDelete, onCopyTo, user }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/users/purchaseInvoice-view/${invoice._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/users/purchaseInvoice-view/new/?editId=${invoice._id}`) },
-    { icon: <FaCopy />, label: "Copy → Debit Note", onClick: () => onCopyTo(invoice, "debitNote") },
-    {
+    hasPermission(user, "Purchase Invoice", "view") && {
+      icon: <FaEye />,
+      label: "View",
+      onClick: () => router.push(`/users/purchaseInvoice-view/${invoice._id}`),
+    },
+    hasPermission(user, "Purchase Invoice", "edit") && {
+      icon: <FaEdit />,
+      label: "Edit",
+      onClick: () =>
+        router.push(`/users/purchaseInvoice-view/new/?editId=${invoice._id}`),
+    },
+    hasPermission(user, "Purchase Invoice", "create") && {
+      icon: <FaCopy />,
+      label: "Copy → Debit Note",
+      onClick: () => onCopyTo(invoice, "debitNote"),
+    },
+    hasPermission(user, "Purchase Invoice", "email") && {
       icon: <FaEnvelope />,
       label: "Email",
       onClick: async () => {
         try {
-          const res = await axios.post("/api/email", { type: "purchase-invoice", id: invoice._id });
+          const res = await axios.post("/api/email", {
+            type: "purchase-invoice",
+            id: invoice._id,
+          });
           if (res.data.success) toast.success("Email sent!");
           else toast.error(res.data.message || "Failed to send email");
         } catch {
@@ -368,12 +279,21 @@ function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
         }
       },
     },
-    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => router.push(`/users/purchaseInvoice-view/${invoice._id}/send-whatsapp`) },
-    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(invoice._id) },
-  ];
+    hasPermission(user, "Purchase Invoice", "whatsapp") && {
+      icon: <FaWhatsapp />,
+      label: "WhatsApp",
+      onClick: () =>
+        router.push(`/users/purchaseInvoice-view/${invoice._id}/send-whatsapp`),
+    },
+    hasPermission(user, "Purchase Invoice", "delete") && {
+      icon: <FaTrash />,
+      label: "Delete",
+      color: "text-red-600",
+      onClick: () => onDelete(invoice._id),
+    },
+  ].filter(Boolean);
 
-  return (
-    
-    <ActionMenu actions={actions} />
-  )
+  if (!actions.length) return null; // hide menu if no permission
+  
+    return <ActionMenu actions={actions} />;
 }

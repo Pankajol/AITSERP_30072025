@@ -276,39 +276,70 @@ export default function ProductionOrdersPage() {
   }, [orders, fetchJobCardDetailsForOrder, jobCardDetails]);
 
 
-  // --- Handler for Create Job Card Modal ---
-  const handleCreateJobCards = async (operationsToCreate) => {
-    const { order } = modalState;
-    if (!order) return;
 
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return toast.error("Missing token");
+const handleCreateJobCards = async (operationsToCreate) => {
+  const { order } = modalState;
+  if (!order) return;
 
-      const payload = {
-        productionOrderId: order._id,
-        operations: operationsToCreate.map(opFlow => ({
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return toast.error("Missing token");
+
+    // ✅ Log to inspect operations before payload creation
+    console.log("🔍 Operations to Create:", operationsToCreate);
+
+    const payload = {
+      productionOrderId: order._id,
+      operations: operationsToCreate.map((opFlow, index) => {
+        // Convert to Date if string (for safety)
+        const expectedStart = opFlow.expectedStartDate
+          ? new Date(opFlow.expectedStartDate)
+          : null;
+        const expectedEnd = opFlow.expectedEndDate
+          ? new Date(opFlow.expectedEndDate)
+          : null;
+
+        console.log(`🧩 Operation ${index + 1}:`, {
           operationId: opFlow.operation?._id || opFlow.operation,
-          qtyToManufacture: order.quantity,
-          // Add other fields if needed, e.g., machineId
           machineId: opFlow.machine?._id || opFlow.machine,
-        })),
-      };
+          operatorId: opFlow.operator?._id || opFlow.operator,
+          qtyToManufacture: order.quantity,
+          expectedStartDate: expectedStart,
+          expectedEndDate: expectedEnd,
+        });
 
-      const res = await axios.post("/api/ppc/jobcards", payload, { headers: { Authorization: `Bearer ${token}` } });
+        return {
+          operationId: opFlow.operation?._id || opFlow.operation,
+          machineId: opFlow.machine?._id || opFlow.machine,
+          operatorId: opFlow.operator?._id || opFlow.operator,
+          qtyToManufacture: order.quantity,
+          expectedStartDate: expectedStart,
+          expectedEndDate: expectedEnd,
+        };
+      }),
+    };
 
-      if (res.data.success) {
-        toast.success(`${res.data.data.length} job card(s) created successfully.`);
-        fetchJobCardDetailsForOrder(order); // Refresh details
-        setModalState({ isOpen: false, type: null, order: null });
-      } else {
-        toast.error(res.data.error || "Failed to create job cards.");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.response?.data?.error || "Server error while creating job cards.");
+    console.log("📦 Final Payload to POST:", payload);
+
+    const res = await axios.post("/api/ppc/jobcards", payload, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (res.data.success) {
+      toast.success(`${res.data.data.length} job card(s) created successfully.`);
+      fetchJobCardDetailsForOrder(order);
+      setModalState({ isOpen: false, type: null, order: null });
+    } else {
+      toast.error(res.data.error || "Failed to create job cards.");
     }
-  };
+  } catch (err) {
+    console.error("❌ Error creating job cards:", err);
+    toast.error(err.response?.data?.error || "Server error while creating job cards.");
+  }
+};
+
+
+
 
   // --- NEW Handler for Quantity Modals ---
   const handleQuantityModalSubmit = (quantity) => {
@@ -357,12 +388,14 @@ export default function ProductionOrdersPage() {
             <thead className="bg-gray-100">
               <tr>
                 <th className="border p-2 text-left">#</th>
+                <th className="border p-2 text-left">Order No.</th>
                 <th className="border p-2 text-left">Product</th>
                 <th className="border p-2 text-right">Qty</th>
                 <th className="border p-2 text-right">Transferred</th>
                 <th className="border p-2 text-right">Issued</th>
                 <th className="border p-2 text-right">Received</th>
                 <th className="border p-2 text-left">Date</th>
+                
                 <th className="border p-2 text-left">Status</th>
                 <th className="border p-2 text-center">Job Cards</th>
                 <th className="border p-2 text-left">Actions</th>
@@ -387,6 +420,7 @@ export default function ProductionOrdersPage() {
                 return (
                   <tr key={order._id} className="hover:bg-gray-50 text-sm">
                     <td className="border p-2 text-center">{idx + 1}</td>
+                    <td className="border p-2">{order.productionDocNo || "N/A"}</td>
                     <td className="border p-2">
                   {typeof order.productDesc === "string"
                     ? order.productDesc
@@ -432,8 +466,16 @@ export default function ProductionOrdersPage() {
                           {order.operationFlow?.length > 0 && !allJobCardsCreated && <option value="createJobCard">Create Job Card</option>}
                         </select>
 
-                        {status === "planned" && <a href={`/admin/ProductionOrder/${order._id}`} className="text-green-600" title="Edit Order"><Pencil size={16} /></a>}
-                        <a href={`/admin/productionorderdetail-view/${order._id}`} className="text-blue-600" title="View Details"><Eye size={16} /></a>
+                   {status === "planned" && (
+  <a
+    href={`/admin/ProductionOrder?id=${order._id}`} 
+    className="text-green-600 hover:text-green-800"
+    title="Edit Order"
+  >
+    <Pencil size={16} />
+  </a>
+)}
+                        <a href={`/admin/ProductionOrder/view?id=${order._id}`} className="text-blue-600" title="View Details"><Eye size={16} /></a>
                         <button 
                           onClick={() => handleDelete(order._id)} 
                           disabled={status !== 'planned'} 
@@ -461,7 +503,7 @@ export default function ProductionOrdersPage() {
           />
         )}
         
-        {modalState.isOpen && (modalState.type === 'stockTransfer' || modalVState.type === 'issueProduction' || modalState.type === 'receiptProduction') && (
+        {modalState.isOpen && (modalState.type === 'stockTransfer' || modalState.type === 'issueProduction' || modalState.type === 'receiptProduction') && (
           <QuantityModal
             order={modalState.order}
             type={modalState.type}

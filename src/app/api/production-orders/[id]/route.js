@@ -31,50 +31,121 @@ async function authenticate(req) {
 }
 
 // GET /api/production-orders/[id]
+// export async function GET(req, { params }) {
+//   await connectDB();
+
+//   const { user, error, status } = await authenticate(req);
+//   if (error) return NextResponse.json({ error }, { status });
+
+//   try {
+//     const { id } = await params;
+//     const order = await ProductionOrder.findById(id)
+//       .populate('warehouse', 'warehouseName')
+//       .populate('items.warehouse', 'warehouseName')
+//       .populate({
+//         path: 'bomId',
+//         populate: {
+//           path: 'productNo', // populate the productNo inside bomId
+//           select: 'itemCode itemName',
+//         },
+//         select: 'productNo productDesc', // fields in BOM
+//       })
+//       .populate('items','managedBy')
+//       .populate({
+//   path: 'items.item',
+//   select: 'unitPrice itemName itemCode',
+// });
+
+
+//       // .populate("items.itemId")
+//       // .populate("items.warehouse")
+//       // .populate("createdBy", "name")
+//       // .lean();
+
+//     if (!order) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
+//     console.log("Fetched order:", order);
+
+//     if (String(order.companyId) !== String(user.companyId)) {
+//       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
+//     }
+
+//     return NextResponse.json(order, { status: 200 });
+//   } catch (err) {
+//     console.error("GET production order error:", err.message);
+//     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+//   }
+// }
+
+
 export async function GET(req, { params }) {
   await connectDB();
 
+  // ---- Auth ----
   const { user, error, status } = await authenticate(req);
   if (error) return NextResponse.json({ error }, { status });
 
   try {
-    const { id } = await params;
+    const { id } = params; // Correct — NO await
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Production order ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // ---- Query with populate ----
     const order = await ProductionOrder.findById(id)
-      .populate('warehouse', 'warehouseName')
-      .populate('items.warehouse', 'warehouseName')
+      .populate("warehouse", "warehouseName")
+
+      .populate("items.warehouse", "warehouseName")
+
       .populate({
-        path: 'bomId',
+        path: "bomId",
         populate: {
-          path: 'productNo', // populate the productNo inside bomId
-          select: 'itemCode itemName',
+          path: "productNo",
+          select: "itemCode itemName",
         },
-        select: 'productNo productDesc', // fields in BOM
+        select: "productNo productDesc",
       })
-      .populate('items','managedBy')
+
       .populate({
-  path: 'items.item',
-  select: 'unitPrice itemName itemCode',
-});
+        path: "items.item",
+        select: "unitPrice itemName itemCode",
+      })
+      .populate("operationFlow.operation")
+.populate("operationFlow.machine")
+.populate("operationFlow.operator")
 
+      .lean(); // IMPORTANT: convert mongoose document → plain JSON
 
-      // .populate("items.itemId")
-      // .populate("items.warehouse")
-      // .populate("createdBy", "name")
-      // .lean();
+    if (!order) {
+      return NextResponse.json(
+        { error: "Production order not found" },
+        { status: 404 }
+      );
+    }
 
-    if (!order) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
-    console.log("Fetched order:", order);
-
+    // ---- Company Authorization ----
     if (String(order.companyId) !== String(user.companyId)) {
-      return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Unauthorized access to this order" },
+        { status: 403 }
+      );
     }
 
     return NextResponse.json(order, { status: 200 });
+
   } catch (err) {
-    console.error("GET production order error:", err.message);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("GET /production-orders/[id] ERROR:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
+
+
 
 // PUT /api/production-orders/[id]
 export async function PUT(req, { params }) {

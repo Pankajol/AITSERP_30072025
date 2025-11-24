@@ -59,6 +59,9 @@ const JobCardSchema = new Schema(
       default: "planned",
     },
 
+    expectedStartDate: { type: Date },
+    expectedEndDate: { type: Date },
+
     actualStartDate: { type: Date },
     actualEndDate: { type: Date },
 

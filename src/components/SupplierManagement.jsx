@@ -1,274 +1,3 @@
-// "use client";
-
-// import React, { useState, useEffect } from "react";
-// import axios from "axios";
-// import toast from "react-hot-toast";
-// import { FaEdit, FaTrash, FaPlus, FaSearch, FaMinus } from "react-icons/fa";
-// import CountryStateSearch from "@/components/CountryStateSearch";
-// import GroupSearch from "@/components/groupmaster";
-// import AccountSearch from "@/components/AccountSearch";
-// import toast from "react-hot-toast";
-
-// const initialAddress = { address1: "", address2: "", city: "", state: "", country: "", pin: "" };
-// const initialSupplier = {
-//   supplierCode: "",
-//   supplierName: "",
-//   supplierType: "",
-//   supplierGroup: "",
-//   supplierCategory: "",
-//   emailId: "",
-//   mobileNumber: "",
-//   contactPersonName: "",
-//   billingAddresses: [initialAddress],
-//   shippingAddresses: [initialAddress],
-//   paymentTerms: "",
-//   gstNumber: "",
-//   gstCategory: "",
-//   pan: "",
-//   bankName: "",
-//   branch: "",
-//   bankAccountNumber: "",
-//   ifscCode: "",
-//   leadTime: "",
-//   qualityRating: "B",
-//   glAccount: null,
-// };
-
-// export default function SupplierManagement() {
-//   const [view, setView] = useState("list");
-//   const [suppliers, setSuppliers] = useState([]);
-//   const [searchTerm, setSearchTerm] = useState("");
-//   const [supplierDetails, setSupplierDetails] = useState(initialSupplier);
-//   const [errors, setErrors] = useState({});
-
-//   useEffect(() => {
-//     fetchSuppliers();
-//   }, []);
-
-//   const fetchSuppliers = async () => {
-//     try {
-//       const token = localStorage.getItem("token");
-//       const res = await axios.get("/api/suppliers", {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       if (res.data.success) setSuppliers(res.data.data);
-//     } catch (err) {
-//       toast.error(err.response?.data?.message || "Failed to fetch suppliers");
-//     }
-//   };
-
-//   const validate = () => {
-//     const errs = {};
-//     const f = supplierDetails;
-//     if (!f.supplierName) errs.supplierName = "Supplier Name is required";
-//     if (!f.supplierType) errs.supplierType = "Supplier Type is required";
-//     if (!f.supplierGroup) errs.supplierGroup = "Supplier Group is required";
-//     if (!f.pan) errs.pan = "PAN is required";
-//     if (!f.gstCategory) errs.gstCategory = "GST Category is required";
-//     if (!f.glAccount || !f.glAccount._id) errs.glAccount = "GL Account is required";
-//     setErrors(errs);
-//     return Object.keys(errs).length === 0;
-//   };
-
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-//     if (!validate()) return;
-
-//     const token = localStorage.getItem("token");
-//     const payload = {
-//       ...supplierDetails,
-//       glAccount: supplierDetails.glAccount?._id || null,
-//     };
-
-//     try {
-//       let res;
-//       if (supplierDetails._id) {
-//         res = await axios.put(`/api/suppliers/${supplierDetails._id}`, payload, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         setSuppliers((prev) =>
-//           prev.map((s) => (s._id === res.data.data._id ? res.data.data : s))
-//         );
-//         toast.success("Supplier updated successfully");
-//       } else {
-//         res = await axios.post("/api/suppliers", payload, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         setSuppliers((prev) => [...prev, res.data.data]);
-//         toast.success("Supplier created successfully");
-//       }
-//       setSupplierDetails(initialSupplier);
-//       setView("list");
-//     } catch (err) {
-//       toast.error(err.response?.data?.message || "Error saving supplier");
-//     }
-//   };
-
-//   const handleDelete = async (id) => {
-//     if (!confirm("Are you sure?")) return;
-//     try {
-//       const token = localStorage.getItem("token");
-//       await axios.delete(`/api/suppliers/${id}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       setSuppliers((prev) => prev.filter((s) => s._id !== id));
-//       toast.success("Supplier deleted");
-//     } catch (err) {
-//       toast.error("Failed to delete supplier");
-//     }
-//   };
-
-//   const getFieldError = (field) => errors[field] && (
-//     <p className="text-red-500 text-sm mt-1">{errors[field]}</p>
-//   );
-
-//   const handleEdit = (s) => {
-//     setSupplierDetails(s);
-//     setView("form");
-//   };
-
-//   const filtered = suppliers.filter((s) =>
-//     [s.supplierCode, s.supplierName, s.emailId, s.supplierType, s.supplierGroup]
-//       .some((v) => v?.toLowerCase().includes(searchTerm.toLowerCase()))
-//   );
-
-//   return (
-//     <div className="p-6">
-//       {view === "list" ? (
-//         <>
-//           <div className="flex justify-between mb-4">
-//             <h1 className="text-2xl font-bold">Supplier Management</h1>
-//             <button
-//               onClick={() => setView("form")}
-//               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded"
-//             >
-//               <FaPlus /> Add Supplier
-//             </button>
-//           </div>
-
-//           <input
-//             className="border p-2 rounded mb-4 w-full max-w-md"
-//             placeholder="Search suppliers..."
-//             value={searchTerm}
-//             onChange={(e) => setSearchTerm(e.target.value)}
-//           />
-
-//           <table className="w-full table-auto border">
-//             <thead>
-//               <tr className="bg-gray-200 text-left">
-//                 <th className="p-2">Code</th>
-//                 <th className="p-2">Name</th>
-//                 <th className="p-2">Email</th>
-//                 <th className="p-2">Type</th>
-//                 <th className="p-2">Group</th>
-//                 <th className="p-2">Actions</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {filtered.map((s) => (
-//                 <tr key={s._id} className="border-t hover:bg-gray-50">
-//                   <td className="p-2">{s.supplierCode}</td>
-//                   <td className="p-2">{s.supplierName}</td>
-//                   <td className="p-2">{s.emailId}</td>
-//                   <td className="p-2">{s.supplierType}</td>
-//                   <td className="p-2">{s.supplierGroup}</td>
-//                   <td className="p-2 flex gap-2">
-//                     <button onClick={() => handleEdit(s)} className="text-blue-600">
-//                       <FaEdit />
-//                     </button>
-//                     <button onClick={() => handleDelete(s._id)} className="text-red-600">
-//                       <FaTrash />
-//                     </button>
-//                   </td>
-//                 </tr>
-//               ))}
-//             </tbody>
-//           </table>
-//         </>
-//       ) : (
-//         <div className="max-w-3xl mx-auto">
-//           <h2 className="text-xl font-semibold mb-4">
-//             {supplierDetails._id ? "Edit Supplier" : "New Supplier"}
-//           </h2>
-//           <form onSubmit={handleSubmit} className="space-y-4">
-//             <div>
-//               <label className="block">Supplier Name *</label>
-//               <input
-//                 name="supplierName"
-//                 value={supplierDetails.supplierName}
-//                 onChange={(e) => setSupplierDetails({ ...supplierDetails, supplierName: e.target.value })}
-//                 className="w-full border rounded p-2"
-//               />
-//               {getFieldError("supplierName")}
-//             </div>
-//             <div>
-//               <label className="block">Supplier Group *</label>
-//               <GroupSearch
-//                 value={supplierDetails.supplierGroup}
-//                 onSelectGroup={(name) => setSupplierDetails((prev) => ({ ...prev, supplierGroup: name }))}
-//               />
-//               {getFieldError("supplierGroup")}
-//             </div>
-//             <div>
-//               <label className="block">Supplier Type *</label>
-//               <select
-//                 value={supplierDetails.supplierType}
-//                 onChange={(e) => setSupplierDetails({ ...supplierDetails, supplierType: e.target.value })}
-//                 className="w-full border rounded p-2"
-//               >
-//                 <option value="">Select Type</option>
-//                 <option>Manufacturer</option>
-//                 <option>Distributor</option>
-//                 <option>Retailer</option>
-//                 <option>Service Provider</option>
-//               </select>
-//               {getFieldError("supplierType")}
-//             </div>
-//             <div>
-//               <label className="block">PAN *</label>
-//               <input
-//                 name="pan"
-//                 value={supplierDetails.pan}
-//                 onChange={(e) => setSupplierDetails({ ...supplierDetails, pan: e.target.value })}
-//                 className="w-full border rounded p-2"
-//               />
-//               {getFieldError("pan")}
-//             </div>
-//             <div>
-//               <label className="block">GST Category *</label>
-//               <select
-//                 value={supplierDetails.gstCategory}
-//                 onChange={(e) => setSupplierDetails({ ...supplierDetails, gstCategory: e.target.value })}
-//                 className="w-full border rounded p-2"
-//               >
-//                 <option value="">Select GST Category</option>
-//                 <option value="Registered Regular">Registered Regular</option>
-//                 <option value="Unregistered">Unregistered</option>
-//                 <option value="SEZ">SEZ</option>
-//               </select>
-//               {getFieldError("gstCategory")}
-//             </div>
-//             <div>
-//               <AccountSearch
-//                 value={supplierDetails.glAccount}
-//                 onSelect={(selected) => setSupplierDetails({ ...supplierDetails, glAccount: selected })}
-//               />
-//               {getFieldError("glAccount")}
-//             </div>
-//             <div className="flex justify-end gap-3 mt-4">
-//               <button type="button" onClick={() => setView("list")} className="px-4 py-2 bg-gray-500 text-white rounded">
-//                 Cancel
-//               </button>
-//               <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded">
-//                 {supplierDetails._id ? "Update" : "Create"}
-//               </button>
-//             </div>
-//           </form>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
 
 "use client";
 
@@ -287,6 +16,8 @@ export default function SupplierManagement() {
   const [errors, setErrors] = useState({});
   const [error, setError] = useState({});
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
   const [supplierDetails, setSupplierDetails] = useState({
     supplierCode: "",
     supplierName: "",
@@ -352,36 +83,7 @@ export default function SupplierManagement() {
     fetchSuppliers();
   }, []);
 
-  // const verifyUdyam = async () => {
-  //   try {
-  //     const token = localStorage.getItem("token"); // or however you store it
-
-  //     const res = await fetch("/api/udyam", {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: `Bearer ${token}`,   // 🔑 send token
-  //       },
-  //       body: JSON.stringify({ udyamNumber: "UDYAM-MH-19-0253751" }),
-  //     });
-
-  //     console.log("Raw response:", res);
-
-  //     const data = await res.json();
-  //     console.log("Parsed response:", data);
-
-  //     // ✅ extract supplier details
-  //     const supplierDetails = data?.data?.udyamName || null;
-  //     console.log("Supplier Name:", supplierDetails);
-
-  //     // if you’re in React:
-  //     // setSupplierDetails(supplierDetails);
-
-  //   } catch (err) {
-  //     console.error("verifyUdyam error:", err);
-  //   }
-  // };
-
+  
   const verifyUdyam = async (e) => {
     e.preventDefault(); // prevent form reload on button click
     try {
@@ -473,13 +175,7 @@ export default function SupplierManagement() {
     }
   };
 
-  // const generateSupplierCode = async () => {
-  //   try {
-  //     const { data } = await axios.get("/api/lastSupplierCode");
-  //     const num = parseInt(data.lastSupplierCode.split("-")[1] || "0", 10) + 1;
-  //     setSupplierDetails(prev => ({ ...prev, supplierCode: `SUPP-${num.toString().padStart(4, "0")}` }));
-  //   } catch {}
-  // };
+  
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -673,10 +369,172 @@ export default function SupplierManagement() {
     ].some((v) => v?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+
+
+const handleBulkUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  setUploading(true);
+  const token = localStorage.getItem("token");
+
+  try {
+    const text = await file.text();
+    const rows = text.split("\n").map((r) => r.trim()).filter((r) => r);
+    const headers = rows[0].split(",").map((h) => h.trim());
+    const jsonData = rows.slice(1).map((line) => {
+      const values = line.split(",");
+      const obj = {};
+      headers.forEach((key, i) => {
+        obj[key] = values[i]?.trim() || "";
+      });
+      return obj;
+    });
+
+    const res = await axios.post(
+      "/api/suppliers/bulk",
+      { suppliers: jsonData },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const data = res.data;
+    if (!data.success) {
+      toast.error(data.message || "Bulk upload failed");
+      return;
+    }
+
+    // ✅ Success / Warning / Error handling
+    const total = data.results.length;
+    const successCount = data.results.filter((r) => r.success).length;
+    const failCount = data.results.filter((r) => !r.success).length;
+
+    if (successCount === total) {
+      toast.success(`✅ All ${total} records uploaded successfully!`);
+    } else if (successCount > 0 && failCount > 0) {
+      toast.warning(
+        `⚠️ ${successCount} uploaded successfully, ${failCount} skipped.`
+      );
+      console.group("Skipped Records");
+      data.results
+        .filter((r) => !r.success)
+        .forEach((r) => console.warn(`Row ${r.row}: ${r.errors.join(", ")}`));
+      console.groupEnd();
+    } else {
+      toast.error("❌ All records failed to upload. Check your CSV file.");
+    }
+
+    // Optionally reload your table data
+    fetchSuppliers();
+
+  } catch (err) {
+    console.error("Bulk Upload Error:", err);
+    toast.error("Something went wrong during upload.");
+  } finally {
+    setUploading(false);
+    e.target.value = ""; // reset file input
+  }
+};
+
+
+const parseCSV = (csv) => {
+  const lines = csv.split("\n").filter((line) => line.trim() !== "");
+  const headers = lines[0].split(",");
+
+  return lines.slice(1).map((line) => {
+    const values = line.split(",");
+    let obj = {};
+    headers.forEach((h, i) => (obj[h.trim()] = values[i]?.trim() || ""));
+    return obj;
+  });
+};
+
+const downloadSupplierTemplate = () => {
+  const header = [
+    "supplierName",
+    "supplierGroup",
+    "supplierType",
+    "emailId",
+    "mobileNumber",
+    "gstNumber",
+    "gstCategory",
+    "pan",
+    "contactPersonName",
+    "commissionRate",
+    "paymentTerms",
+    "billingAddress1",
+    "billingAddress2",
+    "billingCity",
+    "billingState",
+    "billingPin",
+    "billingCountry",
+    "shippingAddress1",
+    "shippingAddress2",
+    "shippingCity",
+    "shippingState",
+    "shippingPin",
+    "shippingCountry",
+    "glAccount"
+  ];
+
+  const sample = [
+    "ABC Traders",
+    "Wholesale",
+    "Business",
+    "abc@traders.com",
+    "9876543210",
+    "22ABCDE1234F1Z5",
+    "Registered Regular",
+    "ABCDE1234F",
+    "Rahul Manager",
+    "5",
+    "30",
+    "Line 1",
+    "Line 2",
+    "Mumbai",
+    "Maharashtra",
+    "400001",
+    "India",
+    "Line 1",
+    "Line 2",
+    "Mumbai",
+    "Maharashtra",
+    "400002",
+    "India",
+    "BANKHEAD_OBJECT_ID"
+  ];
+
+  const csv = [header.join(","), sample.join(",")].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "supplier_bulk_upload_template.csv";
+  link.click();
+};
+
+
+
   const renderListView = () => (
-    <div className="p-6">
-      <div className="flex justify-between mb-6">
-        <h1 className="text-2xl font-bold">Supplier Management</h1>
+  <div className="p-6">
+    {/* ✅ Header Section */}
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+      <h1 className="text-2xl font-bold">Supplier Management</h1>
+
+      <div className="flex flex-wrap gap-3">
+        {/* ✅ Download Template */}
+        <button
+          onClick={downloadSupplierTemplate}
+          className="inline-flex items-center bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-md"
+        >
+          Download Template
+        </button>
+
+        {/* ✅ Bulk Upload */}
+        <label className="inline-flex items-center bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md cursor-pointer">
+          {uploading ? "Uploading..." : "Bulk Upload"}
+          <input type="file" accept=".csv" hidden onChange={handleBulkUpload} />
+        </label>
+
+        {/* ✅ Add Supplier */}
         <button
           onClick={() => {
             generateSupplierCode();
@@ -687,60 +545,61 @@ export default function SupplierManagement() {
           <FaPlus className="mr-2" /> Add Supplier
         </button>
       </div>
-      <div className="mb-4 relative max-w-md">
-        <input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search suppliers..."
-          className="w-full border rounded-md py-2 pl-4 pr-10 focus:ring-2 focus:ring-blue-500"
-        />
-        <FaSearch className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              {["Code", "Name", "Email", "Type", "Group", "Actions"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-2 text-left text-sm font-medium text-gray-700"
-                  >
-                    {h}
-                  </th>
-                )
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {filtered.map((s) => (
-              <tr key={s._id} className="hover:bg-gray-50">
-                <td className="px-4 py-2">{s.supplierCode}</td>
-                <td className="px-4 py-2">{s.supplierName}</td>
-                <td className="px-4 py-2">{s.emailId}</td>
-                <td className="px-4 py-2">{s.supplierType}</td>
-                <td className="px-4 py-2">{s.supplierGroup}</td>
-                <td className="px-4 py-2 flex space-x-3">
-                  <button
-                    onClick={() => handleEdit(s)}
-                    className="text-blue-600"
-                  >
-                    <FaEdit />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(s._id)}
-                    className="text-red-600"
-                  >
-                    <FaTrash />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
-  );
+
+    {/* ✅ Search Bar */}
+    <div className="mb-4 relative max-w-md">
+      <input
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        placeholder="Search suppliers..."
+        className="w-full border rounded-md py-2 pl-4 pr-10 focus:ring-2 focus:ring-blue-500"
+      />
+      <FaSearch className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+    </div>
+
+    {/* ✅ Table */}
+    <div className="overflow-x-auto">
+      <table className="min-w-full bg-white divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            {["Code", "Name", "Email", "Type", "Group", "Actions"].map((h) => (
+              <th
+                key={h}
+                className="px-4 py-2 text-left text-sm font-medium text-gray-700"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {filtered.map((s) => (
+            <tr key={s._id} className="hover:bg-gray-50">
+              <td className="px-4 py-2">{s.supplierCode}</td>
+              <td className="px-4 py-2">{s.supplierName}</td>
+              <td className="px-4 py-2">{s.emailId}</td>
+              <td className="px-4 py-2">{s.supplierType}</td>
+              <td className="px-4 py-2">{s.supplierGroup}</td>
+              <td className="px-4 py-2 flex space-x-3">
+                <button onClick={() => handleEdit(s)} className="text-blue-600">
+                  <FaEdit />
+                </button>
+                <button
+                  onClick={() => handleDelete(s._id)}
+                  className="text-red-600"
+                >
+                  <FaTrash />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
 
   const renderFormView = () => (
     <div className="p-8 bg-white rounded-lg shadow-lg max-w-5xl mx-auto">
@@ -1101,7 +960,7 @@ export default function SupplierManagement() {
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Payment Terms
+              Payment Terms (In Days)
             </label>
             <input
               name="paymentTerms"

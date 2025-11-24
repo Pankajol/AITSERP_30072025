@@ -16,7 +16,7 @@ const ItemSchema = new mongoose.Schema(
     description: { type: String },
     category: { type: String, required: true },
     unitPrice: { type: Number, required: true },
-    quantity: { type: Number, required: true },
+    quantity: { type: Number},
     reorderLevel: { type: Number },
     leadTime: { type: Number },
     itemType: { type: String },

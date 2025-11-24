@@ -570,3 +570,33 @@ export async function sendPurchaseInvoiceEmail(toEmails, purchaseInvoice) {
 
 
 
+
+// leaving space for future mailer functions
+
+export async function sendLeaveMail({ to, employee, status, from, to: end }) {
+  if (!to) return;
+
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"HR Team" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Your leave is ${status}`,
+    html: `
+      <h3>Hello ${employee},</h3>
+      <p>Your leave request is <strong>${status}</strong>.</p>
+      <p><b>From:</b> ${new Date(from).toDateString()}</p>
+      <p><b>To:</b> ${new Date(end).toDateString()}</p>
+    `,
+  });
+}
+
+

@@ -16,6 +16,69 @@ import Operator from "@/models/ppc/operatorModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 // ✅ Create a new Production Order
+// export async function POST(request) {
+//   await connectDB();
+
+//   try {
+//     const token = getTokenFromHeader(request);
+//     const user = verifyJWT(token);
+
+//     if (!user?.companyId) {
+//       return NextResponse.json(
+//         { error: "Company ID missing in token" },
+//         { status: 401 }
+//       );
+//     }
+
+//     const data = await request.json();
+
+//     // ✅ Attach company & user info
+//     data.companyId = user.companyId;
+//     data.createdBy = user._id || user.id;
+
+//     // Make warehouse optional
+//     if (!data.warehouse) data.warehouse = null;
+
+//     // Ensure items array is clean
+//     if (Array.isArray(data.items)) {
+//       data.items = data.items.map((it) => ({
+//         ...it,
+//         warehouse: it.warehouse || null,
+//       }));
+//     }
+
+//     // ✅ Save Production Order
+//     const order = new ProductionOrder(data);
+//     const saved = await order.save();
+
+//     // ✅ Update Sales Order if linked
+//     if (saved.salesOrder?.length > 0) {
+//       await SalesOrder.updateMany(
+//         {
+//           _id: { $in: saved.salesOrder },
+//           companyId: user.companyId,
+//         },
+//         {
+//           $set: {
+//             status: "LinkedToProductionOrder",
+//             linkedProductionOrder: saved._id,
+//           },
+//         }
+//       );
+//     }
+
+//     return NextResponse.json(saved, { status: 201 });
+//   } catch (err) {
+//     console.error("❌ Error creating production order:", err);
+//     return NextResponse.json(
+//       { error: err.message || "Failed to create production order" },
+//       { status: 400 }
+//     );
+//   }
+// }
+
+
+
 export async function POST(request) {
   await connectDB();
 
@@ -31,15 +94,36 @@ export async function POST(request) {
     }
 
     const data = await request.json();
+    const companyId = user.companyId;
+
+    // ✅ Generate unique productionDocNo per company
+    const lastOrder = await ProductionOrder.findOne({ companyId })
+      .sort({ createdAt: -1 })
+      .select("productionDocNo");
+
+    let nextNumber = 1;
+    if (lastOrder?.productionDocNo) {
+      const match = lastOrder.productionDocNo.match(/PROD-(\d+)/);
+      if (match) {
+        nextNumber = parseInt(match[1]) + 1;
+      }
+    }
+
+    // Optional: Use a company code if available
+    const companyCode =
+      user.companyCode ||
+      companyId.slice(-4).toUpperCase(); // fallback to last 4 chars
+
+    const productionDocNo = `PROD-${nextNumber.toString().padStart(4, "0")}-${companyCode}`;
 
     // ✅ Attach company & user info
-    data.companyId = user.companyId;
+    data.companyId = companyId;
     data.createdBy = user._id || user.id;
+    data.productionDocNo = productionDocNo;
 
-    // Make warehouse optional
+    // Optional: handle warehouse + items
     if (!data.warehouse) data.warehouse = null;
 
-    // Ensure items array is clean
     if (Array.isArray(data.items)) {
       data.items = data.items.map((it) => ({
         ...it,
@@ -51,12 +135,12 @@ export async function POST(request) {
     const order = new ProductionOrder(data);
     const saved = await order.save();
 
-    // ✅ Update Sales Order if linked
+    // ✅ Update linked Sales Orders
     if (saved.salesOrder?.length > 0) {
       await SalesOrder.updateMany(
         {
           _id: { $in: saved.salesOrder },
-          companyId: user.companyId,
+          companyId,
         },
         {
           $set: {

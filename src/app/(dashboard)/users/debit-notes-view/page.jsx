@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import axios from "axios";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   FaEdit,
@@ -12,15 +11,28 @@ import {
   FaEnvelope,
   FaWhatsapp,
   FaSearch,
-  FaEllipsisV,
 } from "react-icons/fa";
 import ActionMenu from "@/components/ActionMenu";
+
+/* ================= Permission Check ================= */
+const hasPermission = (user, moduleName, permissionType) => {
+  return (
+    user?.modules?.[moduleName]?.selected &&
+    user.modules[moduleName]?.permissions?.[permissionType] === true
+  );
+};
 
 export default function DebitNoteList() {
   const [notes, setNotes] = useState([]);
   const [search, setSearch] = useState("");
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) setUser(JSON.parse(storedUser));
+  }, []);
 
   useEffect(() => {
     fetchNotes();
@@ -76,12 +88,14 @@ export default function DebitNoteList() {
             className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <Link href="/users/debit-notes-view/new">
-          <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaEdit className="mr-2" />
-            Create New Debit Note
-          </button>
-        </Link>
+
+        {user && hasPermission(user, "Debit Note", "create") && (
+          <Link href="/users/debit-notes-view/new" className="sm:w-auto">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+              <FaEdit className="mr-2" /> Create New Debit Note
+            </button>
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -111,7 +125,7 @@ export default function DebitNoteList() {
                     <td className="px-4 py-3">₹ {parseFloat(note.grandTotal).toFixed(2)}</td>
                     <td className="px-4 py-3">{new Date(note.createdAt).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
-                      <RowMenu note={note} onDelete={handleDelete} />
+                      <RowMenu note={note} onDelete={handleDelete} user={user} />
                     </td>
                   </tr>
                 ))}
@@ -131,8 +145,8 @@ export default function DebitNoteList() {
             {filteredNotes.map((note, idx) => (
               <div key={note._id} className="bg-white p-4 rounded-lg shadow border">
                 <div className="flex justify-between mb-2">
-                  <div className="font-semibold">#{idx + 1} - {note.documentNumberDebitNote} </div>
-                  <RowMenu note={note} onDelete={handleDelete} isMobile />
+                  <div className="font-semibold">#{idx + 1} - {note.documentNumberDebitNote}</div>
+                  <RowMenu note={note} onDelete={handleDelete} user={user} isMobile />
                 </div>
                 <div><strong>Supplier:</strong> {note.supplierName}</div>
                 <div><strong>Doc No:</strong> {note.documentNumber}</div>
@@ -149,245 +163,26 @@ export default function DebitNoteList() {
   );
 }
 
-// function RowMenu({ note, onDelete }) {
-//   const [open, setOpen] = useState(false);
-//   const menuRef = useRef(null);
-//   const btnRef = useRef(null);
-//   const [position, setPosition] = useState("right-0"); // Default
-
-//   const actions = [
-//     { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}`) },
-//     { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}/edit`) },
-//     { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-email`) },
-//     { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-whatsapp`) },
-//     { icon: <FaTrash />, label: "Delete", onClick: () => onDelete(note._id), color: "text-red-600" },
-//   ];
-
-//   useEffect(() => {
-//     const handleClickOutside = (e) => {
-//       if (menuRef.current && !menuRef.current.contains(e.target) && !btnRef.current.contains(e.target)) {
-//         setOpen(false);
-//       }
-//     };
-//     document.addEventListener("mousedown", handleClickOutside);
-//     return () => document.removeEventListener("mousedown", handleClickOutside);
-//   }, []);
-
-//   useEffect(() => {
-//     if (open && btnRef.current) {
-//       const rect = btnRef.current.getBoundingClientRect();
-//       const spaceRight = window.innerWidth - rect.right;
-//       const spaceLeft = rect.left;
-
-//       // If not enough space on the right, open to the left
-//       if (spaceRight < 200 && spaceLeft > 200) {
-//         setPosition("left-0");
-//       } else {
-//         setPosition("right-0");
-//       }
-//     }
-//   }, [open]);
-
-//   return (
-//     <div className="relative inline-block text-left" ref={menuRef}>
-//       <button
-//         ref={btnRef}
-//         onClick={() => setOpen((p) => !p)}
-//         className="p-2 text-gray-500 hover:bg-gray-200 rounded-full focus:ring-2 focus:ring-blue-500"
-//       >
-//         <FaEllipsisV size={16} />
-//       </button>
-//       {open && (
-//         <div
-//           className={`absolute ${position} mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg z-50`}
-//         >
-//           {actions.map((a, i) => (
-//             <button
-//               key={i}
-//               onClick={() => {
-//                 a.onClick();
-//                 setOpen(false);
-//               }}
-//               className={`flex items-center gap-2 w-full px-4 py-2 text-sm hover:bg-gray-100 ${a.color || ""}`}
-//             >
-//               {a.icon} {a.label}
-//             </button>
-//           ))}
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-
-// "use client";
-// import { useState, useEffect } from "react";
-// import Link from "next/link";
-// import axios from "axios";
-// import { useRouter } from "next/navigation";
-// import { FaEdit, FaTrash, FaEye, FaEnvelope, FaWhatsapp } from "react-icons/fa";
-
-// export default function DebitNoteView() {
-//   const [notes, setNotes] = useState([]);
-//   const router = useRouter();
-
-//   const fetchDebitNotes = async () => {
-//     try {
-//       const token = localStorage.getItem("token");
-
-//       const res = await axios.get("/api/debit-note",
-//         {
-//         headers: { Authorization: `Bearer ${token}` },
-//       }
-//       );
-//       // Assuming your API returns { success: true, data: [...] }
-//       if (res.data.success) {
-//         setNotes(res.data.data);
-//       } else {
-//         setNotes(res.data);
-//       }
-//     } catch (error) {
-//       console.error("Error fetching Debit Notes:", error);
-//     }
-//   };
-
-//   useEffect(() => {
-//     fetchDebitNotes();
-//   }, []);
-
-//   const handleDelete = async (id) => {
-//     if (!confirm("Are you sure you want to delete this Debit Note?")) return;
-//     try {
-//       const res = await axios.delete(`/api/debit-note/${id}`);
-//       if (res.data.success) {
-//         alert("Deleted successfully");
-//         fetchDebitNotes();
-//       }
-//     } catch (error) {
-//       console.error("Error deleting Debit Note:", error);
-//       alert("Failed to delete Debit Note");
-//     }
-//   };
-
-//   return (
-//     <div className="container mx-auto p-6">
-//       <h1 className="text-4xl font-bold mb-6 text-center">Debit Note List</h1>
-//       <div className="flex justify-end mb-4">
-//         <Link href="/users/debit-notes-view/new">
-//           <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200">
-//             <FaEdit className="mr-2" />
-//             Create New Debit Note
-//           </button>
-//         </Link>
-//       </div>
-//       <div className="overflow-x-auto">
-//         <table className="min-w-full bg-white shadow-md rounded border border-gray-200">
-//           <thead className="bg-gray-100">
-//             <tr>
-//               <th className="py-3 px-4 border-b">document No.</th>
-//               <th className="py-3 px-4 border-b">Supplier Name</th>
-//               <th className="py-3 px-4 border-b">Reference Number</th>
-//               <th className="py-3 px-4 border-b">Status</th>
-//               <th className="py-3 px-4 border-b">Grand Total</th>
-//               <th className="py-3 px-4 border-b">Created At</th>
-//               <th className="py-3 px-4 border-b">Actions</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {notes.map((note) => (
-//               <tr key={note._id} className="hover:bg-gray-50 transition-colors">
-//                 <td className="py-3 px-4 border-b text-center">{note.documentNumber}</td>
-//                 <td className="py-3 px-4 border-b text-center">{note.supplierName}</td>
-//                 <td className="py-3 px-4 border-b text-center">{note.refNumber}</td>
-//                 <td className="py-3 px-4 border-b text-center">{note.status}</td>
-//                 <td className="py-3 px-4 border-b text-center">
-//                   {parseFloat(note.grandTotal).toFixed(2)}
-//                 </td>
-//                 <td className="py-3 px-4 border-b text-center">
-//                   {new Date(note.createdAt).toLocaleDateString()}
-//                 </td>
-//                 <td className="py-3 px-4 border-b">
-//                   <div className="flex justify-center space-x-2">
-//                     <Link href={`/users/debit-notes-view/${note._id}`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition duration-200"
-//                         title="View Details"
-//                       >
-//                         <FaEye />
-//                       </button>
-//                     </Link>
-//                     <Link href={`/users/debit-notes-view/${note._id}/edit`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 transition duration-200"
-//                         title="Edit"
-//                       >
-//                         <FaEdit />
-//                       </button>
-//                     </Link>
-//                     <button
-//                       onClick={() => handleDelete(note._id)}
-//                       className="flex items-center px-2 py-1 bg-red-600 text-white rounded hover:bg-red-500 transition duration-200"
-//                       title="Delete"
-//                     >
-//                       <FaTrash />
-//                     </button>
-//                     <Link href={`/users/debit-note/${note._id}/send-email`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-500 transition duration-200"
-//                         title="Send Email"
-//                       >
-//                         <FaEnvelope />
-//                       </button>
-//                     </Link>
-//                     <Link href={`/users/debit-note/${note._id}/send-whatsapp`}>
-//                       <button
-//                         className="flex items-center px-2 py-1 bg-green-600 text-white rounded hover:bg-green-500 transition duration-200"
-//                         title="Send WhatsApp"
-//                       >
-//                         <FaWhatsapp />
-//                       </button>
-//                     </Link>
-//                   </div>
-//                 </td>
-//               </tr>
-//             ))}
-//             {notes.length === 0 && (
-//               <tr>
-//                 <td colSpan="6" className="text-center py-4">
-//                   No Debit Notes found.
-//                 </td>
-//               </tr>
-//             )}
-//           </tbody>
-//         </table>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-function RowMenu({ note, onDelete }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
-  const btnRef = useRef(null);
-  const [style, setStyle] = useState({});
-
+function RowMenu({ note, onDelete, user }) {
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}/edit`) },
-    { icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-email`) },
-    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-whatsapp`) },
-    { icon: <FaTrash />, label: "Delete", onClick: () => onDelete(note._id), color: "text-red-600" },
-  ];
+    hasPermission(user, "Debit Note", "view") && {
+      icon: <FaEye />, label: "View", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}`)
+    },
+    hasPermission(user, "Debit Note", "edit") && {
+      icon: <FaEdit />, label: "Edit", onClick: () => (window.location.href = `/users/debit-notes-view/${note._id}/edit`)
+    },
+    hasPermission(user, "Debit Note", "email") && {
+      icon: <FaEnvelope />, label: "Email", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-email`)
+    },
+    hasPermission(user, "Debit Note", "whatsapp") && {
+      icon: <FaWhatsapp />, label: "WhatsApp", onClick: () => (window.location.href = `/users/debit-note/${note._id}/send-whatsapp`)
+    },
+    hasPermission(user, "Debit Note", "delete") && {
+      icon: <FaTrash />, label: "Delete", onClick: () => onDelete(note._id), color: "text-red-600"
+    }
+  ].filter(Boolean);
 
- return (
-  <ActionMenu actions={actions} />
- )
+  return <ActionMenu actions={actions} />;
 }
-
 
 

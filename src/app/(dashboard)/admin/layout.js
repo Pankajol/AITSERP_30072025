@@ -23,6 +23,10 @@ import {
   HiOutlineOfficeBuilding,
   HiCube,
   HiShoppingCart,
+  HiCog,
+  
+ 
+
 } from "react-icons/hi";
 import { GiStockpiles } from "react-icons/gi";
 import { SiCivicrm } from "react-icons/si";
@@ -228,6 +232,7 @@ export default function DashboardLayout({ children }) {
           <Section title="CRM-View" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
             <Item href="/admin/leads-view" icon={<HiUserGroup />} label="Lead Generation" close={closeSidebar} />
             <Item href="/admin/opportunities" icon={<HiPuzzle />} label="Opportunity" close={closeSidebar} />
+            <Item href="/admin/crm/campaign" icon={<HiPuzzle />} label="Campaign" close={closeSidebar} />
             <Item href="#" icon={<HiPuzzle />} label="Report" close={closeSidebar} />
           </Section>
 
@@ -379,10 +384,17 @@ export default function DashboardLayout({ children }) {
 
           {/* HR  */}
           <Section title="HR" icon={<HiUserGroup />} isOpen={openMenu === "hr"} onToggle={() => toggleMenu("hr")}>
-          <Item href="/admin/hr/leave" icon={<HiUserGroup />} label="Leave" close={closeSidebar} />
+          <Item href="/admin/hr/employee-onboarding" icon={<HiUserGroup />} label="Employee Onboarding" close={closeSidebar} />
+          <Item href="/admin/hr/Dashboard" icon={<HiUserGroup />} label="Employee Details" close={closeSidebar} />
+          <Item href="/admin/hr/masters" icon={<HiUserGroup />} label="Department" close={closeSidebar} />
+          <Item href="/admin/hr/leaves" icon={<HiUserGroup />} label="Leave" close={closeSidebar} />
           <Item href="/admin/hr/attendance" icon={<HiUserGroup />} label="Attendance" close={closeSidebar} />
           <Item href="/admin/hr/payroll" icon={<HiUserGroup />} label="Payroll" close={closeSidebar} />
-          <Item href="/admin/hr/employee" icon={<HiUserGroup />} label="Employee" close={closeSidebar} />
+          <Item href="/admin/hr/employees" icon={<HiUserGroup />} label="Employee" close={closeSidebar} />
+          <Item href="/admin/hr/reports" icon={<HiUserGroup />} label="Reports" close={closeSidebar} />
+          <Item href="/admin/hr/settings" icon={<HiCog />} label="Settings" close={closeSidebar} />
+          <Item href="/admin/hr/holidays" icon={<HiGlobeAlt />} label="Holidays" close={closeSidebar} />
+          <Item href="/admin/hr/profile" icon={<HiUser />} label="Profile" close={closeSidebar} />
           
           
           </Section>
@@ -404,6 +416,15 @@ export default function DashboardLayout({ children }) {
              <Item href="/admin/ppc/downtime" icon={<HiReceiptTax />} label="Downtime" close={closeSidebar} />
 
           </Section>
+
+          <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
+            <Item href="/admin/helpdesk/tickets" icon={<HiDocumentText />} label="Tickets" close={closeSidebar} />
+            <Item href="/admin/helpdesk/agents" icon={<HiUsers />} label="Agents" close={closeSidebar} />
+            <Item href="/admin/helpdesk/categories" icon={<HiUserGroup />} label="Categories" close={closeSidebar} />
+            <Item href="/admin/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" close={closeSidebar} />
+            <Item href="/admin/helpdesk/settings" icon={<HiCog />} label="Settings" close={closeSidebar} />
+          </Section>
+          
 
           {/* Logout */}
           <div className="pt-4"><LogoutButton /></div>

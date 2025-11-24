@@ -228,6 +228,9 @@ export default function Sidebar({ children }) {
                 </div>
                 )}
 
+
+
+                
                 {v.transactions && (
                 <div>
                     <MenuBtn isOpen={open.menu === 't'} onToggle={() => toggleMenu('t')} icon={<icons.CreditCard className="w-5 h-5"/>} label="Transactions" />
@@ -242,6 +245,8 @@ export default function Sidebar({ children }) {
                                 {hasPermission('Sales Order') && <Item href={P('/sales-order-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Order View" close={closeDrawer} />}
                                 {hasPermission('Delivery') && <Item href={P('/delivery-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Delivery View" close={closeDrawer} />}
                                 {hasPermission('Sales Invoice') && <Item href={P('/sales-invoice-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Invoice View" close={closeDrawer} />}
+                                {hasPermission('Credit Note') && <Item href={P('/credit-note-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Credit Note View" close={closeDrawer} />}
+
                             </div>
                             )}
                         </div>
@@ -255,6 +260,7 @@ export default function Sidebar({ children }) {
                                 {hasPermission('GRN') && <Item href={P('/grn-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="GRN View" close={closeDrawer} /> }
                                 {hasPermission('Purchase Order') && <Item href={P('/purchase-order-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Order View" close={closeDrawer} />}
                                 {hasPermission('Purchase Invoice') && <Item href={P('/purchaseInvoice-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Invoice View" close={closeDrawer} />}
+                                {hasPermission('Debit Note') && <Item href={P('/debit-notes-view')} icon={<icons.ChevronRight className="w-5 h-5"/>} label="Debit Note View" close={closeDrawer} />}
                             </div>
                             )}
                         </div>
@@ -340,6 +346,7 @@ export default function Sidebar({ children }) {
                             close={closeDrawer}
                           />
                         )}
+
                       </div>
                     )}
                   </div>
@@ -357,6 +364,36 @@ export default function Sidebar({ children }) {
                         )}
                     </div>
                 )}
+
+
+                {v.hr && (
+                    <div>
+                        <MenuBtn isOpen={open.menu === 'hr'} onToggle={() => toggleMenu('hr')} icon={<icons.Users className="w-5 h-5"/>} label="HR" />
+                        {open.menu === 'hr' && (
+                        <div className="pl-6 mt-1 space-y-1 border-l-2 border-gray-500">
+                            {hasPermission('Employee') && <Item href={P('/employee')} icon={<icons.UserGroup className="w-5 h-5"/>} label="Employee" close={closeDrawer} />}
+                            {hasPermission('Attendance') && <Item href={P('/attendance')} icon={<icons.Receipt className="w-5 h-5"/>} label="Attendance" close={closeDrawer} />}
+                            {hasPermission('Payroll') && <Item href={P('/payroll')} icon={<icons.CurrencyDollar className="w-5 h-5"/>} label="Payroll" close={closeDrawer} />}
+                            {hasPermission('Leave') && <Item href={P('/leave')} icon={<icons.Calendar className="w-5 h-5"/>} label="Leave" close={closeDrawer} />}
+                        </div>
+                        )}
+                    </div>
+                )}
+
+
+
+                {v.support && (
+                    <div>
+                        <MenuBtn isOpen={open.menu === 'support'} onToggle={() => toggleMenu('support')} icon={<icons.Headset className="w-5 h-5"/>} label="Support" />
+                        {open.menu === 'support' && (
+                        <div className="pl-6 mt-1 space-y-1 border-l-2 border-gray-500">
+                            {hasPermission('Tickets') && <Item href={P('/tickets')} icon={<icons.Ticket className="w-5 h-5"/>} label="Tickets" close={closeDrawer} />}
+                            {hasPermission('Report') && <Item href={P('#')} icon={<icons.BookOpen className="w-5 h-5"/>} label="Knowledge Base" close={closeDrawer} />}
+                        </div>
+                        )}
+                    </div>
+                )}
+
             </div>
 
             <div className="pt-4 border-t border-gray-600">

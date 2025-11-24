@@ -81,6 +81,25 @@ export default function UserSidebar({children}) {
             </div>
           )}
         </div>
+        {/* support */}
+        <div className="relative">
+          <button
+            onClick={() => toggleMenu("helpdesk")}
+            className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
+          >
+            helpdesk
+          </button>
+          {openMenu === "helpdesk" && (
+            <div className="ml-4 mt-2 space-y-1">
+              <Link href="agent-dashboard/helpdesk/tickets" className="block px-4 py-2 hover:bg-gray-700 rounded">
+                Tickets
+              </Link>
+              <Link href="agent-dashboard/helpdesk/agents" className="block px-4 py-2 hover:bg-gray-700 rounded">
+                Agents
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* Report Dropdown */}
         <div className="relative">

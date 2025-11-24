@@ -24,7 +24,7 @@ const formatTime = (seconds) => {
 };
 
 const formatDateTime = (date) =>
-  date ? new Date(date).toLocaleString() : "-";
+  date ? new Date(date).toLocaleString("en-IN") : "-";
 
 export default function JobCardPage() {
   const [productionOrderId, setProductionOrderId] = useState("");
@@ -72,6 +72,12 @@ export default function JobCardPage() {
               : null,
             actualEndDate: jc.actualEndDate
               ? new Date(jc.actualEndDate)
+              : null,
+              expectedStartDate: jc.expectedStartDate
+              ? new Date(jc.expectedStartDate)
+              : null,
+              expectedEndDate: jc.expectedEndDate
+              ? new Date(jc.expectedEndDate)
               : null,
           };
           // IMPORTANT: Set running state from fetch
@@ -286,7 +292,7 @@ export default function JobCardPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Car size={24} /> Job Card Workflow
+              <Car size={32} /> Job Card Workflow
             </h2>
             <button
               onClick={() =>
@@ -362,13 +368,18 @@ export default function JobCardPage() {
                         {formatDateTime(data.actualEndDate)}
                       </p>
 
+                          <p className="text-sm text-gray-400 mt-1">
+                        Expected Start Date: {formatDateTime(data.expectedStartDate)} | Expected  End Date:{" "}
+                        {formatDateTime(data.expectedEndDate)}
+                      </p>
+
                       <div className="relative w-full bg-gray-300 h-3 rounded-full mt-3 overflow-visible">
                         <div
                           className={`${progressColor} h-3 rounded-full transition-all duration-500 relative`}
                           style={{ width: `${progressPercent}%` }}
                         >
-                          <div className="absolute -top-[6px] right-[-10px]">
-                            <Car size={18} className="text-gray-700" />
+                          <div className="absolute -top-[6px] right-[-5px] ">
+                            <Car size={22} className="text-gray-700  " />
                           </div>
                         </div>
                       </div>

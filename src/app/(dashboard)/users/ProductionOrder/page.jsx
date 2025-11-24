@@ -107,28 +107,69 @@ function ProductionOrderPage() {
   }, [id, token]);
 
   // Fetch BOM details when creating new order
-  useEffect(() => {
-    if (!selectedBomId || !token || id) return; // only for new order
+  // useEffect(() => {
+  //   if (!selectedBomId || typeof selectedBomId !== "string" || !token || id) return; // only for new order
 
-    axios
-      .get(`/api/bom/${selectedBomId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
-        const items = res.data.items.map((it) => ({
-          id: uuidv4(),
-          item: it.item,
-          itemCode: it.itemCode,
-          itemName: it.item?.itemName || it.itemName || "—",
-          unitQty: it.quantity,
-          quantity: it.quantity,
-          requiredQty: it.quantity * quantity,
-          warehouse: it.warehouse || "", // optional
-        }));
-        setBomItems(items);
-        setProductDesc(res.data.productDesc || "");
-        setWarehouse(res.data.warehouse || ""); // optional
-      })
-      .catch(() => toast.error("Failed to fetch BOM details"));
-  }, [selectedBomId, quantity, id, token]);
+  //   axios
+  //     .get(`/api/bom/${selectedBomId}`, { headers: { Authorization: `Bearer ${token}` } })
+  //     .then((res) => {
+  //       const items = res.data.items.map((it) => ({
+  //         id: uuidv4(),
+  //         item: it.item,
+  //         itemCode: it.itemCode,
+  //         itemName: it.item?.itemName || it.itemName || "—",
+  //         unitQty: it.quantity,
+  //         quantity: it.quantity,
+  //         requiredQty: it.quantity * quantity,
+  //         warehouse: it.warehouse || "", // optional
+  //       }));
+  //       setBomItems(items);
+  //       setProductDesc(res.data.productDesc || "");
+  //       setWarehouse(res.data.warehouse || ""); // optional
+  //     })
+  //     .catch(() => toast.error("Failed to fetch BOM details"));
+  // }, [selectedBomId, quantity, id, token]);
+
+
+useEffect(() => {
+  const bomId = selectedBomId?._id || selectedBomId;
+
+  if (!bomId || !token || id) return; // only for new order
+
+  axios
+    .get(`/api/bom/${bomId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    .then((res) => {
+      if (!res.data || !res.data.items) {
+        toast.error("Invalid BOM data received");
+        return;
+      }
+
+      const items = res.data.items.map((it) => ({
+        id: uuidv4(),
+        item: it.item,
+        itemCode: it.itemCode,
+        itemName: it.item?.itemName || it.itemName || "—",
+        unitQty: it.quantity,
+        quantity: it.quantity,
+        requiredQty: it.quantity * quantity,
+        warehouse: it.warehouse || "",
+      }));
+
+      setBomItems(items);
+      setProductDesc(res.data.productDesc || "");
+      setWarehouse(res.data.warehouse || "");
+    })
+    .catch((err) => {
+      console.error("❌ BOM fetch error:", err.response?.data || err.message);
+      toast.error("Failed to fetch BOM details");
+    });
+}, [selectedBomId, quantity, id, token]);
+
+
+
+
 
   const itemOptions = allItems.map((it) => ({
     value: it._id,

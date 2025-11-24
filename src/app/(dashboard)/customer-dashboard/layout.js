@@ -1,119 +1,104 @@
-"use client"
-import { useState,useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {jwtDecode} from "jwt-decode";
-import LogoutButton from "@/components/LogoutButton";
+"use client";
 
-export default function UserSidebar({children}) {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  LayoutDashboard,
+  PlusCircle,
+  Ticket,
+  User,
+  LogOut,
+} from "lucide-react";
+
+export default function HelpdeskLayout({ children }) {
   const router = useRouter();
-  const [openMenu, setOpenMenu] = useState(null);
   const [user, setUser] = useState(null);
 
-  const toggleMenu = (menuName) => {
-    setOpenMenu(openMenu === menuName ? null : menuName);
+  useEffect(() => {
+    const u = localStorage.getItem("user");
+    if (u) setUser(JSON.parse(u));
+  }, []);
+
+  const logout = () => {
+    localStorage.clear();
+    router.push("/signin");
   };
 
-
-   useEffect(() => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/"); // Redirect to sign-in if no token
-      } else {
-        try {
-          const decodedToken = jwtDecode(token); // Decode token to get user info
-          setUser(decodedToken); // Set user data
-        } catch (error) {
-          console.error("Invalid token", error);
-          localStorage.removeItem("token");
-          router.push("/"); // Redirect if token is invalid
-        }
-      }
-    }, [router]);
-
   return (
-    <div className="min-h-screen flex">
-    <aside className="w-64 bg-gray-900 text-white p-4">
-      <h2 className="text-xl font-bold">User Panel</h2>
-      <nav className="mt-4 space-y-2">
-        {/* Master Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => toggleMenu("master")}
-            className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-          >
-            Master
-          </button>
-          {openMenu === "master" && (
-            <div className="ml-4 mt-2 space-y-1">
-              <Link href="/dashboard/admin/master/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 1
-              </Link>
-              <Link href="/dashboard/admin/master/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 2
-              </Link>
-              <Link href="/dashboard/admin/master/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 3
-              </Link>
-            </div>
-          )}
-        </div>
+    <div className="flex min-h-screen bg-gray-100">
 
-        {/* Transaction Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => toggleMenu("transaction")}
-            className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-          >
-            Transaction
-          </button>
-          {openMenu === "transaction" && (
-            <div className="ml-4 mt-2 space-y-1">
-              <Link href="/dashboard/admin/transaction/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 1
-              </Link>
-              <Link href="/dashboard/admin/transaction/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 2
-              </Link>
-              <Link href="/dashboard/admin/transaction/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 3
-              </Link>
-            </div>
-          )}
-        </div>
+      {/* ================= SIDEBAR ================= */}
+      <aside className="w-64 bg-slate-900 text-white p-6 hidden md:flex flex-col">
+        <h2 className="text-2xl font-bold mb-10">Helpdesk</h2>
 
-        {/* Report Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => toggleMenu("report")}
-            className="block w-full text-left px-4 py-2 hover:bg-gray-700 rounded"
-          >
-            Report
-          </button>
-          {openMenu === "report" && (
-            <div className="ml-4 mt-2 space-y-1">
-              <Link href="/dashboard/admin/report/option1" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 1
-              </Link>
-              <Link href="/dashboard/admin/report/option2" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 2
-              </Link>
-              <Link href="/dashboard/admin/report/option3" className="block px-4 py-2 hover:bg-gray-700 rounded">
-                Option 3
-              </Link>
-            </div>
-          )}
-        </div>
-      </nav>
-      {/* Logout Button */}
-      <div className="mt-4">
-          <LogoutButton />
-        </div>
-    </aside>
-     <main className="flex-1 bg-gray-100 p-8">
-     {children}
-   </main>
-   </div>
+        <nav className="space-y-3 flex-1">
 
+          <button
+            onClick={() => router.push("/customer-dashboard/helpdesk")}
+            className="w-full flex items-center gap-3 p-3 rounded-lg bg-blue-600"
+          >
+            <LayoutDashboard size={18} /> Dashboard
+          </button>
+
+          <button
+            onClick={() => router.push("/customer-dashboard/helpdesk/new")}
+            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-700"
+          >
+            <PlusCircle size={18} /> Create Ticket
+          </button>
+
+          <button
+            onClick={() => router.push("/customer-dashboard/helpdesk/tickets")}
+            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-700"
+          >
+            <Ticket size={18} /> My Tickets
+          </button>
+
+          <button
+            onClick={() => router.push("/customer-dashboard/profile")}
+            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-700"
+          >
+            <User size={18} /> My Profile
+          </button>
+
+        </nav>
+
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 bg-red-600 px-4 py-2 rounded-lg mt-6"
+        >
+          <LogOut size={16} /> Logout
+        </button>
+      </aside>
+
+
+      {/* ================= MAIN SECTION ================= */}
+      <div className="flex-1 flex flex-col">
+
+        {/* --------- Top Navbar --------- */}
+        <header className="bg-white border-b px-6 py-4 flex justify-between items-center">
+          <h1 className="text-xl font-bold">
+            Customer Helpdesk Dashboard
+          </h1>
+
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full font-bold">
+              {user?.name?.charAt(0) || "U"}
+            </div>
+
+            <p className="text-gray-700 font-medium">
+              {user?.name || "Guest"}
+            </p>
+          </div>
+        </header>
+
+
+        {/* --------- Page Content --------- */}
+        <main className="flex-1 p-6">
+          {children}
+        </main>
+
+      </div>
+    </div>
   );
 }

@@ -166,7 +166,9 @@ async function deleteFilesByPublicIds(publicIds) {
   const warehouseId = item.warehouse;
   const binId = item.selectedBin?._id || null;
 
-  if (!itemId || !warehouseId || qty <= 0) {
+  // !warehouseId
+
+  if (!itemId ||   qty <= 0) {
     throw new Error(`Invalid item data for ${item.itemCode || 'unknown item'}`);
   }
 

@@ -8,6 +8,7 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import "@/models/ppc/machineModel";
 import "@/models/ppc/operationModel";
 import "@/models/ppc/operatorModel";
+// import { ex } from "@fullcalendar/core/internal-common";
 
 // ======================== GET JOB CARDS (Optional productionOrderId) ========================
 export async function GET(req) {
@@ -108,6 +109,10 @@ export async function POST(req) {
           operation: flow.operation._id,
           machine: flow.machine?._id,
           operator: flow.operator?._id,
+        
+          expectedStartDate: op.expectedStartDate,
+          expectedEndDate: op.expectedEndDate,
+
           qtyToManufacture: qty,
           allowedQty: qty, // ✅ Required for schema validation
           remainingQty: qty, // ✅ Initially same as allowedQty

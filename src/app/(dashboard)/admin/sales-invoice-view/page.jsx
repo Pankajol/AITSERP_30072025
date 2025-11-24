@@ -78,7 +78,10 @@ export default function SalesInvoiceList() {
   const handleCopyTo = (invoice, dest) => {
     if (dest === 'Credit') {
       sessionStorage.setItem('CreditData', JSON.stringify(invoice));
-      router.push('/admin/credit-memo');
+      router.push('/admin/credit-memo-veiw/new');
+    } else if (dest === 'Invoice') {
+      sessionStorage.setItem('purchaseInvoiceData', JSON.stringify(invoice));
+      router.push('/admin/sales-invoice-view/new');
     }
   };
 
