@@ -1,0 +1,16 @@
+name: Run Campaign Cron Job
+
+on:
+  schedule:
+    - cron: "*/1 * * * *"
+
+  workflow_dispatch:
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call API endpoint
+        run: |
+          curl -X GET https://https://aitserp-30072025.vercel.app//api/cron/process-campaigns
