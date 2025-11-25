@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 
 import path from "path";
 import fs from "fs";
-
+import EmailLog from "@/models/EmailLog";
 // WhatsApp API
 const META_URL = "https://graph.facebook.com/v18.0";
 const WHATSAPP_PHONE_ID = process.env.PHONE_NUMBER_ID;
@@ -100,36 +100,36 @@ export async function GET() {
         // -------------------------------------------------------------------
         // 3️⃣ EXCEL UPLOAD AUDIENCE
         // -------------------------------------------------------------------
-// EXCEL AUDIENCE
-if (campaign.recipientSource === "excel") {
-  try {
-    const filename = path.basename(campaign.recipientExcelPath);
+        // EXCEL AUDIENCE
+        if (campaign.recipientSource === "excel") {
+          try {
+            const filename = path.basename(campaign.recipientExcelPath);
 
-    // 🔥 Correct root folder
-    const excelPath = path.join(process.cwd(), "uploads", filename);
+            // 🔥 Correct root folder
+            const excelPath = path.join(process.cwd(), "uploads", filename);
 
-    console.log("📁 Reading Excel:", excelPath);
-    console.log("📁 Exists:", fs.existsSync(excelPath));
+            console.log("📁 Reading Excel:", excelPath);
+            console.log("📁 Exists:", fs.existsSync(excelPath));
 
-    if (!fs.existsSync(excelPath)) {
-      throw new Error("File not found at: " + excelPath);
-    }
+            if (!fs.existsSync(excelPath)) {
+              throw new Error("File not found at: " + excelPath);
+            }
 
-    const workbook = XLSX.readFile(excelPath);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
+            const workbook = XLSX.readFile(excelPath);
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet);
 
-    recipients = rows
-      .map((r) => r.email || r.phone || r.number)
-      .filter(Boolean);
+            recipients = rows
+              .map((r) => r.email || r.phone || r.number)
+              .filter(Boolean);
 
-  } catch (excelErr) {
-    console.error("❌ Excel Read Error:", excelErr);
-    campaign.status = "Failed";
-    await campaign.save();
-    continue;
-  }
-}
+          } catch (excelErr) {
+            console.error("❌ Excel Read Error:", excelErr);
+            campaign.status = "Failed";
+            await campaign.save();
+            continue;
+          }
+        }
 
 
 
@@ -163,18 +163,79 @@ if (campaign.recipientSource === "excel") {
         // -------------------------------------------------------------------
         // 5️⃣ SEND EMAIL CAMPAIGN
         // -------------------------------------------------------------------
+
         if (campaign.channel === "email") {
-          console.log("📧 Sending Email blast...");
+          console.log("📧 Sending Email blast with tracking...");
+
+          const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
           for (const email of recipients) {
+
+            // 🔥 CREATE TRACKING LOG
+            const log = await EmailLog.create({
+              companyId: campaign.companyId,
+              campaignId: campaign._id,
+              to: email
+            });
+
+            // ✅ Tracking pixel (email open)
+            const openPixel = `
+      <img 
+        src="${BASE_URL}/api/track/email-open?id=${log._id}"
+        width="1"
+        height="1"
+        style="display:none;"
+      />
+    `;
+
+            // ✅ Attachment tracking link
+            const attachmentLink = campaign.attachments?.length
+              ? `
+        <a href="${BASE_URL}/api/track/attachment?id=${log._id}">
+          📎 Download Attachment
+        </a>`
+              : "";
+
+            // ✅ CTA tracking link
+            const trackedLink = campaign.ctaText
+              ? `
+        <a href="${BASE_URL}/api/track/link?id=${log._id}&url=https://google.com">
+          ${campaign.ctaText}
+        </a>`
+              : "";
+
+            const finalHtml = `
+      <div>
+        ${campaign.content}
+
+        <br/><br/>
+
+        ${trackedLink}
+
+        <br/><br/>
+
+        ${attachmentLink}
+
+        ${openPixel}
+      </div>
+    `;
+
             await transporter.sendMail({
               from: campaign.sender,
               to: email,
               subject: campaign.emailSubject,
-              html: campaign.content,
+              html: finalHtml,
+
+              // optional: normal attachments also can stay
+              attachments: (campaign.attachments || []).map(p => ({
+                path: p
+              }))
             });
+
+            console.log(`📩 Email sent with tracking to: ${email}`);
           }
         }
+
 
         // -------------------------------------------------------------------
         // 6️⃣ SEND WHATSAPP CAMPAIGN
