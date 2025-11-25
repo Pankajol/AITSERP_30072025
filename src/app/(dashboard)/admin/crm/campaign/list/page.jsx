@@ -68,6 +68,24 @@ export default function CampaignsListPage() {
     }
   }
 
+  function formatDateIST(dateString) {
+  if (!dateString) return "-";
+
+  const date = new Date(dateString);
+
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
+}
+
+
   const filtered = useMemo(() => {
     let arr = campaigns;
     if (search.trim()) {
@@ -191,7 +209,7 @@ export default function CampaignsListPage() {
                 <th className="p-3 text-left">#</th>
                 <th className="p-3 text-left">Name</th>
                 <th className="p-3 text-left">Channel</th>
-                <th className="p-3 text-left">Scheduled</th>
+                <th className="p-3 text-left">Scheduled ppp</th>
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Tracking</th>
                 <th className="p-3 text-left">Actions</th>
@@ -211,9 +229,9 @@ export default function CampaignsListPage() {
                     {c.channel}
                   </td>
 
-                  <td className="p-3">
-                    {new Date(c.scheduledTime).toLocaleString()}
-                  </td>
+                <td className="p-3">{c.scheduledTime}</td>
+
+
 
                   <td className="p-3">
                     {c.status}

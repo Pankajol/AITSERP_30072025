@@ -101,6 +101,22 @@ export default function CampaignsListPage() {
       toast.error("Delete failed");
     }
   }
+ function formatToAMPM(dateString) {
+  if (!dateString) return "";
+
+  const d = new Date(dateString);
+
+  return d.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+
 
   async function handleSendNow(id) {
     try {
@@ -211,9 +227,12 @@ export default function CampaignsListPage() {
                     {c.channel}
                   </td>
 
-                  <td className="p-3">
-                    {new Date(c.scheduledTime).toLocaleString()}
-                  </td>
+                  {/* <td className="p-3">{c.scheduledTime}</td> */}
+                 <td className="p-3">{formatToAMPM(c.scheduledTime)}</td>
+
+
+
+
 
                   <td className="p-3">
                     {c.status}
