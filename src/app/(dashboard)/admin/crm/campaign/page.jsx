@@ -101,19 +101,19 @@ export default function CampaignsListPage() {
       toast.error("Delete failed");
     }
   }
- function formatToAMPM(dateString) {
+function formatStringToAMPM(dateString) {
   if (!dateString) return "";
 
-  const d = new Date(dateString);
+  const [date, time] = dateString.split("T");
+  const [year, month, day] = date.split("-");
+  let [hour, minute] = time.split(":");
 
-  return d.toLocaleString("en-IN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  hour = parseInt(hour);
+
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+
+  return `${day}/${month}/${year} ${hour}:${minute} ${ampm}`;
 }
 
 
@@ -228,7 +228,7 @@ export default function CampaignsListPage() {
                   </td>
 
                   {/* <td className="p-3">{c.scheduledTime}</td> */}
-                 <td className="p-3">{formatToAMPM(c.scheduledTime)}</td>
+                 <td className="p-3">{formatStringToAMPM(c.scheduledTime)}</td>
 
 
 

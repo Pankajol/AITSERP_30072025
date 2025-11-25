@@ -290,20 +290,21 @@ export default function CampaignPage() {
     setLoading(false);
   };
 
- function formatToAMPM(dateString) {
+function formatStringToAMPM(dateString) {
   if (!dateString) return "";
 
-  const d = new Date(dateString);
+  const [date, time] = dateString.split("T");
+  const [year, month, day] = date.split("-");
+  let [hour, minute] = time.split(":");
 
-  return d.toLocaleString("en-IN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  hour = parseInt(hour);
+
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+
+  return `${day}/${month}/${year} ${hour}:${minute} ${ampm}`;
 }
+
 
 
   return (
@@ -442,24 +443,23 @@ export default function CampaignPage() {
                   Schedule Time
                 </label>
 
-                <input
-                  type="datetime-local"
-                  name="scheduledTime"
-                  required
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+            <input
+  type="datetime-local"
+  name="scheduledTime"
+  required
+  value={scheduledTime}
+  onChange={(e) => setScheduledTime(e.target.value)}
+  className="w-full p-3 border border-gray-300 rounded-lg"
+/>
 
-                {/* AM/PM Preview */}
-                {scheduledTime && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    📅 Scheduled (DB format):
-                    <span className="font-semibold ml-1">
-                      {formatToAMPM(scheduledTime)}
-                    </span>
-                  </p>
-                )}
+
+{/* Preview - LOCAL AM/PM */}
+{scheduledTime && (
+  <p className="text-sm text-gray-600 mt-2">
+    📅 Scheduled: <b>{formatStringToAMPM(scheduledTime)}</b>
+  </p>
+)}
+
               </div>
             </div>
           </div>
