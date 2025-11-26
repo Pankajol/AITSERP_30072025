@@ -39,7 +39,7 @@ export default function CampaignViewPage() {
         <h1 className="text-2xl font-bold">{campaign.campaignName}</h1>
         <div className="space-x-3">
           <Link
-            href={`/campaigns/${id}/edit`}
+            href={`/campaign/${id}/edit`}
             className="px-4 py-2 bg-green-600 text-white rounded"
           >
             Edit

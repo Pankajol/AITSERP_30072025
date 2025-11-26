@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { Eye, Pencil, Send, BarChart3, Trash2 } from "lucide-react";
+
 
 export default function CampaignsListPage() {
   const [campaigns, setCampaigns] = useState([]);
@@ -244,35 +246,63 @@ export default function CampaignsListPage() {
                     }
                   </td>
 
-                  <td className="p-3 space-x-2">
-                    <Link href={`/campaigns/${c._id}`}>
-                      <button className="text-blue-600">View</button>
-                    </Link>
+                 <td className="p-3">
+  <div className="flex items-center gap-2">
 
-                    <Link href={`/campaigns/${c._id}/edit`}>
-                      <button className="text-green-600">Edit</button>
-                    </Link>
+    {/* VIEW */}
+    <Link
+      href={`/campaigns/${c._id}`}
+      className="group flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition"
+    >
+      <Eye size={14} />
+      <span>View</span>
+    </Link>
 
-                    {c.status !== "Sent" && (
-                      <button
-                        onClick={() => handleSendNow(c._id)}
-                        className="text-indigo-600"
-                      >
-                        Send Now
-                      </button>
-                    )}
+    {/* EDIT */}
+    <Link
+      href={`/campaigns/${c._id}/edit`}
+      className="group flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-green-200 bg-green-50 text-green-700 hover:bg-green-600 hover:text-white transition"
+    >
+      <Pencil size={14} />
+      <span>Edit</span>
+    </Link>
 
-                    <Link href={`/campaigns/${c._id}/report`}>
-                      <button className="text-purple-600">Report</button>
-                    </Link>
+    {/* SEND NOW */}
+    {c.status !== "Sent" ? (
+      <button
+        onClick={() => handleSendNow(c._id)}
+        className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition"
+      >
+        <Send size={14} />
+        <span>Send</span>
+      </button>
+    ) : (
+      <span className="px-3 py-1 text-xs font-semibold rounded-md bg-gray-100 text-gray-400">
+        Sent
+      </span>
+    )}
 
-                    <button
-                      onClick={() => handleDelete(c._id)}
-                      className="text-red-600"
-                    >
-                      Delete
-                    </button>
-                  </td>
+    {/* REPORT */}
+    <Link
+      href={`/campaigns/${c._id}/report`}
+      className="group flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white transition"
+    >
+      <BarChart3 size={14} />
+      <span>Report</span>
+    </Link>
+
+    {/* DELETE */}
+    <button
+      onClick={() => handleDelete(c._id)}
+      className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-600 hover:text-white transition"
+    >
+      <Trash2 size={14} />
+      <span>Delete</span>
+    </button>
+
+  </div>
+</td>
+
                 </tr>
               ))}
 

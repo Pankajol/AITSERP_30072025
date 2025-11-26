@@ -1,11 +1,46 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { Eye, Pencil, Send, BarChart3, Trash2 } from "lucide-react";
+
+// ------------------------
+// helper: status colors
+// ------------------------
+function getStatusClass(status) {
+  if (status === "Sent") return "bg-green-100 text-green-700 border-green-300";
+  if (status === "Scheduled") return "bg-yellow-100 text-yellow-700 border-yellow-300";
+  if (status === "Failed") return "bg-red-100 text-red-700 border-red-300";
+  if (status === "Running") return "bg-blue-100 text-blue-700 border-blue-300";
+  return "bg-gray-100 text-gray-600 border-gray-300";
+}
+
+// ------------------------
+// helper: AM / PM format
+// ------------------------
+function formatDateIST(dateString) {
+  if (!dateString) return "-";
+
+  const date = new Date(dateString);
+
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+}
 
 export default function CampaignsListPage() {
+  const router = useRouter();
+
   const [campaigns, setCampaigns] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -19,6 +54,9 @@ export default function CampaignsListPage() {
     fetchCampaigns();
   }, []);
 
+  // -----------------------
+  // GET ALL CAMPAIGNS
+  // -----------------------
   async function fetchCampaigns() {
     try {
       setLoading(true);
@@ -42,11 +80,12 @@ export default function CampaignsListPage() {
     }
   }
 
-  // ✅ Fetch stats for every campaign
+  // -----------------------
+  // FETCH EMAIL STATS
+  // -----------------------
   async function fetchAllStats(campaignList) {
     try {
       const token = localStorage.getItem("token");
-
       const statsObj = {};
 
       for (const c of campaignList) {
@@ -62,14 +101,17 @@ export default function CampaignsListPage() {
       }
 
       setStats(statsObj);
-
     } catch (err) {
       console.error("Stats error:", err);
     }
   }
 
+  // -----------------------
+  // FILTER
+  // -----------------------
   const filtered = useMemo(() => {
     let arr = campaigns;
+
     if (search.trim()) {
       const q = search.toLowerCase();
       arr = arr.filter(
@@ -79,13 +121,20 @@ export default function CampaignsListPage() {
           (c.emailSubject || "").toLowerCase().includes(q)
       );
     }
+
     if (channelFilter) arr = arr.filter((c) => c.channel === channelFilter);
     if (statusFilter) arr = arr.filter((c) => c.status === statusFilter);
+
     return arr;
   }, [campaigns, search, channelFilter, statusFilter]);
 
-  async function handleDelete(id) {
+  // -----------------------
+  // DELETE
+  // -----------------------
+  async function handleDelete(id, e) {
+    e.stopPropagation();
     if (!confirm("Delete this campaign?")) return;
+
     try {
       const token = localStorage.getItem("token");
       const res = await axios.delete(`/api/campaign/${id}`, {
@@ -96,29 +145,17 @@ export default function CampaignsListPage() {
         toast.success("Deleted");
         setCampaigns((p) => p.filter((c) => c._id !== id));
       } else toast.error(res.data.error || "Delete failed");
-
     } catch {
       toast.error("Delete failed");
     }
   }
-function formatStringToAMPM(dateString) {
-  if (!dateString) return "";
 
-  const [date, time] = dateString.split("T");
-  const [year, month, day] = date.split("-");
-  let [hour, minute] = time.split(":");
+  // -----------------------
+  // SEND NOW
+  // -----------------------
+  async function handleSendNow(id, e) {
+    e.stopPropagation();
 
-  hour = parseInt(hour);
-
-  const ampm = hour >= 12 ? "PM" : "AM";
-  hour = hour % 12 || 12;
-
-  return `${day}/${month}/${year} ${hour}:${minute} ${ampm}`;
-}
-
-
-
-  async function handleSendNow(id) {
     try {
       const token = localStorage.getItem("token");
       const res = await axios.post(
@@ -133,19 +170,21 @@ function formatStringToAMPM(dateString) {
         toast.success("Send triggered");
         fetchCampaigns();
       } else toast.error(res.data.error || "Send failed");
-
     } catch (err) {
       toast.error("Send failed");
     }
   }
 
+  // -----------------------
+  // RENDER STATS
+  // -----------------------
   const renderStats = (id) => {
     const s = stats[id];
 
     if (!s) return <span className="text-gray-400 text-sm">—</span>;
 
     return (
-      <div className="text-xs space-y-1">
+      <div className="text-xs space-y-1 text-gray-700">
         <div>📨 Sent: {s.total}</div>
         <div>👀 Open: {s.opens}</div>
         <div>📎 Attachment: {s.attachments}</div>
@@ -156,21 +195,25 @@ function formatStringToAMPM(dateString) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
+
+      {/* HEADER */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Campaigns</h1>
 
-        <Link href="/admin/crm/campaign/new">
-          <button className="px-4 py-2 bg-green-600 text-white rounded">
-            New Campaign
-          </button>
-        </Link>
+        <button
+          onClick={() => router.push("/campaigns/new")}
+          className="px-4 py-2 bg-green-600 text-white rounded"
+        >
+          New Campaign
+        </button>
       </div>
 
+      {/* FILTERS */}
       <div className="flex gap-3 mb-4">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
+          placeholder="Search campaign..."
           className="px-3 py-2 border rounded w-60"
         />
 
@@ -197,6 +240,7 @@ function formatStringToAMPM(dateString) {
         </select>
       </div>
 
+      {/* TABLE */}
       {loading ? (
         <p>Loading…</p>
       ) : (
@@ -206,7 +250,6 @@ function formatStringToAMPM(dateString) {
               <tr>
                 <th className="p-3 text-left">#</th>
                 <th className="p-3 text-left">Name</th>
-                <th className="p-3 text-left">Channel</th>
                 <th className="p-3 text-left">Scheduled</th>
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Tracking</th>
@@ -216,28 +259,51 @@ function formatStringToAMPM(dateString) {
 
             <tbody>
               {filtered.map((c, i) => (
-                <tr key={c._id} className="border-t">
+                <tr
+                  key={c._id}
+                  onClick={() => router.push(`/admin/crm/campaign/${c._id}`)}
+                  className="border-b hover:bg-blue-50 cursor-pointer transition"
+                >
                   <td className="p-3">{i + 1}</td>
 
-                  <td className="p-3 font-semibold">
-                    {c.campaignName}
-                  </td>
-
-                  <td className="p-3 capitalize">
-                    {c.channel}
-                  </td>
-
-                  {/* <td className="p-3">{c.scheduledTime}</td> */}
-                 <td className="p-3">{formatStringToAMPM(c.scheduledTime)}</td>
-
-
-
-
-
+                  {/* NAME & CHANNEL */}
                   <td className="p-3">
-                    {c.status}
+                    <span
+                      onClick={() => router.push(`/admin/crm/campaign/${c._id}`)}
+                      className="font-semibold text-blue-700 hover:underline block cursor-pointer"
+                    >
+                      {c.campaignName}
+                    </span>
+
+                    <span
+                      className={`inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full 
+                      ${
+                        c.channel === "email"
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-green-100 text-green-600"
+                      }`}
+                    >
+                      {c.channel.toUpperCase()}
+                    </span>
                   </td>
 
+                  {/* TIME */}
+                  <td className="p-3 text-gray-700">
+                    {formatDateIST(c.scheduledTime)}
+                  </td>
+
+                  {/* STATUS */}
+                  <td className="p-3">
+                    <span
+                      className={`inline-block text-xs px-3 py-1 rounded-full border ${getStatusClass(
+                        c.status
+                      )}`}
+                    >
+                      {c.status}
+                    </span>
+                  </td>
+
+                  {/* TRACKING */}
                   <td className="p-3">
                     {c.channel === "email" && c.status === "Sent"
                       ? renderStats(c._id)
@@ -245,52 +311,70 @@ function formatStringToAMPM(dateString) {
                     }
                   </td>
 
-                  <td className="p-3 space-x-2">
-                    <Link href={`/campaigns/${c._id}`}>
-                      <button className="text-blue-600">View</button>
-                    </Link>
-
-                    <Link href={`/campaigns/${c._id}/edit`}>
-                      <button className="text-green-600">Edit</button>
-                    </Link>
-
-                    {c.status !== "Sent" && (
-                      <button
-                        onClick={() => handleSendNow(c._id)}
-                        className="text-indigo-600"
-                      >
-                        Send Now
-                      </button>
-                    )}
-
-                    <Link href={`/campaigns/${c._id}/report`}>
-                      <button className="text-purple-600">Report</button>
-                    </Link>
-
-                    <button
-                      onClick={() => handleDelete(c._id)}
-                      className="text-red-600"
+                  {/* ACTIONS */}
+                  <td className="p-3">
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-2"
                     >
-                      Delete
-                    </button>
+                      <button
+                        onClick={() => router.push(`/admin/crm/campaign/${c._id}`)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition"
+                      >
+                        <Eye size={14} /> View
+                      </button>
+
+                      <button
+                        onClick={() => router.push(`/admin/crm/campaign/${c._id}/edit`)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-green-200 bg-green-50 text-green-700 hover:bg-green-600 hover:text-white transition"
+                      >
+                        <Pencil size={14} /> Edit
+                      </button>
+
+                      {c.status !== "Sent" ? (
+                        <button
+                          onClick={(e) => handleSendNow(c._id, e)}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition"
+                        >
+                          <Send size={14} /> Send
+                        </button>
+                      ) : (
+                        <span className="px-3 py-1 text-xs font-semibold rounded-md bg-gray-100 text-gray-400">
+                          Sent
+                        </span>
+                      )}
+
+                      <button
+                        onClick={() => router.push(`/admin/crm/campaign/${c._id}/report`)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white transition"
+                      >
+                        <BarChart3 size={14} /> Report
+                      </button>
+
+                      <button
+                        onClick={(e) => handleDelete(c._id, e)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-600 hover:text-white transition"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
 
               {!filtered.length && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="p-6 text-center text-gray-500"
-                  >
-                    No campaigns
+                  <td colSpan={6} className="p-6 text-center text-gray-500">
+                    No campaigns found
                   </td>
                 </tr>
               )}
             </tbody>
+
           </table>
         </div>
       )}
+
     </div>
   );
 }
