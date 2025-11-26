@@ -201,7 +201,7 @@ export default function CampaignsListPage() {
         <h1 className="text-2xl font-bold">Campaigns</h1>
 
         <button
-          onClick={() => router.push("/campaigns/new")}
+          onClick={() => router.push("/admin/crm/campaign/new")}
           className="px-4 py-2 bg-green-600 text-white rounded"
         >
           New Campaign
