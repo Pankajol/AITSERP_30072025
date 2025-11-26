@@ -1,289 +1,67 @@
+import dbConnect from "@/lib/db";
+import EmailLog from "@/models/EmailLog";
+
 export const runtime = "nodejs";
 
-import dbConnect from "@/lib/db";
-import EmailCampaign from "@/models/EmailCampaign";
-import Lead from "@/models/load";
-import Customer from "@/models/CustomerModel";
-import nodemailer from "nodemailer";
-import * as XLSX from "xlsx";
-
-import path from "path";
-import fs from "fs";
-import EmailLog from "@/models/EmailLog";
-// WhatsApp API
-const META_URL = "https://graph.facebook.com/v18.0";
-const WHATSAPP_PHONE_ID = process.env.PHONE_NUMBER_ID;
-const META_TOKEN = process.env.WHATSAPP_TOKEN;
-
-// Email Transporter
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-export async function GET() {
-  console.log("🚀 CRON HIT:", new Date().toISOString());
-
+export async function GET(req) {
   try {
     await dbConnect();
-    const now = new Date();
 
-    // Fetch campaigns whose schedule time has arrived
-    const campaigns = await EmailCampaign.find({
-      status: "Scheduled",
-      scheduledTime: { $lte: now },
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return new Response("Missing ID", { status: 400 });
+    }
+
+    const log = await EmailLog.findById(id);
+
+    if (log) {
+      log.isOpened = true;
+      log.openCount = (log.openCount || 0) + 1;
+      log.lastOpenedAt = new Date();
+
+      if (!log.firstOpenedAt) {
+        log.firstOpenedAt = new Date();
+      }
+
+      log.ip =
+        req.headers.get("x-forwarded-for") ||
+        req.headers.get("x-real-ip") ||
+        "unknown";
+
+      await log.save();
+    }
+
+    // ✅ REAL 1x1 TRANSPARENT GIF
+    const pixel = Buffer.from(
+      "R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=",
+      "base64"
+    );
+
+    return new Response(pixel, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/gif",
+        "Content-Length": pixel.length,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
     });
 
-    console.log(`📌 Found ${campaigns.length} ready campaigns`);
-
-    if (campaigns.length === 0) {
-      return new Response(
-        JSON.stringify({ message: "No scheduled campaigns right now" }),
-        { status: 200 }
-      );
-    }
-
-    // -------------------------------
-    // PROCESS CAMPAIGNS
-    // -------------------------------
-    for (const campaign of campaigns) {
-      try {
-        console.log(`⚙️ Running Campaign: ${campaign._id}`);
-
-        campaign.status = "Running";
-        await campaign.save();
-
-        let recipients = [];
-
-        // -------------------------------------------------------------------
-        // 1️⃣ SEGMENT AUDIENCE (REAL DATABASE QUERY NOW)
-        // -------------------------------------------------------------------
-        if (campaign.recipientSource === "segment") {
-          if (campaign.recipientList === "source_leads") {
-            const leads = await Lead.find({
-              companyId: campaign.companyId,
-            });
-
-            recipients = leads
-              .map((l) =>
-                campaign.channel === "email" ? l.email : l.mobileNo
-              )
-              .filter(Boolean);
-          }
-
-          if (campaign.recipientList === "source_customers") {
-            const customers = await Customer.find({
-              companyId: campaign.companyId,
-            });
-
-            recipients = customers
-              .map((c) =>
-                campaign.channel === "email" ? c.email : c.mobileNo
-              )
-              .filter(Boolean);
-          }
-        }
-
-        // -------------------------------------------------------------------
-        // 2️⃣ MANUAL ENTRY AUDIENCE
-        // -------------------------------------------------------------------
-        if (campaign.recipientSource === "manual") {
-          recipients = campaign.recipientManual
-            .split(/[\n,]+/)
-            .map((x) => x.trim())
-            .filter(Boolean);
-        }
-
-        // -------------------------------------------------------------------
-        // 3️⃣ EXCEL UPLOAD AUDIENCE
-        // -------------------------------------------------------------------
-        // EXCEL AUDIENCE
-        if (campaign.recipientSource === "excel") {
-          try {
-            const filename = path.basename(campaign.recipientExcelPath);
-
-            // 🔥 Correct root folder
-            const excelPath = path.join(process.cwd(), "uploads", filename);
-
-            console.log("📁 Reading Excel:", excelPath);
-            console.log("📁 Exists:", fs.existsSync(excelPath));
-
-            if (!fs.existsSync(excelPath)) {
-              throw new Error("File not found at: " + excelPath);
-            }
-
-            const workbook = XLSX.readFile(excelPath);
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const rows = XLSX.utils.sheet_to_json(sheet);
-
-            recipients = rows
-              .map((r) => r.email || r.phone || r.number)
-              .filter(Boolean);
-
-          } catch (excelErr) {
-            console.error("❌ Excel Read Error:", excelErr);
-            campaign.status = "Failed";
-            await campaign.save();
-            continue;
-          }
-        }
-
-
-
-        // -------------------------------------------------------------------
-        // 4️⃣ FORMAT WHATSAPP NUMBERS (AUTO +91)
-        // -------------------------------------------------------------------
-        if (campaign.channel === "whatsapp") {
-          recipients = recipients
-            .map((n) => {
-              if (!n) return null;
-
-              n = n.toString().replace(/\D/g, ""); // remove non-digits
-
-              if (n.startsWith("91")) return n;
-              if (n.startsWith("0")) return "91" + n.slice(1);
-
-              return "91" + n;
-            })
-            .filter(Boolean);
-        }
-
-        console.log("📌 Final Recipients:", recipients);
-
-        if (!recipients.length) {
-          console.log("❌ No recipients → Failed");
-          campaign.status = "Failed";
-          await campaign.save();
-          continue;
-        }
-
-        // -------------------------------------------------------------------
-        // 5️⃣ SEND EMAIL CAMPAIGN
-        // -------------------------------------------------------------------
-
-        if (campaign.channel === "email") {
-          console.log("📧 Sending Email blast with tracking...");
-
-          const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
-
-          for (const email of recipients) {
-
-            // 🔥 CREATE TRACKING LOG
-            const log = await EmailLog.create({
-              companyId: campaign.companyId,
-              campaignId: campaign._id,
-              to: email
-            });
-
-            // ✅ Tracking pixel (email open)
-            const openPixel = `
-      <img 
-        src="${BASE_URL}/api/track/email-open?id=${log._id}"
-        width="1"
-        height="1"
-        style="display:none;"
-      />
-    `;
-
-            // ✅ Attachment tracking link
-            const attachmentLink = campaign.attachments?.length
-              ? `
-        <a href="${BASE_URL}/api/track/attachment?id=${log._id}">
-          📎 Download Attachment
-        </a>`
-              : "";
-
-            // ✅ CTA tracking link
-            const trackedLink = campaign.ctaText
-              ? `
-        <a href="${BASE_URL}/api/track/link?id=${log._id}&url=https://google.com">
-          ${campaign.ctaText}
-        </a>`
-              : "";
-
-            const finalHtml = `
-      <div>
-        ${campaign.content}
-
-        <br/><br/>
-
-        ${trackedLink}
-
-        <br/><br/>
-
-        ${attachmentLink}
-
-        ${openPixel}
-      </div>
-    `;
-
-            await transporter.sendMail({
-              from: campaign.sender,
-              to: email,
-              subject: campaign.emailSubject,
-              html: finalHtml,
-
-              // optional: normal attachments also can stay
-              attachments: (campaign.attachments || []).map(p => ({
-                path: p
-              }))
-            });
-
-            console.log(`📩 Email sent with tracking to: ${email}`);
-          }
-        }
-
-
-        // -------------------------------------------------------------------
-        // 6️⃣ SEND WHATSAPP CAMPAIGN
-        // -------------------------------------------------------------------
-        if (campaign.channel === "whatsapp") {
-          console.log("💬 Sending WhatsApp messages...");
-
-          for (const number of recipients) {
-            await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${META_TOKEN}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: number,
-                type: "text",
-                text: { body: campaign.content },
-              }),
-            });
-          }
-        }
-
-        // -------------------------------------------------------------------
-        // 7️⃣ MARK AS SENT
-        // -------------------------------------------------------------------
-        campaign.status = "Sent";
-        await campaign.save();
-
-        console.log(`✅ Campaign Sent: ${campaign._id}`);
-
-      } catch (err) {
-        console.error("❌ Campaign Failed:", err);
-        campaign.status = "Failed";
-        await campaign.save();
-      }
-    }
-
-    return new Response(JSON.stringify({ success: true }), { status: 200 });
-
   } catch (err) {
-    console.error("❌ CRON ERROR:", err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    console.error("TRACKING ERROR", err);
+
+    const pixel = Buffer.from(
+      "R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=",
+      "base64"
+    );
+
+    return new Response(pixel, {
+      status: 200,
+      headers: { "Content-Type": "image/gif" },
+    });
   }
 }
-
-
 
 
 
