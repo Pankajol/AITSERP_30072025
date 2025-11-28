@@ -2,44 +2,28 @@ export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
-import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 const SECRET = process.env.INBOUND_EMAIL_SECRET;
+const SUPPORT_EMAIL = "pankajal2099@gmail.com"; // jis mail pe tickets aayegi
 
 export async function POST(req) {
   try {
     console.log("📩 EMAIL INBOUND HIT");
 
-    // ✅ SECURITY - secret check
     const { searchParams } = new URL(req.url);
-    const secret = searchParams.get("secret");
+    const secret = (searchParams.get("secret") || "").trim();
 
-    if (!secret || secret !== SECRET) {
-      console.log("❌ INVALID SECRET");
+    if (!SECRET) {
+      console.log("❌ SECRET NOT SET IN ENV");
+      return new Response(JSON.stringify({ error: "Server secret missing" }), { status: 500 });
+    }
+
+    if (secret !== SECRET) {
+      console.log("❌ INVALID SECRET:", secret);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
       });
     }
-
-    // ✅ GET TOKEN FROM HEADER
-    const token = getTokenFromHeader(req);
-    if (!token) {
-      console.log("❌ TOKEN MISSING");
-      return new Response(JSON.stringify({ error: "Token required" }), {
-        status: 401,
-      });
-    }
-
-    const decoded = verifyJWT(token);
-
-    if (!decoded?.companyId) {
-      console.log("❌ INVALID TOKEN");
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 403,
-      });
-    }
-
-    const companyId = decoded.companyId;
 
     await dbConnect();
 
@@ -48,6 +32,7 @@ export async function POST(req) {
 
     const {
       fromEmail,
+      to,
       subject,
       text,
       html,
@@ -55,7 +40,7 @@ export async function POST(req) {
       inReplyTo,
     } = body;
 
-    if (!fromEmail || (!text && !html)) {
+    if (!to || !fromEmail || (!text && !html)) {
       console.log("❌ INVALID PAYLOAD");
       return new Response(
         JSON.stringify({ error: "Invalid email payload" }),
@@ -63,29 +48,30 @@ export async function POST(req) {
       );
     }
 
-    // ✅ FIND EXISTING TICKET (Thread)
+    // ✅ Extra Protection: Only allow support email
+    if (!to.includes(SUPPORT_EMAIL)) {
+      console.log("❌ NOT SUPPORT EMAIL:", to);
+      return new Response(JSON.stringify({ error: "Invalid mailbox" }), {
+        status: 403,
+      });
+    }
+
     let ticket = null;
 
+    // ✅ Thread locate
     if (inReplyTo) {
-      ticket = await Ticket.findOne({
-        companyId,
-        emailThreadId: inReplyTo,
-      });
+      ticket = await Ticket.findOne({ emailThreadId: inReplyTo });
     }
 
     if (!ticket && messageId) {
-      ticket = await Ticket.findOne({
-        companyId,
-        emailThreadId: messageId,
-      });
+      ticket = await Ticket.findOne({ emailThreadId: messageId });
     }
 
-    // ✅ CREATE NEW TICKET
+    // ✅ Create ticket
     if (!ticket) {
       console.log("🆕 Creating new ticket");
 
       ticket = await Ticket.create({
-        companyId,
         customerEmail: fromEmail,
         subject: subject || "No Subject",
         source: "email",
@@ -95,7 +81,7 @@ export async function POST(req) {
       });
     }
 
-    // ✅ ADD MESSAGE
+    // ✅ Add message
     ticket.messages.push({
       senderType: "customer",
       externalEmail: fromEmail,
@@ -116,7 +102,6 @@ export async function POST(req) {
       }),
       { status: 200 }
     );
-
   } catch (err) {
     console.error("❌ EMAIL INBOUND ERROR:", err.message);
 
@@ -126,7 +111,6 @@ export async function POST(req) {
     );
   }
 }
-
 
 // ✅ TEST ROUTE
 export async function GET() {
