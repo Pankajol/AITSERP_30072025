@@ -39,7 +39,8 @@ export async function POST(req) {
       recipientSource,
       recipientList,
       recipientManual,
-      recipientExcelPath,
+      recipientExcelEmails, // ✅ NEW
+      attachments,
     } = body;
 
     if (!campaignName) return badRequest("Campaign Name is required");
@@ -62,7 +63,10 @@ export async function POST(req) {
     }
 
     // Recipient Source
-    if (!recipientSource || !["segment", "excel", "manual"].includes(recipientSource))
+    if (
+      !recipientSource ||
+      !["segment", "excel", "manual"].includes(recipientSource)
+    )
       return badRequest("Invalid recipientSource type");
 
     if (recipientSource === "segment" && !recipientList)
@@ -71,21 +75,34 @@ export async function POST(req) {
     if (recipientSource === "manual" && !recipientManual)
       return badRequest("Manual recipients required");
 
-    if (recipientSource === "excel" && !recipientExcelPath)
-      return badRequest("Excel file path required");
+    // ✅ UPDATED EXCEL VALIDATION
+    if (
+      recipientSource === "excel" &&
+      (!recipientExcelEmails || recipientExcelEmails.length === 0)
+    ) {
+      return badRequest("No valid emails found in Excel");
+    }
 
-    // save
     // convert to IST before saving
-const istDate = new Date(
-  new Date(scheduledTime).getTime() + (5.5 * 60 * 60 * 1000)
-);
-
-
-
+    const istDate = new Date(
+      new Date(scheduledTime).getTime() + 5.5 * 60 * 60 * 1000
+    );
 
     const campaign = await EmailCampaign.create({
-      ...body,
+      campaignName,
       scheduledTime: istDate,
+      channel,
+      sender,
+      content,
+      emailSubject,
+      ctaText,
+
+      recipientSource,
+      recipientList,
+      recipientManual,
+      recipientExcelEmails, // ✅ SAVE THIS
+
+      attachments,
       companyId: decoded.companyId,
       createdBy: decoded.id,
       status: "Scheduled",
@@ -94,7 +111,6 @@ const istDate = new Date(
     return new Response(JSON.stringify({ success: true, data: campaign }), {
       status: 201,
     });
-
   } catch (err) {
     return new Response(
       JSON.stringify({ success: false, error: err.message }),
@@ -102,6 +118,7 @@ const istDate = new Date(
     );
   }
 }
+
 
 
 

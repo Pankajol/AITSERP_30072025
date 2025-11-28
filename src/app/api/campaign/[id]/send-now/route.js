@@ -2,12 +2,12 @@ import dbConnect from "@/lib/db";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import EmailCampaign from "@/models/EmailCampaign";
 
-// ✅ NEW: Tracking model
+// ✅ Tracking model
 import EmailLog from "@/models/EmailLog";
 
-// NEW: Required for segments
+// ✅ Correct Models
 import Customer from "@/models/CustomerModel";
-import Lead from "@/models/load";
+import Lead from "@/models/load"; // ✅ FIXED
 
 import nodemailer from "nodemailer";
 import fetch from "node-fetch";
@@ -32,7 +32,12 @@ const transporter = nodemailer.createTransport({
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
-export async function POST(req, { params }) {
+// ✅ EMAIL VALIDATION
+const isValidEmail = (email) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+export async function POST(req, context) {
   try {
     await dbConnect();
 
@@ -41,26 +46,41 @@ export async function POST(req, { params }) {
     // ---------------------
     const token = getTokenFromHeader(req);
     if (!token)
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+      });
 
     const decoded = verifyJWT(token);
     if (!decoded?.companyId)
-      return new Response(JSON.stringify({ error: "Invalid token" }), { status: 403 });
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 403,
+      });
 
-    const { id } = params;
+    // ✅ FIX FOR NEXT.JS PARAMS
+    const { id } = context.params;
+
+    if (!id) {
+      return new Response(JSON.stringify({ error: "Campaign ID missing" }), {
+        status: 400,
+      });
+    }
 
     // ---------------------
     // FETCH CAMPAIGN
     // ---------------------
     const campaign = await EmailCampaign.findById(id);
+
     if (!campaign)
-      return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
+      return new Response(JSON.stringify({ error: "Campaign not found" }), {
+        status: 404,
+      });
 
     // ---------------------
-    // REAL SEGMENT LOGIC
+    // BUILD RECIPIENTS
     // ---------------------
     let recipients = [];
 
+    // ========= SEGMENT =========
     if (campaign.recipientSource === "segment") {
       if (campaign.recipientList === "source_customers") {
         const customers = await Customer.find(
@@ -68,9 +88,9 @@ export async function POST(req, { params }) {
           "email mobileNo"
         );
 
-        recipients = customers
-          .map((c) => (campaign.channel === "email" ? c.email : c.mobileNo))
-          .filter(Boolean);
+        recipients = customers.map((c) =>
+          campaign.channel === "email" ? c.email : c.mobileNo
+        );
       }
 
       if (campaign.recipientList === "source_leads") {
@@ -79,34 +99,61 @@ export async function POST(req, { params }) {
           "email mobileNo"
         );
 
-        recipients = leads
-          .map((l) => (campaign.channel === "email" ? l.email : l.mobileNo))
-          .filter(Boolean);
+        recipients = leads.map((l) =>
+          campaign.channel === "email" ? l.email : l.mobileNo
+        );
       }
     }
 
-    // ---------------------
-    // MANUAL ENTRY
-    // ---------------------
+    // ========= MANUAL =========
     if (campaign.recipientSource === "manual") {
       recipients = campaign.recipientManual
-        .split(/[\n,]+/)
-        .map((x) => x.trim())
-        .filter(Boolean);
+        ?.split(/[\n,]+/)
+        .map((x) => x.trim());
     }
 
-    // ---------------------
-    // EXCEL FILE
-    // ---------------------
+    // ========= EXCEL (NEW, ARRAY FROM FRONTEND) =========
     if (campaign.recipientSource === "excel") {
-      return new Response(
-        JSON.stringify({ error: "Excel parsing not implemented yet" }),
-        { status: 501 }
-      );
-    }
+  if (
+    !campaign.recipientExcelEmails ||
+    !campaign.recipientExcelEmails.length
+  ) {
+    return new Response(
+      JSON.stringify({ error: "No emails found in Excel" }),
+      { status: 400 }
+    );
+  }
+
+  recipients = campaign.recipientExcelEmails;
+}
+
 
     if (!recipients.length)
-      return new Response(JSON.stringify({ error: "No recipients found" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "No recipients found" }), {
+        status: 400,
+      });
+
+    // ✅ CLEAN + VALIDATE EMAILS
+    if (campaign.channel === "email") {
+      const before = recipients.length;
+
+      recipients = [
+        ...new Set(
+          recipients
+            .map((e) => e?.toLowerCase().trim())
+            .filter((e) => isValidEmail(e))
+        ),
+      ];
+
+      console.log(`📧 Cleaned: ${before} ➝ ${recipients.length}`);
+
+      if (!recipients.length) {
+        return new Response(
+          JSON.stringify({ error: "No valid emails found after filter" }),
+          { status: 400 }
+        );
+      }
+    }
 
     console.log("📤 Sending to:", recipients);
 
@@ -115,15 +162,12 @@ export async function POST(req, { params }) {
     // =================================================
     if (campaign.channel === "email") {
       for (const email of recipients) {
-
-        // 🔥 Create tracking log per user
         const log = await EmailLog.create({
           companyId: decoded.companyId,
           campaignId: campaign._id,
           to: email,
         });
 
-        // ✅ Open tracking pixel
         const openPixel = `
           <img
             src="${BASE_URL}/api/track/email-open?id=${log._id}"
@@ -133,36 +177,28 @@ export async function POST(req, { params }) {
           />
         `;
 
-        // ✅ Attachment tracking link
-        const attachmentLink = (campaign.attachments && campaign.attachments.length > 0)
-          ? `
-            <a href="${BASE_URL}/api/track/attachment?id=${log._id}">
-              📎 Download Attachment
-            </a>
-          `
-          : "";
+        const attachmentLink =
+          campaign.attachments && campaign.attachments.length > 0
+            ? `
+              <a href="${BASE_URL}/api/track/attachment?id=${log._id}">
+                📎 Download Attachment
+              </a>`
+            : "";
 
-        // ✅ CTA link tracking
         const trackedLink = campaign.ctaText
           ? `
-            <a href="${BASE_URL}/api/track/link?id=${log._id}&url=https://google.com">
-              ${campaign.ctaText}
-            </a>
-          `
+              <a href="${BASE_URL}/api/track/link?id=${log._id}&url=https://google.com">
+                ${campaign.ctaText}
+              </a>`
           : "";
 
         const finalHtml = `
           <div>
             ${campaign.content}
-
             <br/><br/>
-
             ${trackedLink}
-
             <br/><br/>
-
             ${attachmentLink}
-
             ${openPixel}
           </div>
         `;
@@ -182,7 +218,7 @@ export async function POST(req, { params }) {
     }
 
     // =================================================
-    // ✅ WHATSAPP SEND (NO TRACKING)
+    // ✅ WHATSAPP SEND
     // =================================================
     if (campaign.channel === "whatsapp") {
       for (const number of recipients) {
@@ -205,7 +241,7 @@ export async function POST(req, { params }) {
     }
 
     // ---------------------
-    // UPDATE CAMPAIGN STATUS
+    // UPDATE CAMPAIGN
     // ---------------------
     campaign.status = "Sent";
     await campaign.save();
@@ -213,13 +249,11 @@ export async function POST(req, { params }) {
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Campaign sent successfully (Tracking Enabled ✅)",
+        message: "Campaign sent successfully ✅",
         totalRecipients: recipients.length,
-        data: campaign,
       }),
       { status: 200 }
     );
-
   } catch (err) {
     console.error("SEND ERROR:", err);
     return new Response(

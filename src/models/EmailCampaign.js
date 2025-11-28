@@ -54,7 +54,10 @@ const CampaignSchema = new mongoose.Schema(
 
     recipientList: { type: String },
     recipientManual: { type: String },
-    recipientExcelPath: { type: String },
+    recipientExcelEmails: {
+  type: [String],
+  default: [],
+},
   },
   { timestamps: true }
 );

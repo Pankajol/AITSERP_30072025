@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 // FIX: Changed from "@/components/TiptapEditor" to "./TiptapEditor" to resolve build error
 import TiptapEditor from "@/components/TiptapEditor";
+import * as XLSX from "xlsx"; 
 import {
   Paperclip,
   X,
@@ -115,41 +116,88 @@ export default function CampaignPage() {
 
   // --- HANDLERS ---
 
+  const isValidEmail = (email) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+const normalizeEmail = (email) =>
+  email?.toString().trim().replace(/,+$/, ""); // last comma hatao
+
   const handleAttachmentChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       setAttachments((prev) => [...prev, ...Array.from(e.target.files)]);
     }
   };
 
-  const handleExcelChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
 
-    setExcelFile(file);
+const handleExcelChange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+  setExcelFile(file);
 
-      const uploadRes = await fetch("/api/upload/excel", {
-        method: "POST",
-        body: formData,
-      });
+  const reader = new FileReader();
 
-      const result = await uploadRes.json();
+  reader.onload = (evt) => {
+    const data = evt.target.result;
+    const workbook = XLSX.read(data, { type: "binary" });
 
-      if (!uploadRes.ok || !result.success) {
-        throw new Error(result.error || "Excel upload failed");
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet);
+
+    let rawEmails = [];
+
+    if (rows.length > 0) {
+      // ✅ firstKey = column name, jo tumhari file me email hi hai
+      const firstKey = Object.keys(rows[0])[0];
+
+      if (isValidEmail(firstKey)) {
+        // 👉 Header bhi email hai, niche values bhi
+        rawEmails = [
+          firstKey,
+          ...rows.map((r) => r[firstKey]),
+        ];
+      } else {
+        // Normal case: header = "email" / "Email" / "EMAIL"
+        rawEmails = rows.flatMap((r) => [
+          r.email,
+          r.Email,
+          r.EMAIL,
+        ]);
       }
-
-      console.log("Excel Uploaded Path:", result.filePath);
-
-      setExcelFilePathFromUpload(result.filePath); // << STORE PATH HERE
-    } catch (err) {
-      console.error("UPLOAD ERROR", err);
-      alert("Excel Upload Failed: " + err.message);
     }
+
+    const normalized = rawEmails
+      .map((e) => normalizeEmail(e))
+      .filter(Boolean);
+
+    const validEmails = [
+      ...new Set(normalized.filter((e) => isValidEmail(e))),
+    ];
+
+    const invalidEmails = normalized.filter((e) => !isValidEmail(e));
+
+    console.log("✅ Valid emails from Excel:", validEmails);
+    console.log("❌ Invalid emails skipped:", invalidEmails);
+
+    if (!validEmails.length) {
+      alert("Excel me koi valid email nahi mila ❌");
+      setExcelFilePathFromUpload([]); // just to be sure
+      return;
+    }
+
+    alert(
+      `✅ ${validEmails.length} valid emails\n❌ ${invalidEmails.length} invalid skipped`
+    );
+
+    // 👈 YAHI ARRAY DB me jaayega
+    setExcelFilePathFromUpload(validEmails);
   };
+
+  reader.readAsBinaryString(file);
+};
+
+
 
   const removeAttachment = (indexToRemove) => {
     setAttachments((prev) =>
@@ -190,17 +238,18 @@ export default function CampaignPage() {
     }
 
     let excelPath = "";
-    if (recipientSource === "excel") {
-      if (!excelFilePathFromUpload) {
-        setStatusMessage({
-          type: "error",
-          html: `<p class="font-bold">Please upload Excel file first.</p>`,
-        });
-        setLoading(false);
-        return;
-      }
-      excelPath = excelFilePathFromUpload;
-    }
+    if (
+  recipientSource === "excel" &&
+  (!excelFilePathFromUpload || excelFilePathFromUpload.length === 0)
+) {
+  setStatusMessage({
+    type: "error",
+    html: `<p class="font-bold">Please upload a valid Excel file with emails.</p>`,
+  });
+  setLoading(false);
+  return;
+}
+
 
     if (recipientSource === "manual" && !manualInput.trim()) {
       alert("Manual recipient list required.");
@@ -236,8 +285,9 @@ export default function CampaignPage() {
       recipientList:
         recipientSource === "segment" ? selectedSegment : undefined,
       recipientManual: recipientSource === "manual" ? manualInput : undefined,
-      recipientExcelPath:
-        recipientSource === "excel" ? excelFilePathFromUpload : undefined,
+      recipientExcelEmails:
+  recipientSource === "excel" ? excelFilePathFromUpload : undefined,
+
 
       attachments: attachmentBase64,
     };
