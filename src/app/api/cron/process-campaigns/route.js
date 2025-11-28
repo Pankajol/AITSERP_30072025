@@ -1,67 +1,243 @@
-import dbConnect from "@/lib/db";
-import EmailLog from "@/models/EmailLog";
-
 export const runtime = "nodejs";
 
-export async function GET(req) {
+import dbConnect from "@/lib/db";
+import EmailCampaign from "@/models/EmailCampaign";
+import Lead from "@/models/load"; // ✅ FIXED (was load)
+import Customer from "@/models/CustomerModel";
+import EmailLog from "@/models/EmailLog";
+
+import nodemailer from "nodemailer";
+import * as XLSX from "xlsx";
+import path from "path";
+import fs from "fs";
+
+// =====================
+// WHATSAPP CONFIG
+// =====================
+const META_URL = "https://graph.facebook.com/v18.0";
+const WHATSAPP_PHONE_ID = process.env.PHONE_NUMBER_ID;
+const META_TOKEN = process.env.WHATSAPP_TOKEN;
+
+// =====================
+// EMAIL CONFIG
+// =====================
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+// =====================
+// MAIN CRON
+// =====================
+export async function GET() {
   try {
+    console.log("\n🚀 CRON HIT:", new Date().toISOString());
+
     await dbConnect();
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const now = new Date(); // ✅ Pure UTC time
+    console.log("⏰ CURRENT UTC:", now.toISOString());
 
-    if (!id) {
-      return new Response("Missing ID", { status: 400 });
-    }
-
-    const log = await EmailLog.findById(id);
-
-    if (log) {
-      log.isOpened = true;
-      log.openCount = (log.openCount || 0) + 1;
-      log.lastOpenedAt = new Date();
-
-      if (!log.firstOpenedAt) {
-        log.firstOpenedAt = new Date();
-      }
-
-      log.ip =
-        req.headers.get("x-forwarded-for") ||
-        req.headers.get("x-real-ip") ||
-        "unknown";
-
-      await log.save();
-    }
-
-    // ✅ REAL 1x1 TRANSPARENT GIF
-    const pixel = Buffer.from(
-      "R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=",
-      "base64"
-    );
-
-    return new Response(pixel, {
-      status: 200,
-      headers: {
-        "Content-Type": "image/gif",
-        "Content-Length": pixel.length,
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      },
+    // ✅ ONLY READY CAMPAIGNS (UTC COMPARISON)
+    const campaigns = await EmailCampaign.find({
+      status: "Scheduled",
+      scheduledTime: { $lte: new Date() },
     });
+
+    console.log(`📌 Ready campaigns: ${campaigns.length}`);
+
+    let processed = 0;
+
+    for (const campaign of campaigns) {
+      try {
+        console.log("\n⚙️ Running Campaign:", campaign.campaignName);
+        console.log("➡ Scheduled Time (UTC):", campaign.scheduledTime);
+
+        campaign.status = "Running";
+        await campaign.save();
+
+        let recipients = [];
+
+        // ================= SEGMENT =================
+        if (campaign.recipientSource === "segment") {
+          if (campaign.recipientList === "source_leads") {
+            const leads = await Lead.find({ companyId: campaign.companyId });
+
+            recipients = leads
+              .map((l) =>
+                campaign.channel === "email" ? l.email : l.mobileNo
+              )
+              .filter(Boolean);
+          }
+
+          if (campaign.recipientList === "source_customers") {
+            const customers = await Customer.find({
+              companyId: campaign.companyId,
+            });
+
+            recipients = customers
+              .map((c) =>
+                campaign.channel === "email" ? c.email : c.mobileNo
+              )
+              .filter(Boolean);
+          }
+        }
+
+        // ================= MANUAL =================
+        if (campaign.recipientSource === "manual") {
+          recipients = campaign.recipientManual
+            ?.split(/[\n,]+/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        }
+
+        // ================= EXCEL =================
+        if (campaign.recipientSource === "excel") {
+          try {
+            const filename = path.basename(campaign.recipientExcelPath);
+            const excelPath = path.join(process.cwd(), "uploads", filename);
+
+            if (!fs.existsSync(excelPath)) {
+              throw new Error("Excel not found: " + excelPath);
+            }
+
+            const workbook = XLSX.readFile(excelPath);
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet);
+
+            recipients = rows
+              .map((r) => r.email || r.phone || r.number)
+              .filter(Boolean);
+
+          } catch (err) {
+            console.error("❌ EXCEL ERROR:", err.message);
+            campaign.status = "Failed";
+            await campaign.save();
+            continue;
+          }
+        }
+
+        // ✅ FORMAT WHATSAPP NUMBERS
+        if (campaign.channel === "whatsapp") {
+          recipients = recipients
+            .map((n) => {
+              if (!n) return null;
+              n = n.toString().replace(/\D/g, "");
+
+              if (n.startsWith("91")) return n;
+              if (n.startsWith("0")) return "91" + n.substring(1);
+
+              return "91" + n;
+            })
+            .filter(Boolean);
+        }
+
+        if (!recipients.length) {
+          console.log("❌ No recipients found");
+          campaign.status = "Failed";
+          await campaign.save();
+          continue;
+        }
+
+        console.log("📨 Total Recipients:", recipients.length);
+
+        // ================= EMAIL SENDING =================
+        if (campaign.channel === "email") {
+          const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+
+          for (const email of recipients) {
+            const log = await EmailLog.create({
+              companyId: campaign.companyId,
+              campaignId: campaign._id,
+              to: email,
+            });
+
+            const openPixel = `
+              <img
+                src="${BASE_URL}/api/track/email-open?id=${log._id}"
+                width="1"
+                height="1"
+                style="display:none;"
+              />
+            `;
+
+            const finalHtml = `
+              <div>
+                ${campaign.content}
+                <br/><br/>
+                ${openPixel}
+              </div>
+            `;
+
+            await transporter.sendMail({
+              from: campaign.sender,
+              to: email,
+              subject: campaign.emailSubject,
+              html: finalHtml,
+            });
+
+            console.log("✅ Email sent:", email);
+          }
+        }
+
+        // ================= WHATSAPP SENDING =================
+        if (campaign.channel === "whatsapp") {
+          for (const number of recipients) {
+            await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${META_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: number,
+                type: "text",
+                text: { body: campaign.content },
+              }),
+            });
+
+            console.log("✅ WhatsApp sent:", number);
+          }
+        }
+
+        campaign.status = "Sent";
+        await campaign.save();
+
+        console.log("✅ FINISHED:", campaign.campaignName);
+        processed++;
+
+      } catch (innerErr) {
+        console.error("❌ Campaign error:", innerErr);
+        campaign.status = "Failed";
+        await campaign.save();
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        total: campaigns.length,
+        processed,
+        time: now,
+      }),
+      { status: 200 }
+    );
 
   } catch (err) {
-    console.error("TRACKING ERROR", err);
-
-    const pixel = Buffer.from(
-      "R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=",
-      "base64"
+    console.error("❌ CRON ERROR:", err);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500 }
     );
-
-    return new Response(pixel, {
-      status: 200,
-      headers: { "Content-Type": "image/gif" },
-    });
   }
 }
+
+
+
 
 
 

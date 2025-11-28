@@ -288,9 +288,21 @@ export default function CampaignsListPage() {
                   </td>
 
                   {/* TIME */}
-                  <td className="p-3 text-gray-700">
-                    {formatDateIST(c.scheduledTime)}
-                  </td>
+               <td className="p-3 text-gray-700">
+  {new Date(c.scheduledTime).toLocaleString("en-IN", {
+    timeZone: "UTC",            // 👈 IMPORTANT
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  })}
+</td>
+
+
+
+
 
                   {/* STATUS */}
                   <td className="p-3">

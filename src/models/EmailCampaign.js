@@ -15,7 +15,10 @@ const CampaignSchema = new mongoose.Schema(
 
     // --- Basic Info ---
     campaignName: { type: String, required: true },
-    scheduledTime: { type: String, required: true },
+   scheduledTime: {
+  type: Date,
+  required: true
+},
 
     status: {
   type: String,
