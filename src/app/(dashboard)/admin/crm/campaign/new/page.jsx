@@ -3,7 +3,10 @@
 import { useState, useEffect } from "react";
 // FIX: Changed from "@/components/TiptapEditor" to "./TiptapEditor" to resolve build error
 import TiptapEditor from "@/components/TiptapEditor";
+import { useRef } from "react";
 import * as XLSX from "xlsx"; 
+import { useRouter } from "next/navigation";
+
 import {
   Paperclip,
   X,
@@ -23,7 +26,7 @@ export default function CampaignPage() {
 
   // --- 1. CHANNEL SELECTION STATE ---
   const [channel, setChannel] = useState("email"); // Options: 'email' | 'whatsapp'
-
+  const excelInputRef = useRef(null);
   // --- DATA STATES ---
   const [segments, setSegments] = useState([]);
   const [campaignName, setCampaignName] = useState("");
@@ -34,7 +37,7 @@ export default function CampaignPage() {
   const [ctaText, setCtaText] = useState("");
 
   const [loadingSegments, setLoadingSegments] = useState(true);
-
+  const router = useRouter();
   // --- FORM STATES ---
   const [wordCount, setWordCount] = useState(0);
   const [emailContent, setEmailContent] = useState("<p></p>"); // For Email (HTML)
@@ -115,6 +118,16 @@ export default function CampaignPage() {
   }, []);
 
   // --- HANDLERS ---
+
+  const clearExcel = () => {
+  setExcelFile(null);
+  setExcelFilePathFromUpload([]);
+
+  if (excelInputRef.current) {
+    excelInputRef.current.value = "";
+  }
+};
+
 
   const isValidEmail = (email) => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -338,6 +351,7 @@ const handleExcelChange = (e) => {
     }
 
     setLoading(false);
+    router.push("/admin/crm/campaign");
   };
 
 function formatStringToAMPM(dateString) {
@@ -601,26 +615,52 @@ function formatStringToAMPM(dateString) {
             )}
 
             {/* OPTION B: EXCEL */}
-            {recipientSource === "excel" && (
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50 hover:border-blue-400 transition relative">
-                {excelFile ? (
-                  <div className="flex items-center justify-center gap-2 text-blue-600">
-                    <FileSpreadsheet /> {excelFile.name}
-                  </div>
-                ) : (
-                  <div className="text-gray-400">
-                    <UploadCloud className="w-10 h-10 mx-auto mb-2" />{" "}
-                    <span className="text-sm">Upload .xlsx or .csv</span>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept=".xlsx,.csv"
-                  onChange={handleExcelChange}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-              </div>
-            )}
+        {recipientSource === "excel" && (
+  <div className="space-y-3">
+
+    {/* ===== Upload Box ===== */}
+    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50 hover:border-blue-400 transition relative">
+      {excelFile ? (
+        <div className="flex items-center justify-center gap-2 text-blue-600">
+          <FileSpreadsheet /> {excelFile.name}
+        </div>
+      ) : (
+        <div className="text-gray-400">
+          <UploadCloud className="w-10 h-10 mx-auto mb-2" />
+          <span className="text-sm">Upload .xlsx or .csv</span>
+        </div>
+      )}
+
+      <input
+        type="file"
+        accept=".xlsx,.csv"
+        ref={excelInputRef}
+        onChange={handleExcelChange}
+        className="absolute inset-0 opacity-0 cursor-pointer"
+      />
+    </div>
+
+    {/* ===== Clear Button (OUTSIDE) ===== */}
+    {excelFile && (
+      <div className="flex justify-between items-center px-1">
+        <p className="text-sm text-gray-500">
+          {excelFilePathFromUpload.length} valid emails detected
+        </p>
+
+        <button
+          type="button"
+          onClick={clearExcel}
+          className="px-4 py-2 text-sm font-semibold text-red-600 border border-red-500 rounded-md hover:bg-red-50 transition"
+        >
+          ❌ Clear Excel
+        </button>
+      </div>
+    )}
+
+  </div>
+)}
+
+
 
             {/* OPTION C: MANUAL ENTRY */}
             {recipientSource === "manual" && (

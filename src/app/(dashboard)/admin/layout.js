@@ -233,7 +233,7 @@ export default function DashboardLayout({ children }) {
             <Item href="/admin/leads-view" icon={<HiUserGroup />} label="Lead Generation" close={closeSidebar} />
             <Item href="/admin/opportunities" icon={<HiPuzzle />} label="Opportunity" close={closeSidebar} />
             <Item href="/admin/crm/campaign" icon={<HiPuzzle />} label="Campaign" close={closeSidebar} />
-            <Item href="#" icon={<HiPuzzle />} label="Report" close={closeSidebar} />
+
           </Section>
 
           {/* Stock */}
