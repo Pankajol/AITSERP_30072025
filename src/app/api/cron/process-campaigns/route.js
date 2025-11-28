@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
 import EmailCampaign from "@/models/EmailCampaign";
-import Lead from "@/models/Lead"; // ✅ FIXED
+import Lead from "@/models/load"; // ✅ FIXED
 import Customer from "@/models/CustomerModel";
 import EmailLog from "@/models/EmailLog";
 
