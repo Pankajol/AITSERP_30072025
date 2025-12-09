@@ -168,6 +168,14 @@ export async function POST(req) {
     if (!ticket) {
       console.log("🆕 Creating new ticket");
       const threadId = messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+   // before creating a new ticket, ensure no ticket already has the messageId
+if (messageId) {
+  const existing = await Ticket.findOne({ "messages.messageId": messageId });
+  if (existing) {
+    console.log("Duplicate messageId — skipping");
+    return new Response(JSON.stringify({ success: true, ticketId: existing._id }), { status: 200 });
+  }
+}
 
       ticket = await Ticket.create({
         customerEmail: fromEmail,
