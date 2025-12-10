@@ -6,12 +6,11 @@ import Ticket from "@/models/helpdesk/Ticket";
 
 const FALLBACK_SUPPORT_EMAIL = "pankajal2099@gmail.com";
 
-/** Helpers **/
 function extractEmail(value) {
   if (!value) return "";
   if (Array.isArray(value)) value = value[0];
   if (typeof value === "object" && value !== null) {
-    return (value.email || value.address || value.mail || "").toString();
+    return (value.email || value.address || value.mail || value.value || "").toString();
   }
   try {
     const s = String(value);
@@ -39,12 +38,12 @@ async function parseBody(req) {
       for (const [k, v] of params) obj[k] = v;
       return obj;
     }
-    // fallback to text parsing
     const txt = await req.text();
     const trimmed = txt.trim();
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try { return JSON.parse(trimmed); } catch (e) {}
     }
+    // fallback to key:val parsing
     const obj = {};
     const lines = trimmed.split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
@@ -66,40 +65,73 @@ async function parseBody(req) {
   }
 }
 
-/**
- * Extract ticket id token from 'to' plus-address:
- * e.g. pankajal2099+69392afc5764203272a45079@gmail.com -> returns 69392afc5764203272a45079
- * Accepts alnum, hyphen, underscore, dot, colon — adjust regex if your IDs differ.
- */
 function ticketIdFromTo(to) {
   try {
     if (!to) return null;
-    // If multiple recipients, check each
     const parts = to.split(",").map(s => s.trim());
     for (const p of parts) {
-      // match +token@domain
       const m = p.match(/\+([a-zA-Z0-9\-\_\.:\@]{6,})@/);
       if (m && m[1]) {
-        // token sometimes may include domain if provider formats weirdly; strip @ if any
         const token = m[1].split("@")[0];
         if (token) return token;
       }
-      // also try angle bracket form: "Name <local+token@domain>"
       const n = p.match(/<[^>+]+?\+([a-f0-9]{6,24})@[^>]+>/i);
       if (n && n[1]) return n[1];
     }
+    return null;
   } catch (e) {
-    // ignore
+    return null;
   }
-  return null;
 }
 
-/** Handler **/
+/** Try to discover the real 'from' — many providers wrap/forward messages */
+function discoverSender(raw, smtpUser) {
+  // prioritized list of candidate fields
+  const candidates = [];
+
+  // common provider fields
+  candidates.push(raw.from, raw.fromEmail, raw.sender, raw.mail && raw.mail.source);
+  candidates.push(raw["From"], raw.headers && raw.headers.from, raw.headers && raw.headers["From"]);
+  candidates.push(raw.envelope && raw.envelope.from, raw.envelope && raw.envelope.sender);
+  candidates.push(raw["reply-to"], raw.replyTo || raw["Reply-To"] || raw.headers && raw.headers["reply-to"]);
+  candidates.push(raw.headers && raw.headers["x-original-sender"], raw.headers && raw.headers["x-forwarded-from"]);
+  candidates.push(raw.Sender, raw.sender && raw.sender.email);
+
+  // flatten and map to emails
+  for (const c of candidates) {
+    const e = extractEmail(c);
+    if (e) {
+      // ignore if equals smtpUser (we will handle loop separately)
+      if (smtpUser && e.toLowerCase().includes(smtpUser.toLowerCase())) {
+        // still capture, but mark it; we'll check headers for original later
+        continue;
+      }
+      return { email: e, matchedField: c ? "direct" : "unknown" };
+    }
+  }
+
+  // if none found, check headers for X-Original-From inside header strings
+  if (raw.headers && typeof raw.headers === "object") {
+    const keys = Object.keys(raw.headers);
+    for (const k of keys) {
+      const v = String(raw.headers[k] || "");
+      const m = v.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (m && m[1]) {
+        const e = m[1];
+        if (!(smtpUser && e.toLowerCase().includes(smtpUser.toLowerCase()))) {
+          return { email: e, matchedField: `header:${k}` };
+        }
+      }
+    }
+  }
+
+  // last resort: if headers contain smtpUser but there's an 'X-Original-Sender' text, pick that
+  return { email: null, matchedField: null };
+}
+
 export async function POST(req) {
   try {
-    console.log("📩 INBOUND EMAIL HANDLER HIT");
-
-    // secret validation
+    console.log("📩 INBOUND: start");
     const { searchParams } = new URL(req.url);
     const secret = (searchParams.get("secret") || "").trim();
     const SECRET = process.env.INBOUND_EMAIL_SECRET;
@@ -113,39 +145,60 @@ export async function POST(req) {
     }
 
     await dbConnect();
-
-    // parse body (supports json, form, raw text)
     const raw = await parseBody(req);
 
-    // log headers small sample for debugging
+    // quick header sample log
     try {
       const headerSample = {};
       for (const [k, v] of req.headers) headerSample[k] = (v + "").slice(0, 300);
-      console.log("HEADERS SAMPLE:", JSON.stringify(headerSample));
+      console.log("HEADERS:", JSON.stringify(headerSample));
     } catch (e) {}
 
-    // normalize fields from many providers
-    const fromEmail =
-      extractEmail(raw.from || raw.fromEmail || raw.sender || raw["From"] || (raw.headers && raw.headers.from) || "") || "";
-    let toRaw = raw.to || raw.recipient || raw.envelope?.to || raw.mail?.destination || (raw.headers && raw.headers.to) || raw["To"] || "";
-    if (Array.isArray(toRaw)) toRaw = toRaw.map(t => (typeof t === "string" ? t : JSON.stringify(t))).join(", ");
-    else if (typeof toRaw === "object" && toRaw !== null) toRaw = extractEmail(toRaw) || JSON.stringify(toRaw);
-    const to = String(toRaw || "").trim();
+    // normalize
+    const smtpUser = (process.env.SMTP_USER || "").toLowerCase();
+    const fromCandidate = discoverSender(raw, smtpUser);
+    let fromEmail = fromCandidate.email || extractEmail(raw.from || raw.fromEmail || raw.sender || raw["From"] || raw.headers && raw.headers.from);
+    fromEmail = (fromEmail || "").toString().trim();
 
-    const subject = raw.subject || raw.mail?.subject || (raw.headers && raw.headers.subject) || raw.Subject || raw["subject"] || "";
+    // If we only saw smtpUser as from (forwarded) then try extracting original from headers
+    if ((!fromEmail || fromEmail.toLowerCase().includes(smtpUser)) && raw.headers) {
+      // some providers forward original-from in headers, try to find it
+      const hdrs = raw.headers;
+      const checkKeys = ["x-original-sender","x-forwarded-for","x-original-from","x-forwarded-from","return-path","resent-from"];
+      for (const k of checkKeys) {
+        if (hdrs[k]) {
+          const ex = extractEmail(hdrs[k]);
+          if (ex && !(smtpUser && ex.toLowerCase().includes(smtpUser))) {
+            fromEmail = ex;
+            console.log("discover: original-from via header", k, ex);
+            break;
+          }
+        }
+      }
+    }
+
+    // fallback to envelope.from or mail.envelope
+    if (!fromEmail) {
+      fromEmail = extractEmail(raw.envelope && raw.envelope.from) || extractEmail(raw.mail && raw.mail.envelope && raw.mail.envelope.from) || "";
+    }
+
+    const toRaw = raw.to || raw.recipient || (raw.envelope && raw.envelope.to) || (raw.mail && raw.mail.destination) || (raw.headers && raw.headers.to) || raw["To"] || "";
+    const to = Array.isArray(toRaw) ? toRaw.map(t => extractEmail(t)).filter(Boolean).join(", ") : (typeof toRaw === "object" ? extractEmail(toRaw) : String(toRaw || "").trim());
+
+    const subject = raw.subject || raw.mail && raw.mail.subject || (raw.headers && raw.headers.subject) || raw["subject"] || "";
     const text = raw.text || raw.plain || raw.body || raw.message || raw["body-plain"] || raw["text"] || "";
     const html = raw.html || raw.htmlBody || raw["body-html"] || "";
 
-    const messageId = normalizeId(raw.messageId || raw["Message-Id"] || raw["message-id"] || raw.mail?.messageId || (raw.headers && raw.headers["message-id"]) || "");
-    const inReplyTo = normalizeId(raw.inReplyTo || raw["in-reply-to"] || raw.mail?.inReplyTo || (raw.headers && raw.headers["in-reply-to"]) || "");
+    const messageId = normalizeId(raw.messageId || raw["Message-Id"] || raw["message-id"] || raw.mail && raw.mail.messageId || (raw.headers && raw.headers["message-id"]) || "");
+    const inReplyTo = normalizeId(raw.inReplyTo || raw["in-reply-to"] || raw.mail && raw.mail.inReplyTo || (raw.headers && raw.headers["in-reply-to"]) || "");
+
     const referencesRaw = raw.references || raw["References"] || (raw.headers && raw.headers.references) || (raw.headers && raw.headers.References) || "";
     const references = (referencesRaw || "").toString().split(/\s+/).map(normalizeId).filter(Boolean);
 
-    console.log("NORMALIZED:", { fromEmail, to: (to || "").slice(0,200), subject: subject.slice(0,200), messageId, inReplyTo, references });
+    console.log("NORMAL:", { fromEmail, to: (to||"").slice(0,200), subject: subject.slice(0,200), messageId, inReplyTo, references, discoveredFromField: fromCandidate.matchedField });
 
-    // basic validation
     if (!fromEmail) {
-      console.warn("Missing fromEmail");
+      console.warn("Missing fromEmail after discovery");
       return new Response(JSON.stringify({ error: "Missing sender email" }), { status: 400 });
     }
     if (!to) {
@@ -158,21 +211,21 @@ export async function POST(req) {
     }
 
     const SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL || FALLBACK_SUPPORT_EMAIL).toLowerCase();
-    const smtpUser = (process.env.SMTP_USER || "").toLowerCase();
 
-    // Only process if delivered to support mailbox (loose 'includes' check)
+    // ensure delivered to support mail
     if (!to.toLowerCase().includes(SUPPORT_EMAIL)) {
-      console.warn("Email received to non-support mailbox:", to);
+      console.warn("Email TO doesn't contain support mailbox:", to);
       return new Response(JSON.stringify({ error: "Invalid mailbox" }), { status: 403 });
     }
 
-    // loop prevention - ignore mails that come from our own SMTP account
+    // ignore definite loop (email from our SMTP account that is not forwarded)
     if (smtpUser && fromEmail.toLowerCase().includes(smtpUser)) {
-      console.log("Ignored inbound from SMTP_USER (likely outbound). from:", fromEmail);
+      // but if headers contain an original sender, prefer that (we handled earlier)
+      console.log("From looks like smtpUser; ignoring to prevent loop. from:", fromEmail);
       return new Response(JSON.stringify({ success: true, ignored: true }), { status: 200 });
     }
 
-    // Try to find ticket: check In-Reply-To, Message-ID, References, lastOutbound
+    // Try to match ticket by headers (in-reply-to / messageId / references / lastOutbound)
     let ticket = null;
     const searchIds = [];
     if (inReplyTo) searchIds.push(inReplyTo);
@@ -180,7 +233,7 @@ export async function POST(req) {
     for (const r of references) if (r) searchIds.push(r);
 
     if (searchIds.length > 0) {
-      console.log("Searching ticket by thread ids:", searchIds);
+      console.log("Searching by ids:", searchIds);
       ticket = await Ticket.findOne({
         $or: [
           { emailThreadId: { $in: searchIds } },
@@ -191,54 +244,48 @@ export async function POST(req) {
       if (ticket) console.log("Matched ticket by thread id:", ticket._id.toString());
     }
 
-    // If not found, try extracting ticket id from plus-address in 'to'
+    // If still not matched, try:
+    // 1) find ticket where customerEmail equals fromEmail (common case: direct reply)
     if (!ticket) {
-      const plusTicketId = ticketIdFromTo(to);
-      if (plusTicketId) {
-        try {
-          const maybe = await Ticket.findById(plusTicketId).exec();
-          if (maybe) {
-            ticket = maybe;
-            console.log("Matched ticket via plus-address token:", plusTicketId);
-          } else {
-            console.log("Plus-address token not found as ticket:", plusTicketId);
-          }
-        } catch (e) {
-          console.log("Error finding plus-ticketId:", e && e.message ? e.message : e);
-        }
+      const t1 = await Ticket.findOne({ customerEmail: { $regex: new RegExp("^" + fromEmail + "$", "i") } }).exec();
+      if (t1) {
+        ticket = t1;
+        console.log("Matched ticket by customerEmail:", ticket._id.toString());
       }
     }
 
-    // Fallback: try to extract ticket id from subject like [Ticket:<id>] or Ticket:<id>
-    if (!ticket && subject) {
-      const m = subject.match(/\[?Ticket:([a-f0-9]{6,24})\]?/i);
-      if (m && m[1]) {
-        try {
-          const maybe = await Ticket.findById(m[1]).exec();
-          if (maybe) {
-            ticket = maybe;
-            console.log("Matched ticket via subject token:", m[1]);
-          } else {
-            console.log("Subject token not a ticket id:", m[1]);
-          }
-        } catch (e) {
-          console.log("Error lookup subject token:", e && e.message ? e.message : e);
-        }
+    // 2) try messages.externalEmail match (maybe previously recorded)
+    if (!ticket) {
+      const t2 = await Ticket.findOne({ "messages.externalEmail": { $regex: new RegExp("^" + fromEmail + "$", "i") } }).exec();
+      if (t2) {
+        ticket = t2;
+        console.log("Matched ticket by prior messages.externalEmail:", ticket._id.toString());
       }
     }
 
-    // Duplicate messageId guard
+    // 3) try plus-address in 'to' (support+ticketid)
+    if (!ticket) {
+      const plusId = ticketIdFromTo(to);
+      if (plusId) {
+        try {
+          const maybe = await Ticket.findById(plusId).exec();
+          if (maybe) { ticket = maybe; console.log("Matched via plus-address:", plusId); }
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    // duplicate guard
     if (messageId) {
       const dup = await Ticket.findOne({ "messages.messageId": messageId }).select("_id").lean().exec();
       if (dup) {
-        console.log("Duplicate messageId — already processed. messageId:", messageId);
+        console.log("Duplicate messageId already processed:", messageId);
         return new Response(JSON.stringify({ success: true, duplicate: true, ticketId: dup._id }), { status: 200 });
       }
     }
 
-    // If still not found, create a new ticket
+    // if still none -> create new ticket
     if (!ticket) {
-      console.log("No matching ticket — creating new ticket for:", fromEmail);
+      console.log("No ticket matched — creating new for fromEmail:", fromEmail);
       const threadId = messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       ticket = await Ticket.create({
         customerEmail: fromEmail,
@@ -249,10 +296,10 @@ export async function POST(req) {
         messages: [],
         createdAt: new Date(),
       });
-      console.log("Created new ticket:", ticket._id.toString());
+      console.log("Created ticket:", ticket._id.toString());
     }
 
-    // Append the incoming message to ticket
+    // Append message, set receivedAt for robustness
     const pushMessage = {
       sender: null,
       senderType: "customer",
@@ -260,7 +307,8 @@ export async function POST(req) {
       message: text || html || "(no content)",
       messageId: messageId || inReplyTo || `msg-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
       inReplyTo: inReplyTo || "",
-      createdAt: new Date(),
+      receivedAt: new Date(),
+      createdAt: new Date(), // subdoc timestamps are handled by mongoose timestamps as well
     };
 
     ticket.messages.push(pushMessage);
@@ -268,8 +316,9 @@ export async function POST(req) {
     if (!ticket.emailThreadId && (messageId || inReplyTo)) ticket.emailThreadId = messageId || inReplyTo;
     await ticket.save();
 
-    console.log("Appended message to ticket:", ticket._id.toString(), " new messageId:", pushMessage.messageId);
+    console.log("Appended message to ticket:", ticket._id.toString(), " new messageId:", pushMessage.messageId, " from:", fromEmail, "matchedBy:", fromCandidate.matchedField);
     return new Response(JSON.stringify({ success: true, appended: true, ticketId: ticket._id, messageId: pushMessage.messageId }), { status: 200 });
+
   } catch (err) {
     console.error("Inbound handler error:", err && (err.stack || err.message || err));
     return new Response(JSON.stringify({ error: (err && err.message) || String(err) }), { status: 500 });
@@ -277,7 +326,7 @@ export async function POST(req) {
 }
 
 export async function GET() {
-  return new Response(JSON.stringify({ success: true, message: "Inbound endpoint ok" }), { status: 200 });
+  return new Response(JSON.stringify({ success: true, message: "Inbound ok" }), { status: 200 });
 }
 
 
