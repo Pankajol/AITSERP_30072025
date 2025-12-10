@@ -3,13 +3,23 @@ import connectDB from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import CompanyUser from "@/models/CompanyUser";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-import { transporter } from "@/lib/mailer"; // must export transporter from /lib/mailer.js
+import { transporter } from "@/lib/mailer"; // ensure transporter exported from /lib/mailer.js
 
 const SAMPLE_AVATAR = "/mnt/data/default-avatar.png";
 
+/**
+ * Behavior:
+ * - Outgoing mail authenticates using SMTP_USER (process.env.SMTP_USER).
+ * - Emails show agent/admin name in the From header but are sent via SMTP_USER.
+ * - replyTo is SUPPORT_EMAIL (process.env.SUPPORT_EMAIL) so replies return to support inbox.
+ * - SUPPORT_EMAIL also receives a BCC copy when it's different from the primary recipient.
+ *
+ * IMPORTANT: ensure your inbound mail parser ignores messages from SMTP_USER (or checks Message-ID)
+ * to avoid re-ingesting outbound messages (prevent loops).
+ */
+
 export async function POST(req, context) {
   try {
-    // Next.js: resolve params first
     const params = await context.params;
     await connectDB();
 
@@ -36,7 +46,7 @@ export async function POST(req, context) {
     if (!body?.message?.trim()) return new Response(JSON.stringify({ success: false, msg: "Message is required" }), { status: 400 });
 
     const text = body.message.trim();
-    const providedMessageId = body.messageId || ""; // optional message id if client passes
+    const providedMessageId = body.messageId || "";
 
     // ----- load ticket (with customer & agent) -----
     const ticket = await Ticket.findById(ticketId)
@@ -54,7 +64,6 @@ export async function POST(req, context) {
     // If sender is customer and ticket was created via email, capture externalEmail
     let externalEmailForMessage = null;
     if (!isAgent) {
-      // if user account exists and has email, prefer that; otherwise fallback to ticket.customerEmail
       externalEmailForMessage = userPayload?.email || ticket.customerEmail || null;
     }
 
@@ -98,73 +107,72 @@ export async function POST(req, context) {
     if (populated?.customerId && !populated.customerId.avatar) populated.customerId.avatar = SAMPLE_AVATAR;
     if (populated?.agentId && !populated.agentId.avatar) populated.agentId.avatar = SAMPLE_AVATAR;
 
-    // ----- determine correct recipient email and thread headers -----
-    // Priority for recipient (when agent replies): 1) ticket.customerId.email 2) ticket.customerEmail 3) last message externalEmail
-    // Priority for agent notification (when customer replies): ticket.agentId.email || SUPPORT_EMAIL fallback
+    // ----- determine last external and threading headers -----
     function findLastExternalEmail() {
-      // iterate messages from end to find first externalEmail
       const msgs = (populated.messages || []).slice().reverse();
       for (const m of msgs) {
         if (m.externalEmail) return m.externalEmail;
-        // sometimes sender is object with email
         if (m.sender && typeof m.sender === "object" && m.sender.email) return m.sender.email;
       }
       return null;
     }
 
-    // find the messageId to use for threading
-    // prefer ticket.emailThreadId (original thread id), otherwise last message's messageId
     const threadId = ticket.emailThreadId || (Array.isArray(populated.messages) && populated.messages[0]?.messageId) || null;
+
     const lastMsgId = (() => {
       const msgs = populated.messages || [];
       if (msgs.length === 0) return null;
-      // last item
       const last = msgs[msgs.length - 1];
-      return last.messageId || last.messageId || null;
+      return last.messageId || null;
     })();
 
-    let mailTo = null;
-    let inReplyToHeader = threadId || lastMsgId || undefined;
-    let referencesHeader = undefined;
-
-    if (isAgent) {
-      // Agent replied -> send to customer
-      mailTo = populated.customerId?.email || ticket.customerEmail || findLastExternalEmail();
-    } else {
-      // Customer replied -> notify assigned agent or fallback
-      mailTo = populated.agentId?.email || process.env.SUPPORT_EMAIL || process.env.SMTP_USER;
-    }
-
-    // Build References header: include threadId and lastMsgId if present
     const refs = [];
     if (ticket.emailThreadId) refs.push(ticket.emailThreadId);
     if (lastMsgId && lastMsgId !== ticket.emailThreadId) refs.push(lastMsgId);
-    if (refs.length) referencesHeader = refs.join(" ");
+    const referencesHeader = refs.length ? refs.join(" ") : undefined;
 
-    // ----- Compose email options (debug-friendly) -----
-    const fromAddress = process.env.SMTP_USER;
-    const replyToAddress = process.env.REPLY_TO || process.env.SMTP_USER; // where customer replies should go (support mailbox)
-    const subjectPrefix = isAgent ? `Reply on your ticket:` : `New customer reply on ticket:`;
-    const subject = `${subjectPrefix} ${ticket.subject || "(no subject)"}`;
+    const lastExternal = findLastExternalEmail();
 
-    const emailHtml = `
-      <p>Hello ${populated.customerId?.name || populated.customerEmail || "Customer"},</p>
-      <p>${isAgent ? "You have a new reply from support:" : "Customer replied:"}</p>
-      <div style="padding:12px;border-radius:6px;background:#f6f8fa;border:1px solid #e1e4e8;">
-        ${text.replace(/\n/g, "<br>")}
-      </div>
-      <p>Ticket: <strong>${ticket.subject || ""}</strong></p>
-      <p>--</p>
-      <p>This message sent by your support portal.</p>
-    `;
+    // ENV values
+    const smtpUser = process.env.SMTP_USER || null; // must be set
+    const supportEmail = process.env.SUPPORT_EMAIL || smtpUser; // fallback to smtpUser if not set
 
-    // If no recipient determined, skip sending but still return success (don't break flow)
+    // Debug logs (temporary)
+    console.log("RECIPIENT DEBUG: ticket.customerEmail:", ticket.customerEmail);
+    console.log("RECIPIENT DEBUG: populated.customerId?.email:", populated.customerId?.email);
+    console.log("RECIPIENT DEBUG: agent.email:", populated.agentId?.email);
+    console.log("RECIPIENT DEBUG: lastExternalEmail:", lastExternal);
+    console.log("ENV: SUPPORT_EMAIL:", supportEmail, "SMTP_USER:", smtpUser, "SUPPORT===SMTP:", supportEmail === smtpUser);
+
+    // =========================================================
+    // CORE REQUIREMENT: ALWAYS send agent/admin replies TO CUSTOMER
+    // =========================================================
+    let mailTo = ticket.customerEmail || lastExternal || (populated.customerId?.email || null);
+
     if (!mailTo) {
-      console.warn("No recipient found for email notification — skipping sendMail. ticketId:", ticketId);
+      console.warn("No customer email found — skipping sendMail for ticket:", ticketId);
     } else {
-      // Compose mail options with In-Reply-To and References to keep the thread
+      // Build mail options: show agent/admin name in From, replyTo → supportEmail, BCC supportEmail when different
+      const displayName = senderName || "Support";
+      const fromAddress = smtpUser;
+      const replyToAddress = supportEmail;
+
+      const subjectPrefix = isAgent ? `Reply on your ticket:` : `New customer reply on ticket:`;
+      const subject = `${subjectPrefix} ${ticket.subject || "(no subject)"}`;
+
+      const emailHtml = `
+        <p>Hello ${populated.customerId?.name || ticket.customerEmail || "Customer"},</p>
+        <p>${isAgent ? "You have a new reply from support:" : "Customer replied:"}</p>
+        <div style="padding:12px;border-radius:6px;background:#f6f8fa;border:1px solid #e1e4e8;">
+          ${text.replace(/\n/g, "<br>")}
+        </div>
+        <p>Ticket: <strong>${ticket.subject || ""}</strong></p>
+        <p>--</p>
+        <p>This message sent by your support portal.</p>
+      `;
+
       const mailOptions = {
-        from: fromAddress,
+        from: `${displayName} <${fromAddress}>`, // "Agent Name <smtp_user>"
         to: mailTo,
         subject,
         html: emailHtml,
@@ -172,25 +180,33 @@ export async function POST(req, context) {
         headers: {},
       };
 
-      if (inReplyToHeader) {
-        mailOptions.inReplyTo = inReplyToHeader;
-        mailOptions.headers["In-Reply-To"] = inReplyToHeader;
-      }
-      if (referencesHeader) {
-        mailOptions.headers["References"] = referencesHeader;
+      // Add BCC to support if supportEmail not equal primary recipient
+      if (supportEmail && supportEmail !== mailOptions.to) {
+        mailOptions.bcc = supportEmail;
       }
 
-      // DEBUG: log mail options (DO NOT log secrets)
+      // Threading headers
+      if (threadId) {
+        mailOptions.inReplyTo = threadId;
+        mailOptions.headers["In-Reply-To"] = threadId;
+      } else if (lastMsgId) {
+        mailOptions.inReplyTo = lastMsgId;
+        mailOptions.headers["In-Reply-To"] = lastMsgId;
+      }
+      if (referencesHeader) mailOptions.headers["References"] = referencesHeader;
+
+      // DEBUG
       console.log("=== MAIL DEBUG ===");
-      console.log("to:", mailTo);
-      console.log("from:", fromAddress);
+      console.log("to:", mailOptions.to);
+      if (mailOptions.bcc) console.log("bcc:", mailOptions.bcc);
+      console.log("from:", mailOptions.from);
       console.log("subject:", mailOptions.subject);
       console.log("in-reply-to:", mailOptions.inReplyTo);
       console.log("references:", mailOptions.headers["References"]);
       console.log("replyTo:", replyToAddress);
       console.log("==================");
 
-      // send and log result
+      // send and persist result
       try {
         const info = await transporter.sendMail(mailOptions);
         console.log("mailer.sendMail OK:", {
@@ -200,22 +216,21 @@ export async function POST(req, context) {
           response: info?.response,
         });
 
-        // Save email send metadata into ticket (optional): you can store lastOutbound at least
         ticket.lastOutbound = {
-          to: mailTo,
+          to: mailOptions.to,
+          bcc: mailOptions.bcc || undefined,
           messageId: info?.messageId,
           accepted: info?.accepted,
           rejected: info?.rejected,
           sentAt: new Date(),
         };
-        // persist metadata (non-blocking)
         await ticket.save();
       } catch (sendErr) {
         console.error("mailer.sendMail ERROR:", sendErr && (sendErr.message || sendErr));
-        // don't throw — we still return success to caller; but save error into ticket logs optionally
         ticket.lastOutbound = {
           error: String(sendErr?.message || sendErr),
-          attemptedTo: mailTo,
+          attemptedTo: mailOptions.to,
+          attemptedBcc: mailOptions.bcc || undefined,
           attemptedAt: new Date(),
         };
         await ticket.save();
@@ -235,9 +250,6 @@ export async function POST(req, context) {
     return new Response(JSON.stringify({ success: false, msg: err?.message || "Server error" }), { status: 500 });
   }
 }
-
-
-
 
 
 
