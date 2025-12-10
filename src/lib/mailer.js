@@ -1,14 +1,29 @@
+
+// /lib/mailer.js
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
+const host = process.env.SMTP_HOST || "smtp.gmail.com";
+const user = process.env.SMTP_USER;
+const pass = process.env.SMTP_PASS;
+const port = Number(process.env.SMTP_PORT || (process.env.SMTP_SECURE === "false" ? 587 : 465));
+const secure = port === 465;
+
+export const transporter = nodemailer.createTransport({
+  host,
+  port,
+  secure,
+  auth: { user, pass },
+  logger: true,
+  debug: true,
+  tls: { rejectUnauthorized: false },
 });
+
+transporter.verify()
+  .then(() => console.log("mailer: SMTP verified OK"))
+  .catch((err) => console.error("mailer: SMTP verify failed:", err && (err.message || err)));
+
+export default transporter;
+
 
 export async function sendSalesQuotationEmail(toEmails, salesQuotation) {
   // Build Items Table

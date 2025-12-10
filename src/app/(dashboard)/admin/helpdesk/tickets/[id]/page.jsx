@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 
-const DEFAULT_AVATAR = "/mnt/data/c4bfcf65-19f2-400e-a777-0771674c53c6.png";
+const DEFAULT_AVATAR =
+  "";
 
 export default function TicketDetailPage({ params }) {
   const router = useRouter();
-  const ticketId = params.id;
+  const ticketId = params?.id;
 
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,16 +17,18 @@ export default function TicketDetailPage({ params }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  function api() {
+  const api = useCallback(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
     return axios.create({
       headers: { Authorization: token ? "Bearer " + token : "" },
       validateStatus: () => true,
     });
-  }
+  }, []);
 
   useEffect(() => {
+    if (!ticketId) return;
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
   async function load() {
@@ -42,6 +45,7 @@ export default function TicketDetailPage({ params }) {
 
       if (!res.data.success) {
         setMsg({ type: "error", text: res.data.msg || "Ticket not found" });
+        setTicket(null);
         return;
       }
 
@@ -49,6 +53,7 @@ export default function TicketDetailPage({ params }) {
     } catch (err) {
       console.error(err);
       setMsg({ type: "error", text: "Server error" });
+      setTicket(null);
     } finally {
       setLoading(false);
     }
@@ -56,22 +61,27 @@ export default function TicketDetailPage({ params }) {
 
   async function sendReply(e) {
     e.preventDefault();
-    if (!reply) return;
+    const bodyText = reply?.trim();
+    if (!bodyText) return;
 
     setBusy(true);
+    setMsg(null);
 
     try {
       const res = await api().post(`/api/helpdesk/tickets/${ticketId}/message`, {
-        message: reply,
+        message: bodyText,
       });
 
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         setReply("");
+        // server returns populated ticket
         setTicket(res.data.ticket);
+        setMsg({ type: "success", text: "Reply sent" });
       } else {
-        setMsg({ type: "error", text: res.data.msg });
+        setMsg({ type: "error", text: res.data?.msg || "Failed to send reply" });
       }
     } catch (e) {
+      console.error(e);
       setMsg({ type: "error", text: "Failed to send reply" });
     } finally {
       setBusy(false);
@@ -82,19 +92,21 @@ export default function TicketDetailPage({ params }) {
     if (!confirm("Close this ticket?")) return;
 
     setBusy(true);
+    setMsg(null);
     try {
       const res = await api().post("/api/helpdesk/update-status", {
         ticketId,
         status: "closed",
       });
 
-      if (res.data.success) {
+      if (res.data?.success) {
         setMsg({ type: "success", text: "Ticket closed" });
         setTicket(res.data.ticket);
       } else {
-        setMsg({ type: "error", text: res.data.msg });
+        setMsg({ type: "error", text: res.data?.msg || "Failed to close ticket" });
       }
     } catch (err) {
+      console.error(err);
       setMsg({ type: "error", text: "Server error" });
     } finally {
       setBusy(false);
@@ -117,17 +129,21 @@ export default function TicketDetailPage({ params }) {
       </div>
     );
 
-  const customer =
-    ticket.customerId?.name || ticket.customerId?.email || "Customer";
+  // Customer display: prefer populated name, otherwise fallback to email
+  const customerDisplay =
+    ticket.customerId?.name || ticket.customerId?.email || ticket.customerEmail || "Customer";
+
+  // Agent display (if any)
+  const agentDisplay = ticket.agentId?.name || ticket.agentId?.email || "Agent";
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{ticket.subject}</h1>
-          <p className="text-sm text-gray-500">{customer}</p>
+          <p className="text-sm text-gray-500">{customerDisplay}</p>
           <p className="text-xs text-gray-400">
-            Status: {ticket.status} • Priority: {ticket.priority}
+            Status: {ticket.status} • Priority: {ticket.priority || "normal"}
           </p>
         </div>
 
@@ -135,7 +151,7 @@ export default function TicketDetailPage({ params }) {
           <button
             onClick={closeTicket}
             disabled={busy}
-            className="px-4 py-2 bg-red-600 text-white rounded"
+            className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50"
           >
             Close
           </button>
@@ -149,9 +165,7 @@ export default function TicketDetailPage({ params }) {
       {msg && (
         <div
           className={`p-3 rounded ${
-            msg.type === "error"
-              ? "bg-red-100 text-red-800"
-              : "bg-green-100 text-green-800"
+            msg.type === "error" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
           }`}
         >
           {msg.text}
@@ -159,39 +173,68 @@ export default function TicketDetailPage({ params }) {
       )}
 
       <div className="space-y-3">
-        {ticket.messages.map((m) => {
-          const sender = m.sender || {};
-          const avatar = sender.avatar || DEFAULT_AVATAR;
-          const name = sender.name || sender.email || "User";
-          const isCustomer =
-            sender._id === ticket.customerId?._id ||
-            sender.id === ticket.customerId?._id;
+        {Array.isArray(ticket.messages) && ticket.messages.length > 0 ? (
+          ticket.messages.map((m) => {
+            // Determine sender object & fallback info
+            const senderObj = m.sender && typeof m.sender === "object" ? m.sender : null;
+            const externalEmail = m.externalEmail || m.senderEmail || senderObj?.email || null;
 
-          return (
-            <div
-              key={m._id}
-              className={`p-3 rounded flex gap-3 ${
-                isCustomer ? "bg-gray-50" : "bg-blue-50"
-              }`}
-            >
-              <img
-                src={avatar}
-                className="w-10 h-10 rounded-full border object-cover"
-                onError={(e) => (e.currentTarget.src = DEFAULT_AVATAR)}
-              />
+            // Determine displayed name (priority: populated sender.name -> externalEmail -> 'User')
+            const senderName =
+              (senderObj && (senderObj.name || senderObj.email)) ||
+              externalEmail ||
+              (m.senderType === "agent" ? agentDisplay : "User");
 
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{name}</span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(m.createdAt).toLocaleString()}
-                  </span>
+            // Determine avatar: sender avatar -> agent avatar (if agent) -> default
+            const avatar =
+              (senderObj && senderObj.avatar) ||
+              (m.senderType === "agent" && ticket.agentId?.avatar) ||
+              DEFAULT_AVATAR;
+
+            // Determine if message is from customer:
+            let isCustomer = false;
+            try {
+              if (senderObj && ticket.customerId) {
+                // compare populated ids as strings
+                isCustomer =
+                  String(senderObj._id || senderObj.id) === String(ticket.customerId._id || ticket.customerId.id);
+              } else if (externalEmail && ticket.customerEmail) {
+                isCustomer = externalEmail.toLowerCase() === String(ticket.customerEmail).toLowerCase();
+              } else {
+                // fallback to senderType
+                isCustomer = m.senderType === "customer";
+              }
+            } catch (err) {
+              isCustomer = m.senderType === "customer";
+            }
+
+            const created = m.createdAt ? new Date(m.createdAt) : new Date();
+
+            return (
+              <div
+                key={m._id || m.messageId || Math.random()}
+                className={`p-3 rounded flex gap-3 ${isCustomer ? "bg-gray-50" : "bg-blue-50"}`}
+              >
+                <img
+                  src={avatar}
+                  alt={senderName}
+                  className="w-10 h-10 rounded-full border object-cover"
+                  onError={(e) => (e.currentTarget.src = DEFAULT_AVATAR)}
+                />
+
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{senderName}</span>
+                    <span className="text-xs text-gray-500">{created.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-1 whitespace-pre-wrap">{m.message}</div>
                 </div>
-                <div className="mt-1">{m.message}</div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <div className="text-gray-500">No messages yet</div>
+        )}
       </div>
 
       {/* Reply box */}
@@ -204,13 +247,25 @@ export default function TicketDetailPage({ params }) {
           className="w-full border p-2 rounded"
         />
 
-        <button
-          type="submit"
-          disabled={busy || !reply}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          {busy ? "Sending…" : "Send Reply"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={busy || !reply.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+          >
+            {busy ? "Sending…" : "Send Reply"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setReply("");
+            }}
+            className="px-4 py-2 bg-gray-200 rounded"
+          >
+            Clear
+          </button>
+        </div>
       </form>
     </div>
   );
