@@ -354,76 +354,103 @@ function SalesQuotationForm() {
 
 
 
-  const handleSubmit = async () => {
-    try {
-      // ✅ Validate customer
-      if (!formData.customerName || !formData.customerCode) {
-        toast.error("Please select a valid customer");
-        return;
-      }
-
-      // ✅ Validate items
-      if (formData.items.length === 0 || formData.items.every((item) => !item.itemName)) {
-        toast.error("Please add at least one valid item");
-        return;
-      }
-
-      // ✅ Validate zero quantity
-      if (formData.items.some((it) => Number(it.quantity) <= 0)) {
-        toast.error("Quantity must be at least 1 for every item.");
-        return;
-      }
-
-      // ✅ Validate token
-      const token = localStorage.getItem("token");
-      if (!token) {
-        toast.error("Unauthorized! Please log in.");
-        return;
-      }
-
-      setLoading(true);
-
-      // ✅ Prepare FormData
-      const formDataToSend = new FormData();
-      // ✅ Correct key here: "quotationData"
-      formDataToSend.append("quotationData", JSON.stringify({
-        ...formData,
-        existingFiles: formData.existingFiles || [], // Access from formData
-        removedFiles: formData.removedFiles || [] // Access from formData
-      }));
-
-      if (attachments && attachments.length > 0) {
-        attachments.forEach((file) => formDataToSend.append("attachments", file));
-      }
-
-      // ✅ API Request (POST or PUT)
-      const url = editId ? `/api/sales-quotation/${editId}` : `/api/sales-quotation`;
-      const method = editId ? "put" : "post";
-
-      const response = await axios[method](url, formDataToSend, {
-        headers: {
-          Authorization: `Bearer ${token}`
-          // Don't set Content-Type manually for FormData
-        },
-      });
-
-      toast.success(response.data.message || "Quotation saved successfully!");
-
-      setFormData(initialState);
-      setAttachments([]);
-      sessionStorage.removeItem("salesQuotationData");
-      router.push("/admin/sales-quotation-view");
-    } catch (error) {
-      console.error("Error saving quotation:", error);
-      toast.error(
-        `Failed to ${editId ? "update" : "create"} quotation: ${
-          error.response?.data?.error || error.message
-        }`
-      );
-    } finally {
-      setLoading(false);
+ const handleSubmit = async () => {
+  try {
+    // ✅ Validate customer
+    if (!formData.customerName || !formData.customerCode) {
+      toast.error("Please select a valid customer");
+      return;
     }
-  };
+
+    // ✅ Validate items (at least one item with itemName)
+    if (formData.items.length === 0 || formData.items.every((item) => !item.itemName)) {
+      toast.error("Please add at least one valid item");
+      return;
+    }
+
+    // ✅ Validate zero quantity
+    if (formData.items.some((it) => Number(it.quantity) <= 0)) {
+      toast.error("Quantity must be at least 1 for every item.");
+      return;
+    }
+
+    // ✅ Validate token
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("Unauthorized! Please log in.");
+      return;
+    }
+
+    setLoading(true);
+
+    // -------------------------
+    // Sanitization: remove empty or invalid warehouses so server won't try to cast ""
+    // -------------------------
+    const sanitizedItems = (formData.items || []).map((it) => {
+      const item = { ...it };
+
+      // If warehouse is an empty string or falsy, remove the key so Mongoose won't cast it.
+      // (If you prefer null instead, set item.warehouse = null)
+      if (item.warehouse === "" || item.warehouse == null) {
+        delete item.warehouse;
+        // also clear related display fields if you want:
+        delete item.warehouseCode;
+        delete item.warehouseName;
+      } else {
+        // Optional: if warehouse exists but is not a valid ObjectId, remove it too
+        // if (typeof item.warehouse === "string" && !/^[0-9a-fA-F]{24}$/.test(item.warehouse)) {
+        //   delete item.warehouse;
+        // }
+      }
+
+      return item;
+    });
+
+    // Prepare payload: override items with sanitized items and keep attachments arrays
+    const payload = {
+      ...formData,
+      items: sanitizedItems,
+      existingFiles: formData.existingFiles || [],
+      removedFiles: formData.removedFiles || [],
+    };
+
+    // ✅ Prepare FormData
+    const formDataToSend = new FormData();
+    formDataToSend.append("quotationData", JSON.stringify(payload));
+
+    if (attachments && attachments.length > 0) {
+      attachments.forEach((file) => formDataToSend.append("attachments", file));
+    }
+
+    // ✅ API Request (POST or PUT)
+    const url = editId ? `/api/sales-quotation/${editId}` : `/api/sales-quotation`;
+    const method = editId ? "put" : "post";
+
+    const response = await axios[method](url, formDataToSend, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // don't set Content-Type; browser will add multipart/form-data boundary
+      },
+    });
+
+    toast.success(response.data.message || "Quotation saved successfully!");
+
+    setFormData(initialState);
+    setAttachments([]);
+    sessionStorage.removeItem("salesQuotationData");
+    router.push("/admin/sales-quotation-view");
+  } catch (error) {
+    console.error("Error saving quotation:", error);
+    toast.error(
+      `Failed to ${editId ? "update" : "create"} quotation: ${
+        error.response?.data?.error || error.message
+      }`
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
   return (
     <div className="m-11 p-5 shadow-xl">
       <h1 className="text-2xl font-bold mb-4">{editId ? "Edit Sales Quotation" : "Create Sales Quotation"}</h1>

@@ -38,9 +38,30 @@ export async function POST(req) {
     if (!jsonData.customer || !mongoose.isValidObjectId(jsonData.customer)) {
       throw new Error("Valid customer ID required");
     }
-    if (!Array.isArray(jsonData.items) || jsonData.items.length === 0) {
+        if (!Array.isArray(jsonData.items) || jsonData.items.length === 0) {
       throw new Error("At least one item is required");
     }
+
+    // -------------------------------------------------------------
+    // 🛠️ SANITIZE ITEM WAREHOUSES (CRITICAL FIX)
+    // -------------------------------------------------------------
+    jsonData.items = jsonData.items.map((item) => {
+      const clean = { ...item };
+
+      if (!clean.warehouse || clean.warehouse === "") {
+        delete clean.warehouse;
+      }
+
+      if (
+        typeof clean.warehouse === "string" &&
+        !mongoose.Types.ObjectId.isValid(clean.warehouse)
+      ) {
+        delete clean.warehouse;
+      }
+
+      return clean;
+    });
+
 
     // ✅ Upload files to Cloudinary
     const uploadedFiles = [];
