@@ -240,21 +240,51 @@ export async function POST(req) {
     }
 
     // If still no ticket, create a new one
-    if (!ticket) {
-      console.log("No ticket found — creating new ticket for:", fromEmail);
-      const threadId = messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-      const normalizedThread = normalizeId(threadId);
-      ticket = await Ticket.create({
-        customerEmail: fromEmail,
-        subject: subject || "No Subject",
-        source: "email",
-        status: "open",
-        emailThreadId: normalizedThread,
-        messages: [],
-        createdAt: new Date(),
-      });
-      console.log("DIAG: Created ticket:", ticket._id.toString(), "emailThreadId:", ticket.emailThreadId);
-    }
+  // If still no ticket, create a new one and include the incoming message immediately
+if (!ticket) {
+  console.log("No ticket found — creating new ticket for:", fromEmail);
+
+  // Try to resolve customerId if you have Customer model (optional)
+  let customerId = null;
+  try {
+    const Customer = require("@/models/customer"); // adjust path if needed
+    const cust = await Customer.findOne({ email: fromEmail }).select("_id").lean().exec();
+    if (cust) customerId = cust._id;
+  } catch (e) {
+    // ignore if Customer model not present
+  }
+
+  // Prepare first message for the ticket
+  const firstMsg = {
+    sender: customerId || null,
+    senderType: "customer",
+    externalEmail: fromEmail,
+    message: text || html || "(no content)",
+    messageId: normalizeId(messageId || inReplyTo || `msg-${Date.now()}-${Math.random().toString(36).slice(2,6)}`),
+    inReplyTo: normalizeId(inReplyTo || ""),
+    attachments: raw.attachments || [],
+    aiSuggested: false,
+    createdAt: new Date()
+  };
+
+  const threadId = normalizeId(messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+
+  ticket = await Ticket.create({
+    customerId: customerId || undefined,
+    customerEmail: fromEmail,
+    subject: subject || "No Subject",
+    source: "email",
+    status: "open",
+    emailThreadId: threadId,
+    messages: [ firstMsg ],
+    lastReplyAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+
+  console.log("DIAG: Created ticket:", ticket._id.toString(), "emailThreadId:", ticket.emailThreadId);
+}
+
 
     // Append message with normalized messageId
     const pushMessage = {
