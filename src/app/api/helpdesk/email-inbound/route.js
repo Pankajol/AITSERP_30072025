@@ -6,19 +6,15 @@ import Ticket from "@/models/helpdesk/Ticket";
 const FALLBACK_SUPPORT_EMAIL = "pankajal2099@gmail.com";
 
 /** Normalize/clean message-id values for storage & comparison
- *  Returns plain id WITHOUT surrounding angle brackets.
+ *  Returns plain id WITHOUT surrounding angle brackets and without whitespace/newlines.
  */
 function normalizeId(id) {
   if (!id) return "";
   try {
     let s = String(id || "").trim();
-    // remove wrapping angle brackets if present
-    if (s.startsWith("<") && s.endsWith(">")) {
-      s = s.slice(1, -1).trim();
-    }
-    // also remove any stray whitespace/newlines
+    if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1).trim();
+    // collapse whitespace and remove newlines
     s = s.replace(/[\r\n]+/g, " ").trim();
-    // remove multiple internal spaces
     s = s.replace(/\s+/g, "");
     return s;
   } catch (e) {
@@ -57,7 +53,6 @@ async function parseBody(req) {
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try { return JSON.parse(trimmed); } catch (e) {}
     }
-    // crude key:value parser fallback
     const obj = {};
     const lines = trimmed.split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
@@ -79,11 +74,17 @@ async function parseBody(req) {
   }
 }
 
+// helper: escape regex special chars
+function escapeRegExp(string) {
+  return String(string).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export async function POST(req) {
   try {
     console.log("📩 INBOUND EMAIL HANDLER HIT");
     const { searchParams } = new URL(req.url);
     const secret = (searchParams.get("secret") || "").trim();
+    const debugMode = (searchParams.get("debug") || "").trim() === "1";
     const SECRET = process.env.INBOUND_EMAIL_SECRET;
     if (!SECRET) {
       console.error("INBOUND_EMAIL_SECRET not set");
@@ -97,18 +98,19 @@ export async function POST(req) {
     await dbConnect();
     const raw = await parseBody(req);
 
-    // Debug logs of incoming keys (temporary — can remove later)
+    // Diagnostic raw logging
     console.log("Inbound raw payload keys:", Object.keys(raw || {}));
-    console.log("Inbound headers sample:", raw.headers || { messageId: raw.messageId, inReplyTo: raw.inReplyTo, references: raw.references });
+    console.log("raw.messageId:", raw.messageId, "raw.inReplyTo:", raw.inReplyTo);
+    console.log("raw.headers present:", !!raw.headers);
 
     // normalize common fields
-    const fromEmail = extractEmail(raw.from || raw.fromEmail || raw.sender || raw["From"] || raw.headers?.from || "");
-    let toRaw = raw.to || raw.recipient || raw.envelope?.to || raw.mail?.destination || raw.headers?.to || raw["To"] || "";
+    const fromEmail = extractEmail(raw.from || raw.fromEmail || raw.sender || raw["From"] || (raw.headers && raw.headers.From) || "");
+    let toRaw = raw.to || raw.recipient || (raw.envelope && raw.envelope.to) || (raw.mail && raw.mail.destination) || (raw.headers && raw.headers.To) || raw["To"] || "";
     if (Array.isArray(toRaw)) toRaw = toRaw.map(t => (typeof t === "string" ? t : JSON.stringify(t))).join(", ");
     else if (typeof toRaw === "object" && toRaw !== null) toRaw = extractEmail(toRaw) || JSON.stringify(toRaw);
     const to = String(toRaw || "").trim();
 
-    const subject = raw.subject || raw.mail?.subject || raw.headers?.subject || "No Subject";
+    const subject = raw.subject || (raw.mail && raw.mail.subject) || (raw.headers && raw.headers.Subject) || "No Subject";
     const text = raw.text || raw.plain || raw.body || raw.message || raw["body-plain"] || raw["text"] || "";
     const html = raw.html || raw.htmlBody || raw["body-html"] || "";
 
@@ -118,22 +120,22 @@ export async function POST(req) {
       raw["Message-Id"] ||
       raw["Message-ID"] ||
       (raw.headers && (raw.headers["Message-ID"] || raw.headers["Message-Id"])) ||
-      raw.mail?.messageId ||
-      raw.headers?.["message-id"] ||
+      (raw.mail && raw.mail.messageId) ||
+      (raw.headers && raw.headers["message-id"]) ||
       "";
 
     const inReplyToRaw =
       raw.inReplyTo ||
       raw["in-reply-to"] ||
       (raw.headers && (raw.headers["In-Reply-To"] || raw.headers["in-reply-to"])) ||
-      raw.mail?.inReplyTo ||
+      (raw.mail && raw.mail.inReplyTo) ||
       "";
 
     let referencesRaw =
       raw.references ||
       raw["References"] ||
       (raw.headers && (raw.headers["References"] || raw.headers["references"])) ||
-      raw.mail?.references ||
+      (raw.mail && raw.mail.references) ||
       "";
 
     const messageId = normalizeId(messageIdRaw);
@@ -141,7 +143,7 @@ export async function POST(req) {
     const references = (Array.isArray(referencesRaw) ? referencesRaw : (referencesRaw || "").toString())
       .split(/\s+/).map(normalizeId).filter(Boolean);
 
-    console.log("Normalized inbound:", { fromEmail, to: (to||"").slice(0,200), subject: subject.slice(0,200), messageId, inReplyTo, references });
+    console.log("Normalized inbound:", { fromEmail, to: (to||"").slice(0,200), subject: subject.slice(0,200), messageId, inReplyTo, references: references.slice(0,5) });
 
     if (!fromEmail) return new Response(JSON.stringify({ error: "Missing sender email" }), { status: 400 });
     if (!to) return new Response(JSON.stringify({ error: "Missing recipient (to)" }), { status: 400 });
@@ -175,9 +177,9 @@ export async function POST(req) {
     }
     const allSearchIds = [...new Set([...searchIds, ...extraSearch])];
 
-    console.log("Searching tickets with ids (including short forms):", allSearchIds);
+    console.log("DIAG: computed searchIds:", allSearchIds);
 
-    // Try match ticket by in-reply-to / message-id / references / lastOutbound
+    // Try match ticket by ids
     let ticket = null;
     if (allSearchIds.length > 0) {
       ticket = await Ticket.findOne({
@@ -187,7 +189,7 @@ export async function POST(req) {
           { "lastOutbound.messageId": { $in: allSearchIds } }
         ]
       }).exec();
-      console.log("Ticket found by ids?:", ticket ? ticket._id.toString() : null);
+      console.log("DIAG: Ticket found by ids?:", ticket ? ticket._id.toString() : null);
     }
 
     // subject-based fallback (if you include ticket id in subject)
@@ -196,10 +198,35 @@ export async function POST(req) {
       if (match) {
         try {
           ticket = await Ticket.findById(match[1]).exec();
-          console.log("Ticket found by subject id:", ticket?._id?.toString() || null);
+          console.log("DIAG: Ticket found by subject id:", ticket?._id?.toString() || null);
         } catch (e) {
           // ignore
         }
+      }
+    }
+
+    // fallback: if still no ticket — try customerEmail + subject similarity or recent open ticket
+    if (!ticket) {
+      try {
+        const normSubject = (subject || "").replace(/re:\s*/i, "").trim().slice(0,120).toLowerCase();
+
+        ticket = await Ticket.findOne({
+          customerEmail: fromEmail,
+          status: { $in: ["open", "pending", "new"] },
+          subject: { $regex: new RegExp("^" + escapeRegExp(normSubject) + "$", "i") }
+        }).sort({ updatedAt: -1 }).exec();
+
+        if (!ticket) {
+          ticket = await Ticket.findOne({
+            customerEmail: fromEmail,
+            status: { $in: ["open", "pending", "new"] },
+            updatedAt: { $gte: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30) } // last 30 days
+          }).sort({ updatedAt: -1 }).exec();
+        }
+
+        if (ticket) console.log("DIAG: Fallback matched ticket by customer+subject/recent:", ticket._id.toString());
+      } catch (e) {
+        console.error("Fallback matching error:", e);
       }
     }
 
@@ -212,8 +239,8 @@ export async function POST(req) {
       }
     }
 
+    // If still no ticket, create a new one
     if (!ticket) {
-      // create new ticket
       console.log("No ticket found — creating new ticket for:", fromEmail);
       const threadId = messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       const normalizedThread = normalizeId(threadId);
@@ -226,7 +253,7 @@ export async function POST(req) {
         messages: [],
         createdAt: new Date(),
       });
-      console.log("Created ticket:", ticket._id.toString(), "emailThreadId:", ticket.emailThreadId);
+      console.log("DIAG: Created ticket:", ticket._id.toString(), "emailThreadId:", ticket.emailThreadId);
     }
 
     // Append message with normalized messageId
@@ -246,14 +273,24 @@ export async function POST(req) {
     ticket.lastReplyAt = new Date();
     ticket.updatedAt = new Date();
 
-    // If ticket.emailThreadId empty, set from inbound ids
     if (!ticket.emailThreadId && (messageId || inReplyTo)) {
       ticket.emailThreadId = normalizeId(messageId || inReplyTo);
     }
 
     await ticket.save();
 
-    console.log("Appended message to ticket:", ticket._id?.toString(), "msgId:", pushMessage.messageId);
+    console.log("DIAG: Appended message to ticket:", ticket._id?.toString(), "msgId:", pushMessage.messageId);
+
+    const responsePayload = {
+      success: true,
+      ticketId: ticket._id,
+      parsed: { messageId, inReplyTo, references, searchIds: allSearchIds },
+      appended: { messageId: pushMessage.messageId, createdAt: pushMessage.createdAt }
+    };
+
+    if (debugMode) {
+      return new Response(JSON.stringify(responsePayload), { status: 200 });
+    }
     return new Response(JSON.stringify({ success: true, ticketId: ticket._id }), { status: 200 });
   } catch (err) {
     console.error("Inbound handler error:", err);
@@ -265,7 +302,6 @@ export async function POST(req) {
 export async function GET() {
   return new Response(JSON.stringify({ success: true, message: "Inbound endpoint ok" }), { status: 200 });
 }
-
 
 
 
