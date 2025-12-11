@@ -20,11 +20,9 @@ export default function CountryStateSearch({
   const countryRef = useRef();
   const stateRef = useRef();
 
-  // Update selectedCountry and selectedState when parent changes
   useEffect(() => setSelectedCountry(valueCountry || null), [valueCountry]);
   useEffect(() => setSelectedState(valueState || null), [valueState]);
 
-  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (!countryRef.current?.contains(e.target)) setShowCountryDropdown(false);
@@ -34,13 +32,15 @@ export default function CountryStateSearch({
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
-  // Fetch countries
+  // Fetch countries (uses URLSearchParams so values are encoded properly)
   useEffect(() => {
     if (!countryQuery) return setCountryResults([]);
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(`/api/countries?search=${countryQuery}`, {
+        const params = new URLSearchParams();
+        params.set("search", countryQuery);
+        const res = await fetch(`/api/countries?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const json = await res.json();
@@ -52,19 +52,37 @@ export default function CountryStateSearch({
     return () => clearTimeout(timer);
   }, [countryQuery]);
 
-  // Fetch states
+  // Fetch states — SAFELY build params and guard undefined
   useEffect(() => {
-    if (!stateQuery || !selectedCountry) return setStateResults([]);
+    if (!stateQuery) return setStateResults([]);
+    // Don't fetch states if no country selected
+    if (!selectedCountry) return setStateResults([]);
+
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("token");
-        const countryParam = selectedCountry.code || selectedCountry.name;
-        const res = await fetch(
-          `/api/states?country=${encodeURIComponent(
-            countryParam
-          )}&search=${stateQuery}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+
+        // Defensive countryParam resolution:
+        // prefer code, then name, then _id (if available)
+        const countryParam =
+          selectedCountry?.code ??
+          selectedCountry?.name ??
+          selectedCountry?._id ??
+          "";
+
+        // If countryParam is falsy, don't call API (extra guard)
+        if (!countryParam) {
+          setStateResults([]);
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set("country", countryParam);
+        params.set("search", stateQuery);
+
+        const res = await fetch(`/api/states?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const json = await res.json();
         if (json.success) setStateResults(json.data);
       } catch (err) {
@@ -100,7 +118,7 @@ export default function CountryStateSearch({
           value={selectedCountry?.name || countryQuery}
           onChange={(e) => {
             setCountryQuery(e.target.value);
-            setSelectedCountry(null); // reset selection while typing
+            setSelectedCountry(null);
             setShowCountryDropdown(true);
           }}
           placeholder="Search Country"
@@ -152,12 +170,9 @@ export default function CountryStateSearch({
   );
 }
 
-
-
-
 // "use client";
 
-// import React, { useState, useEffect } from "react";
+// import React, { useState, useEffect, useRef } from "react";
 
 // export default function CountryStateSearch({
 //   valueCountry,
@@ -170,31 +185,31 @@ export default function CountryStateSearch({
 //   const [countryResults, setCountryResults] = useState([]);
 //   const [stateResults, setStateResults] = useState([]);
 //   const [selectedCountry, setSelectedCountry] = useState(valueCountry || null);
+//   const [selectedState, setSelectedState] = useState(valueState || null);
 //   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 //   const [showStateDropdown, setShowStateDropdown] = useState(false);
 
-//   // ✅ Update when valueCountry changes (Edit Mode)
-//   useEffect(() => {
-//     if (valueCountry) {
-//       setSelectedCountry(valueCountry);
-//       setCountryQuery(valueCountry.name || "");
-//     }
-//   }, [valueCountry]);
+//   const countryRef = useRef();
+//   const stateRef = useRef();
 
-//   // ✅ Update when valueState changes (Edit Mode)
-//   useEffect(() => {
-//     if (valueState) {
-//       setStateQuery(valueState.name || "");
-//     }
-//   }, [valueState]);
+//   // Update selectedCountry and selectedState when parent changes
+//   useEffect(() => setSelectedCountry(valueCountry || null), [valueCountry]);
+//   useEffect(() => setSelectedState(valueState || null), [valueState]);
 
-//   // ✅ Fetch countries
+//   // Close dropdowns on click outside
 //   useEffect(() => {
-//     if (!countryQuery) {
-//       setCountryResults([]);
-//       return;
-//     }
-//     const fetchCountries = async () => {
+//     const handleClickOutside = (e) => {
+//       if (!countryRef.current?.contains(e.target)) setShowCountryDropdown(false);
+//       if (!stateRef.current?.contains(e.target)) setShowStateDropdown(false);
+//     };
+//     document.addEventListener("click", handleClickOutside);
+//     return () => document.removeEventListener("click", handleClickOutside);
+//   }, []);
+
+//   // Fetch countries
+//   useEffect(() => {
+//     if (!countryQuery) return setCountryResults([]);
+//     const timer = setTimeout(async () => {
 //       try {
 //         const token = localStorage.getItem("token");
 //         const res = await fetch(`/api/countries?search=${countryQuery}`, {
@@ -203,51 +218,47 @@ export default function CountryStateSearch({
 //         const json = await res.json();
 //         if (json.success) setCountryResults(json.data);
 //       } catch (err) {
-//         console.error("Error fetching countries:", err);
+//         console.error(err);
 //       }
-//     };
-//     fetchCountries();
+//     }, 300);
+//     return () => clearTimeout(timer);
 //   }, [countryQuery]);
 
-//   // ✅ Fetch states when user types in state input
+//   // Fetch states
 //   useEffect(() => {
-//     if (!stateQuery || !selectedCountry) {
-//       setStateResults([]);
-//       return;
-//     }
-
-//     const fetchStates = async () => {
+//     if (!stateQuery || !selectedCountry) return setStateResults([]);
+//     const timer = setTimeout(async () => {
 //       try {
 //         const token = localStorage.getItem("token");
-//         // ✅ If your API requires country code, fallback to name if missing
 //         const countryParam = selectedCountry.code || selectedCountry.name;
 //         const res = await fetch(
-//           `/api/states?country=${encodeURIComponent(countryParam)}&search=${stateQuery}`,
+//           `/api/states?country=${encodeURIComponent(
+//             countryParam
+//           )}&search=${stateQuery}`,
 //           { headers: { Authorization: `Bearer ${token}` } }
 //         );
 //         const json = await res.json();
 //         if (json.success) setStateResults(json.data);
 //       } catch (err) {
-//         console.error("Error fetching states:", err);
+//         console.error(err);
 //       }
-//     };
-
-//     fetchStates();
+//     }, 300);
+//     return () => clearTimeout(timer);
 //   }, [stateQuery, selectedCountry]);
 
-//   // ✅ Handle country selection
 //   const handleCountrySelect = (country) => {
 //     setSelectedCountry(country);
 //     setCountryQuery(country.name);
-//     setStateQuery(""); // reset state input
-//     setStateResults([]); // clear state list
+//     setStateQuery("");
+//     setSelectedState(null);
+//     setStateResults([]);
 //     onSelectCountry(country);
-//     onSelectState({ name: "" }); // reset state
+//     onSelectState(null);
 //     setShowCountryDropdown(false);
 //   };
 
-//   // ✅ Handle state selection
 //   const handleStateSelect = (state) => {
+//     setSelectedState(state);
 //     setStateQuery(state.name);
 //     onSelectState(state);
 //     setShowStateDropdown(false);
@@ -255,12 +266,13 @@ export default function CountryStateSearch({
 
 //   return (
 //     <div className="grid sm:grid-cols-2 gap-4">
-//       {/* Country Search */}
-//       <div className="relative">
+//       {/* Country Input */}
+//       <div className="relative" ref={countryRef}>
 //         <input
-//           value={countryQuery}
+//           value={selectedCountry?.name || countryQuery}
 //           onChange={(e) => {
 //             setCountryQuery(e.target.value);
+//             setSelectedCountry(null); // reset selection while typing
 //             setShowCountryDropdown(true);
 //           }}
 //           placeholder="Search Country"
@@ -281,17 +293,18 @@ export default function CountryStateSearch({
 //         )}
 //       </div>
 
-//       {/* State Search */}
-//       <div className="relative">
+//       {/* State Input */}
+//       <div className="relative" ref={stateRef}>
 //         <input
-//           value={stateQuery}
+//           value={selectedState?.name || stateQuery}
 //           onChange={(e) => {
 //             setStateQuery(e.target.value);
+//             setSelectedState(null);
 //             setShowStateDropdown(true);
 //           }}
 //           placeholder="Search State"
 //           className="border border-gray-300 p-3 rounded-lg w-full focus:ring-blue-500 focus:border-blue-500"
-//           disabled={!selectedCountry} // ✅ Disable until country selected
+//           disabled={!selectedCountry}
 //         />
 //         {showStateDropdown && stateResults.length > 0 && (
 //           <ul className="absolute z-10 bg-white border border-gray-300 w-full mt-1 rounded-lg shadow-lg max-h-40 overflow-auto">
@@ -310,7 +323,5 @@ export default function CountryStateSearch({
 //     </div>
 //   );
 // }
-
-
 
 

@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Customer from "@/models/CustomerModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+// If you actually need these later you can keep them; otherwise remove to avoid unused imports
 import BankHead from "@/models/BankHead";
-import Country from "@/app/api/countries/schema"
-import State from "../states/schema";
+import Country from "@/app/api/countries/schema.js";
+import State from "../states/schema.js";
+
+export const runtime = "nodejs";
 
 /* -------------------------------
    🔐 Role-Based Access Check
@@ -19,66 +22,50 @@ function isAuthorized(user) {
 
 /* ✅ Validate User Helper */
 async function validateUser(req) {
-  const token = getTokenFromHeader(req); // ✅ Works if getTokenFromHeader handles Request object
-  if (!token) return { error: "Token missing", status: 401 };
-
   try {
-    const user = await verifyJWT(token);
-    if (!user || !isAuthorized(user)) return { error: "Unauthorized", status: 403 };
-    return { user };
+    const token = getTokenFromHeader(req);
+    if (!token) return { error: "No token provided", status: 401 };
+
+    const decoded = verifyJWT(token);
+    if (!decoded) return { error: "Invalid token", status: 401 };
+
+    return { user: decoded, error: null, status: 200 };
   } catch (err) {
-    console.error("JWT Verification Failed:", err.message);
-    return { error: "Invalid token", status: 401 };
+    console.log("validateUser error:", err);
+    return { error: "Authentication failed", status: 401 };
   }
 }
 
-// export async function GET(req) {
-//   await dbConnect();
-
-//   const { user, error, status } = await validateUser(req);
-//   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
-//   try {
-//     const { searchParams } = new URL(req.url);
-//     const search = searchParams.get("search");
-
-//     const query = { companyId: user.companyId };
-//     if (search) {
-//       query.$or = [
-//         { customerName: { $regex: search, $options: "i" } },
-//         { customerCode: { $regex: search, $options: "i" } },
-//       ];
-//     }
-
-//     const customers = await Customer.find(query)
-//       .select("_id customerCode customerName contactPersonName")
-//       .limit(10);
-
-//     return NextResponse.json({ success: true, data: customers }, { status: 200 });
-//   } catch (err) {
-//     console.error("GET /customers error:", err);
-//     return NextResponse.json({ success: false, message: "Failed to fetch customers" }, { status: 500 });
-//   }
-// }
-
 export async function GET(req) {
   await dbConnect();
+
   const { user, error, status } = await validateUser(req);
-  if (error) return NextResponse.json({ success: false, message: error }, { status });
+  if (error)
+    return NextResponse.json({ success: false, message: error }, { status });
+
+  // Authorization: ensure user has access to customers
+  if (!isAuthorized(user)) {
+    return NextResponse.json(
+      { success: false, message: "Forbidden: insufficient permissions" },
+      { status: 403 }
+    );
+  }
 
   try {
-    const customers = await Customer.find({ companyId: user.companyId }).populate('glAccount');
-      // .populate("glAccount", "accountName accountCode") // ✅ Fetch only necessary fields
-      // .sort({ createdAt: -1 });
-      //  const customers = await Customer.find({})
+    // Restrict populated fields to avoid extra data
+    const customers = await Customer.find({
+      companyId: user.companyId,
+    }).populate("glAccount", "accountName accountCode");
 
     return NextResponse.json({ success: true, data: customers }, { status: 200 });
   } catch (err) {
     console.error("GET /customers error:", err);
-    return NextResponse.json({ success: false, message: "Failed to fetch customers" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch customers" },
+      { status: 500 }
+    );
   }
 }
-
 
 
 /* ========================================

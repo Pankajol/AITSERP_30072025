@@ -43,13 +43,15 @@ export default function CustomerManagement() {
 
   /* ✅ FETCH CUSTOMERS */
   const fetchCustomers = async () => {
+
     setLoading(true);
     try {
-   
+      const token = localStorage.getItem("token");
       const res = await axios.get("/api/customers", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setCustomers(res.data.data || []);
+      console.log("Fetched customers:", res.data.data);
     } catch (err) {
       toast.error("Failed to load customers");
     }

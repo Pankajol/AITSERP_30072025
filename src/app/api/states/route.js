@@ -3,6 +3,7 @@ import connectDb from "@/lib/db";
 import State from "./schema";
 import Country from "@/app/api/countries/schema";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import mongoose from "mongoose";
 
 // ✅ Role-based access check
 function isAuthorized(user) {
@@ -13,23 +14,30 @@ function isAuthorized(user) {
   );
 }
 
-// ✅ Validate User Helper
+function escapeRegExp(str = "") {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// validateUser returns { user, error, status }
 async function validateUser(req) {
   const token = getTokenFromHeader(req);
   if (!token) return { error: "Token missing", status: 401 };
 
   try {
     const user = await verifyJWT(token);
-    if (!user || !isAuthorized(user)) return { error: "Unauthorized", status: 403 };
-    return { user };
+    if (!user) return { error: "Invalid token", status: 401 };
+    if (!isAuthorized(user)) return { error: "Unauthorized", status: 403 };
+    return { user, error: null, status: 200 };
   } catch (err) {
-    console.error("JWT Verification Failed:", err.message);
+    console.error("JWT Verification Failed:", err?.message || err);
     return { error: "Invalid token", status: 401 };
   }
 }
 
 /* ========================================
-   📥 GET /api/states?country=IN
+   GET /api/states?country=IN&search=m
+   - If country is missing or 'undefined', return all states for company (filtered by search)
+   - If country is present, filter by country (code/name/_id)
 ======================================== */
 export async function GET(req) {
   await connectDb();
@@ -38,39 +46,63 @@ export async function GET(req) {
 
   try {
     const url = new URL(req.url);
-    const countryParam = url.searchParams.get("country");
+    let countryParam = url.searchParams.get("country");
     const search = url.searchParams.get("search") || "";
 
-    if (!countryParam) {
-      return NextResponse.json({ success: false, message: "Country is required" }, { status: 400 });
+    // Normalize and detect "meaningless" values
+    const badValues = ["", "undefined", "null"];
+    if (countryParam) countryParam = countryParam.trim();
+
+    // If country is not provided or is a meaningless token, we'll NOT filter by country
+    const shouldFilterByCountry =
+      countryParam && !badValues.includes(countryParam.toLowerCase());
+
+    let countryId = null;
+    if (shouldFilterByCountry) {
+      // Try to resolve country to an _id (by _id / code / name)
+      const orConditions = [];
+      if (mongoose.Types.ObjectId.isValid(countryParam)) {
+        orConditions.push({ _id: countryParam });
+      }
+      orConditions.push({ code: countryParam.toUpperCase() });
+      orConditions.push({ name: new RegExp(`^${escapeRegExp(countryParam)}$`, "i") });
+
+      const country = await Country.findOne({
+        companyId: user.companyId,
+        $or: orConditions,
+      });
+
+      if (!country) {
+        // If client asked for a specific country but it doesn't exist, return 404
+        return NextResponse.json({ success: false, message: "Country not found" }, { status: 404 });
+      }
+      countryId = country._id;
     }
 
-    // ✅ Find country by code or name AND companyId
-    const country = await Country.findOne({
+    // Build state query
+    const stateQuery = {
       companyId: user.companyId,
-      $or: [
-        { code: countryParam.toUpperCase() },
-        { name: new RegExp(`^${countryParam}$`, "i") },
-      ],
-    });
+      name: { $regex: escapeRegExp(search), $options: "i" },
+    };
 
-    if (!country) {
-      return NextResponse.json({ success: false, message: "Country not found" }, { status: 404 });
+    if (shouldFilterByCountry && countryId) {
+      stateQuery.country = countryId;
     }
 
-    // ✅ Fetch states for the country and company with optional search filter
-    const states = await State.find({
-      companyId: user.companyId,
-      country: country._id,
-      name: { $regex: search, $options: "i" },
-    }).sort({ name: 1 });
+    // Fetch states
+    const states = await State.find(stateQuery).sort({ name: 1 });
+
+    // Helpful debug info (remove or change log level in production)
+    // console.info("GET /api/states params:", { countryParam, search, shouldFilterByCountry, resultCount: states.length });
 
     return NextResponse.json({ success: true, data: states }, { status: 200 });
-  } catch (error) {
-    console.error("GET /states error:", error);
+  } catch (err) {
+    console.error("GET /states error:", err);
     return NextResponse.json({ success: false, message: "Failed to fetch states" }, { status: 500 });
   }
 }
+
+
 
 /* ========================================
    ✏️ POST /api/states
