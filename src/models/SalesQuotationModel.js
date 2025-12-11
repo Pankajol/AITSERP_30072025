@@ -24,7 +24,7 @@ const ItemSchema = new mongoose.Schema(
      sgstAmount: { type: Number, default: 0 },
      igstAmount: { type: Number, default: 0 },
      tdsAmount: { type: Number, default: 0 },
-     warehouse: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" },
+     warehouse: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse", required: false,default: null, },
      warehouseName: { type: String },
      warehouseCode: { type: String },
      stockAdded: { type: Boolean, default: false },
