@@ -17,7 +17,9 @@ function normalizeId(id) {
       s = s.slice(1, -1).trim();
     }
     // also remove any stray whitespace/newlines
-    s = s.replace(/[\r\n\s]+/g, "");
+    s = s.replace(/[\r\n]+/g, " ").trim();
+    // remove multiple internal spaces
+    s = s.replace(/\s+/g, "");
     return s;
   } catch (e) {
     return String(id || "").trim();
@@ -55,6 +57,7 @@ async function parseBody(req) {
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
       try { return JSON.parse(trimmed); } catch (e) {}
     }
+    // crude key:value parser fallback
     const obj = {};
     const lines = trimmed.split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
@@ -94,6 +97,10 @@ export async function POST(req) {
     await dbConnect();
     const raw = await parseBody(req);
 
+    // Debug logs of incoming keys (temporary — can remove later)
+    console.log("Inbound raw payload keys:", Object.keys(raw || {}));
+    console.log("Inbound headers sample:", raw.headers || { messageId: raw.messageId, inReplyTo: raw.inReplyTo, references: raw.references });
+
     // normalize common fields
     const fromEmail = extractEmail(raw.from || raw.fromEmail || raw.sender || raw["From"] || raw.headers?.from || "");
     let toRaw = raw.to || raw.recipient || raw.envelope?.to || raw.mail?.destination || raw.headers?.to || raw["To"] || "";
@@ -105,14 +112,34 @@ export async function POST(req) {
     const text = raw.text || raw.plain || raw.body || raw.message || raw["body-plain"] || raw["text"] || "";
     const html = raw.html || raw.htmlBody || raw["body-html"] || "";
 
-    // Normalize IDs (strip < > and whitespace)
-    const messageIdRaw = raw.messageId || raw["Message-Id"] || raw["message-id"] || raw.mail?.messageId || raw.headers?.["message-id"] || "";
-    const inReplyToRaw = raw.inReplyTo || raw["in-reply-to"] || raw.mail?.inReplyTo || raw.headers?.["in-reply-to"] || "";
-    const referencesRaw = raw.references || raw["References"] || raw.headers?.references || raw.headers?.References || "";
+    // Prefer headers message-id if provided in a headers object
+    const messageIdRaw =
+      raw.messageId ||
+      raw["Message-Id"] ||
+      raw["Message-ID"] ||
+      (raw.headers && (raw.headers["Message-ID"] || raw.headers["Message-Id"])) ||
+      raw.mail?.messageId ||
+      raw.headers?.["message-id"] ||
+      "";
+
+    const inReplyToRaw =
+      raw.inReplyTo ||
+      raw["in-reply-to"] ||
+      (raw.headers && (raw.headers["In-Reply-To"] || raw.headers["in-reply-to"])) ||
+      raw.mail?.inReplyTo ||
+      "";
+
+    let referencesRaw =
+      raw.references ||
+      raw["References"] ||
+      (raw.headers && (raw.headers["References"] || raw.headers["references"])) ||
+      raw.mail?.references ||
+      "";
 
     const messageId = normalizeId(messageIdRaw);
     const inReplyTo = normalizeId(inReplyToRaw);
-    const references = (referencesRaw || "").toString().split(/\s+/).map(normalizeId).filter(Boolean);
+    const references = (Array.isArray(referencesRaw) ? referencesRaw : (referencesRaw || "").toString())
+      .split(/\s+/).map(normalizeId).filter(Boolean);
 
     console.log("Normalized inbound:", { fromEmail, to: (to||"").slice(0,200), subject: subject.slice(0,200), messageId, inReplyTo, references });
 
@@ -133,24 +160,32 @@ export async function POST(req) {
       return new Response(JSON.stringify({ success: true, ignored: true }), { status: 200 });
     }
 
-    // Try match ticket by in-reply-to / message-id / references / lastOutbound
-    let ticket = null;
-    const searchIds = [];
+    // Build searchIds from messageId, inReplyTo, references
+    let searchIds = [];
     if (inReplyTo) searchIds.push(inReplyTo);
     if (messageId) searchIds.push(messageId);
     for (const r of references) if (r) searchIds.push(r);
 
-    // also include lastOutbound.messageId candidates (if any ticket has them) - but normalized form
-    // searchIds already normalized
+    // include short fragments (before @) to be resilient
+    const extraSearch = [];
+    for (const id of searchIds) {
+      if (!id) continue;
+      const beforeAt = id.split("@")[0];
+      if (beforeAt && !searchIds.includes(beforeAt)) extraSearch.push(beforeAt);
+    }
+    const allSearchIds = [...new Set([...searchIds, ...extraSearch])];
 
-    if (searchIds.length > 0) {
-      console.log("Searching tickets by ids:", searchIds);
+    console.log("Searching tickets with ids (including short forms):", allSearchIds);
+
+    // Try match ticket by in-reply-to / message-id / references / lastOutbound
+    let ticket = null;
+    if (allSearchIds.length > 0) {
       ticket = await Ticket.findOne({
         $or: [
-          { emailThreadId: { $in: searchIds } },
-          { "messages.messageId": { $in: searchIds } },
-          { "lastOutbound.messageId": { $in: searchIds } },
-        ],
+          { emailThreadId: { $in: allSearchIds } },
+          { "messages.messageId": { $in: allSearchIds } },
+          { "lastOutbound.messageId": { $in: allSearchIds } }
+        ]
       }).exec();
       console.log("Ticket found by ids?:", ticket ? ticket._id.toString() : null);
     }
@@ -181,7 +216,6 @@ export async function POST(req) {
       // create new ticket
       console.log("No ticket found — creating new ticket for:", fromEmail);
       const threadId = messageId || inReplyTo || `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-      // store normalized thread id (no angle brackets)
       const normalizedThread = normalizeId(threadId);
       ticket = await Ticket.create({
         customerEmail: fromEmail,
@@ -197,20 +231,20 @@ export async function POST(req) {
 
     // Append message with normalized messageId
     const pushMessage = {
-      sender: null,
+      sender: null,                      // inbound from customer — no agent id
       senderType: "customer",
       externalEmail: fromEmail,
       message: text || html || "(no content)",
-      messageId: messageId || inReplyTo || `msg-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-      inReplyTo: inReplyTo || "",
+      messageId: normalizeId(messageId || inReplyTo || `msg-${Date.now()}-${Math.random().toString(36).slice(2,6)}`),
+      inReplyTo: normalizeId(inReplyTo || ""),
+      attachments: raw.attachments || [],
+      aiSuggested: false,
       createdAt: new Date(),
     };
 
-    // Ensure messageId is normalized (strip <>)
-    pushMessage.messageId = normalizeId(pushMessage.messageId);
-
     ticket.messages.push(pushMessage);
     ticket.lastReplyAt = new Date();
+    ticket.updatedAt = new Date();
 
     // If ticket.emailThreadId empty, set from inbound ids
     if (!ticket.emailThreadId && (messageId || inReplyTo)) {
@@ -231,6 +265,7 @@ export async function POST(req) {
 export async function GET() {
   return new Response(JSON.stringify({ success: true, message: "Inbound endpoint ok" }), { status: 200 });
 }
+
 
 
 
