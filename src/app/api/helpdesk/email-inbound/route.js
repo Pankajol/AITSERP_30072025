@@ -206,29 +206,42 @@ export async function POST(req) {
     }
 
     // fallback: if still no ticket — try customerEmail + subject similarity or recent open ticket
-    if (!ticket) {
-      try {
-        const normSubject = (subject || "").replace(/re:\s*/i, "").trim().slice(0,120).toLowerCase();
+   // Strict fallback: only match to existing ticket if the incoming email is a true reply
+// (has inReplyTo/references) or the subject contains a ticket id. Otherwise create a new ticket.
+if (!ticket) {
+  try {
+    const normSubject = (subject || "").replace(/re:\s*/i, "").trim().slice(0,120).toLowerCase();
 
-        ticket = await Ticket.findOne({
-          customerEmail: fromEmail,
-          status: { $in: ["open", "pending", "new"] },
-          subject: { $regex: new RegExp("^" + escapeRegExp(normSubject) + "$", "i") }
-        }).sort({ updatedAt: -1 }).exec();
+    // If this email looks like a reply (has inReplyTo or references), try to match by ids first (already tried),
+    // otherwise only match if subject explicitly contains ticket id (pattern [a-f0-9]{24}).
+    let matched = null;
 
-        if (!ticket) {
-          ticket = await Ticket.findOne({
-            customerEmail: fromEmail,
-            status: { $in: ["open", "pending", "new"] },
-            updatedAt: { $gte: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30) } // last 30 days
-          }).sort({ updatedAt: -1 }).exec();
-        }
-
-        if (ticket) console.log("DIAG: Fallback matched ticket by customer+subject/recent:", ticket._id.toString());
-      } catch (e) {
-        console.error("Fallback matching error:", e);
+    // If there's an In-Reply-To or references, we already attempted id-match above.
+    // So here try subject-id match (already attempted), else skip fallback.
+    if (inReplyTo || (references && references.length > 0)) {
+      // do nothing extra (id-search already performed)
+    } else {
+      // Not a reply: only match if subject contains an explicit ticket id
+      const match = subject.match(/([a-f0-9]{24})/i);
+      if (match) {
+        try {
+          matched = await Ticket.findById(match[1]).exec();
+        } catch (e) { matched = null; }
       }
     }
+
+    if (matched) {
+      ticket = matched;
+      console.log("DIAG: Matched by subject-ticket-id:", ticket._id.toString());
+    } else {
+      // Do NOT fallback to customer+subject fuzzy matching.
+      console.log("DIAG: Skipping fuzzy fallback (strict mode) — will create new ticket.");
+    }
+  } catch (e) {
+    console.error("Strict fallback error:", e);
+  }
+}
+
 
     // Duplicate check: ensure messageId wasn't already processed
     if (messageId) {
