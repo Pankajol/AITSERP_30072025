@@ -151,10 +151,18 @@ export async function POST(req) {
 
     const SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL || FALLBACK_SUPPORT_EMAIL).toLowerCase();
     const smtpUser = (process.env.SMTP_USER || "").toLowerCase();
-    if (!to.toLowerCase().includes(SUPPORT_EMAIL)) {
-      console.warn("Email received to non-support mailbox:", to);
-      return new Response(JSON.stringify({ error: "Invalid mailbox" }), { status: 403 });
-    }
+    // Allow if sent to support mailbox OR if this is clearly a reply (inReplyTo/references present)
+// or the subject contains an explicit ticket id like [Ticket:<24hex>]
+const toLower = (to || "").toLowerCase();
+const subjectHasTicketId = /\b[a-f0-9]{24}\b/i.test(subject || "");
+const isReply = Boolean(inReplyTo) || (Array.isArray(references) && references.length > 0);
+
+// Accept if to contains support email OR this looks like a reply or contains ticket id
+if (!toLower.includes(SUPPORT_EMAIL) && !isReply && !subjectHasTicketId) {
+  console.warn("Email received to non-support mailbox and not a reply/ticket-id:", to);
+  return new Response(JSON.stringify({ error: "Invalid mailbox" }), { status: 403 });
+}
+
 
     // Prevent loops: ignore mail coming from our smtp user
     if (smtpUser && fromEmail.toLowerCase().includes(smtpUser)) {
