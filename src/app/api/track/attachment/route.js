@@ -54,7 +54,7 @@ export async function GET(req) {
     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
   }
 }
-
+  //  yea pass hua to attechement ka url mil jayega uske baad uss url pe redirect kar dena hai
 
 
 // import dbConnect from "@/lib/db";
