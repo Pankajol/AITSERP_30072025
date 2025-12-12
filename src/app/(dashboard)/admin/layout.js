@@ -188,7 +188,9 @@ export default function DashboardLayout({ children }) {
             <Item href="/admin/supplier" icon={<HiUserGroup />} label="Supplier View" close={closeSidebar} />
             <Item href="/admin/item" icon={<HiCube />} label="Item View" close={closeSidebar} />
             <Item href="/admin/account-head-view" icon={<HiOutlineLibrary />} label="Account Head View" close={closeSidebar} />
-            <Item href="/admin/bank-head-details-view" icon={<HiCurrencyDollar />} label="General Ledger View" close={closeSidebar} />
+            <Item href="/admin/bank-head-details-view" icon={<HiCurrencyDollar />} label="General Ledger View " close={closeSidebar} />
+            <Item href="/admin/email-templates" icon={<HiDocumentText />} label="Email Templates" close={closeSidebar} />
+            <Item href="/admin/email-masters" icon={<HiOutlineCreditCard />} label="Email & App Password Master" close={closeSidebar} />
           </Section>
 
           {/* Other sections ... add your other menus here in the same format ... */}
