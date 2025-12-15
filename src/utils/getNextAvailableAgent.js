@@ -1,74 +1,70 @@
 import CompanyUser from "@/models/CompanyUser";
-import Customer from "@/models/CustomerModel";
 
 /**
- * Get next available agent using round-robin
- * - skips inactive / on-leave / holiday agents
- * - updates customer.lastAssignedAgentIndex
+ * Returns next AVAILABLE agent for a customer
+ * - respects isActive
+ * - respects leave / holiday
+ * - round-robin safe
  */
 export async function getNextAvailableAgent(customer) {
-  if (
-    !customer ||
-    !Array.isArray(customer.assignedAgents) ||
-    customer.assignedAgents.length === 0
-  ) {
+  if (!customer?.assignedAgents?.length) {
+    console.log("❌ No assignedAgents on customer");
     return null;
   }
 
-  const agents = customer.assignedAgents.map(String);
-  const totalAgents = agents.length;
+  const agents = await CompanyUser.find({
+    _id: { $in: customer.assignedAgents },
+    isActive: { $ne: false },
+  }).lean();
 
-  let lastIndex =
-    typeof customer.lastAssignedAgentIndex === "number"
-      ? customer.lastAssignedAgentIndex
-      : -1;
+  if (!agents.length) {
+    console.log("❌ No active agents found");
+    return null;
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 🔁 try max N agents (round-robin)
-  for (let i = 1; i <= totalAgents; i++) {
-    const nextIndex = (lastIndex + i) % totalAgents;
-    const agentId = agents[nextIndex];
-
-    const agent = await CompanyUser.findById(agentId).lean();
-    if (!agent) continue;
-
-    // ❌ inactive user
-    if (agent.isActive === false) continue;
-
-    // ❌ agent role missing
-    if (!agent.roles?.includes("agent")) continue;
-
-    // ❌ leave check (optional fields)
-    if (agent.leaveFrom && agent.leaveTo) {
-      const from = new Date(agent.leaveFrom);
-      const to = new Date(agent.leaveTo);
+  // ✅ filter available agents
+  const availableAgents = agents.filter((a) => {
+    // leave check
+    if (a.leaveFrom && a.leaveTo) {
+      const from = new Date(a.leaveFrom);
+      const to = new Date(a.leaveTo);
       from.setHours(0, 0, 0, 0);
       to.setHours(0, 0, 0, 0);
-
-      if (today >= from && today <= to) continue;
+      if (today >= from && today <= to) return false;
     }
 
-    // ❌ holiday check (array of dates)
-    if (Array.isArray(agent.holidays)) {
-      const isHoliday = agent.holidays.some((d) => {
+    // holiday check
+    if (Array.isArray(a.holidays)) {
+      const isHoliday = a.holidays.some((d) => {
         const hd = new Date(d);
         hd.setHours(0, 0, 0, 0);
         return hd.getTime() === today.getTime();
       });
-      if (isHoliday) continue;
+      if (isHoliday) return false;
     }
 
-    // ✅ FOUND VALID AGENT
-    await Customer.updateOne(
-      { _id: customer._id },
-      { $set: { lastAssignedAgentIndex: nextIndex } }
-    );
+    return true;
+  });
 
-    return agent._id;
+  if (!availableAgents.length) {
+    console.log("⚠️ All agents unavailable today");
+    return null;
   }
 
-  // ❌ no agent available
-  return null;
+  // 🔁 ROUND ROBIN
+  const lastIndex = customer.lastAssignedAgentIndex ?? -1;
+  const nextIndex = (lastIndex + 1) % availableAgents.length;
+  const selected = availableAgents[nextIndex];
+
+  // save index back to customer
+  await customer.constructor.updateOne(
+    { _id: customer._id },
+    { $set: { lastAssignedAgentIndex: nextIndex } }
+  );
+
+  console.log("🎯 Selected agent:", selected._id.toString());
+  return selected._id;
 }
