@@ -171,9 +171,7 @@ ticket = await Ticket.create({
   source: "email",
   status: "open",
 
-  assignedTo: agentId,
-  assignedAt: assignedAgentId ? new Date() : null,
-  assignmentSource: "customer-round-robin",
+  agentId: agentId || null,   // ✅ ONLY THIS
 
   emailThreadId: messageId || `local-${Date.now()}`,
   messages: [
@@ -187,9 +185,8 @@ ticket = await Ticket.create({
     },
   ],
   lastReplyAt: new Date(),
-  createdAt: new Date(),
-  updatedAt: new Date(),
 });
+
 
 
     return new Response(
