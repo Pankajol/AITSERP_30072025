@@ -5,8 +5,9 @@ import CompanyUser from "@/models/CompanyUser";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 
 /**
- * Run this job every day / hour
- * Reassign tickets if current agent unavailable
+ * 🔁 Auto Reassign Tickets
+ * - Reassign tickets if current agent is unavailable
+ * - Uses agentId (FINAL schema)
  */
 export async function autoReassignTickets() {
   console.log("🔁 Auto-reassign job started");
@@ -16,17 +17,22 @@ export async function autoReassignTickets() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 1️⃣ Find all open tickets with assigned agent
+  /* ===============================
+     1️⃣ Find tickets with agentId
+  =============================== */
   const tickets = await Ticket.find({
-    status: { $in: ["open", "pending"] },
-    assignedTo: { $ne: null },
+    status: { $in: ["open", "in_progress", "waiting"] },
+    agentId: { $ne: null },
   }).lean();
 
   console.log(`🔎 Found ${tickets.length} tickets to evaluate`);
 
   for (const ticket of tickets) {
     try {
-      const agent = await CompanyUser.findById(ticket.assignedTo).lean();
+      /* ===============================
+         2️⃣ Load assigned agent
+      =============================== */
+      const agent = await CompanyUser.findById(ticket.agentId).lean();
 
       let agentUnavailable = false;
 
@@ -58,16 +64,24 @@ export async function autoReassignTickets() {
         if (isHoliday) agentUnavailable = true;
       }
 
-      // ✅ agent still valid → skip
+      // ✅ agent still available → skip
       if (!agentUnavailable) continue;
 
-      // 2️⃣ Fetch customer
+      console.log(
+        `⚠️ Agent unavailable for ticket ${ticket._id}, reassigning`
+      );
+
+      /* ===============================
+         3️⃣ Fetch customer
+      =============================== */
       if (!ticket.customerId) continue;
 
       const customer = await Customer.findById(ticket.customerId);
       if (!customer) continue;
 
-      // 3️⃣ Find next available agent
+      /* ===============================
+         4️⃣ Find next available agent
+      =============================== */
       const newAgentId = await getNextAvailableAgent(customer);
 
       if (!newAgentId) {
@@ -75,23 +89,27 @@ export async function autoReassignTickets() {
         continue;
       }
 
-      // 4️⃣ Update ticket
+      /* ===============================
+         5️⃣ Update ticket
+      =============================== */
       await Ticket.updateOne(
         { _id: ticket._id },
         {
           $set: {
-            assignedTo: newAgentId,
-            assignedAt: new Date(),
-            assignmentSource: "auto-reassign-cron",
+            agentId: newAgentId,
+            updatedAt: new Date(),
           },
         }
       );
 
       console.log(
-        `✅ Ticket ${ticket._id} reassigned from ${ticket.assignedTo} → ${newAgentId}`
+        `✅ Ticket ${ticket._id} reassigned ${ticket.agentId} → ${newAgentId}`
       );
     } catch (err) {
-      console.error(`❌ Failed to process ticket ${ticket._id}`, err);
+      console.error(
+        `❌ Failed to process ticket ${ticket._id}`,
+        err
+      );
     }
   }
 
