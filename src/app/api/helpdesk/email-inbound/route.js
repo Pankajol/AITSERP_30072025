@@ -158,38 +158,39 @@ export async function POST(req) {
 
     /* ===================== NEW TICKET ===================== */
 
-    let assignedAgentId = null;
+   
+let agentId = null;
+if (customer) {
+  agentId = await getNextAvailableAgent(customer);
+}
 
-    if (customer) {
-      assignedAgentId = await getNextAvailableAgent(customer);
-    }
+ticket = await Ticket.create({
+  customerId: customer?._id || null,
+  customerEmail: fromEmail,
+  subject,
+  source: "email",
+  status: "open",
 
-    ticket = await Ticket.create({
-      customerId: customer?._id || null,
-      customerEmail: fromEmail,
-      subject,
-      source: "email",
-      status: "open",
+  assignedTo: agentId,
+  assignedAt: assignedAgentId ? new Date() : null,
+  assignmentSource: "customer-round-robin",
 
-      assignedTo: assignedAgentId || null,
-      assignedAt: assignedAgentId ? new Date() : null,
-      assignmentSource: "customer-round-robin",
-
-      emailThreadId: messageId || `local-${Date.now()}`,
-      messages: [
-        {
-          sender: null,
-          senderType: "customer",
-          externalEmail: fromEmail,
-          message: text || html,
-          messageId,
-          createdAt: new Date(),
-        },
-      ],
-      lastReplyAt: new Date(),
+  emailThreadId: messageId || `local-${Date.now()}`,
+  messages: [
+    {
+      sender: null,
+      senderType: "customer",
+      externalEmail: fromEmail,
+      message: text || html,
+      messageId,
       createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    },
+  ],
+  lastReplyAt: new Date(),
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
 
     return new Response(
       JSON.stringify({ success: true, ticketId: ticket._id }),
