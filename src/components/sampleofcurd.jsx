@@ -12,6 +12,7 @@ export default function CustomerManagement() {
   const [view, setView] = useState("list");
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+   const [availableUsers, setAvailableUsers] = useState([]);
 
   // ✅ MISSING — now added
   const [uploading, setUploading] = useState(false);
@@ -39,7 +40,47 @@ export default function CustomerManagement() {
     contactPersonName: "",
     commissionRate: "",
     glAccount: null,
+     assignedAgents: [],
   });
+
+
+    // 1. Filtered Users load karne ka logic
+ const loadUsers = async () => {
+  try {
+    const token = localStorage.getItem("token");
+    const res = await axios.get("/api/company/users", { 
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    
+    // Log check karne ke liye (Optional)
+    console.log("Raw Data from API:", res.data);
+
+    // Filter Logic: Agar roles array mein 'Support Executive' ya 'Employee' hai
+    const filtered = (res.data || []).filter(user => 
+      user.roles && user.roles.some(role => role === "Support Executive" || role === "Agent" )
+    );
+    
+    setAvailableUsers(filtered);
+  } catch (err) {
+    toast.error("Users load karne mein error");
+    console.error(err);
+  }
+};
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  // 2. Selection handle karne ka logic (Checkbox style)
+  const handleAgentToggle = (userId) => {
+    setCustomerDetails((prev) => {
+      const agents = prev.assignedAgents.includes(userId)
+        ? prev.assignedAgents.filter((id) => id !== userId) // Remove
+        : [...prev.assignedAgents, userId]; // Add
+      return { ...prev, assignedAgents: agents };
+    });
+  };
+
 
   /* ✅ FETCH CUSTOMERS */
   const fetchCustomers = async () => {
@@ -150,6 +191,7 @@ export default function CustomerManagement() {
     const token = localStorage.getItem("token");
     const payload = {
       ...customerDetails,
+      assignedAgents: customerDetails.assignedAgents.map((id) => ({ _id: id })),
       glAccount: customerDetails.glAccount?._id || null,
     };
 
@@ -433,7 +475,7 @@ const handleBulkUpload = async (e) => {
         <table className="min-w-full bg-white divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {["Code", "Name", "Email", "Group", "Type", "GL Account", "Actions"].map(
+              {["Code", "Name", "Email", "Group", "Type", "GL Account","Assigned Agents", "Actions"].map(
                 (h) => (
                   <th key={h} className="px-4 py-2 text-left text-sm font-medium">
                     {h}
@@ -450,7 +492,13 @@ const handleBulkUpload = async (e) => {
                 <td className="px-4 py-2">{c.emailId}</td>
                 <td className="px-4 py-2">{c.customerGroup}</td>
                 <td className="px-4 py-2">{c.customerType}</td>
+            
                 <td className="px-4 py-2">{c.glAccount?.accountName || "N/A"}</td>
+              <td className="px-4 py-2 text-sm">
+  {c.assignedAgents && c.assignedAgents.length > 0 
+    ? c.assignedAgents.map(agent => agent.name).join(", ") 
+    : "No Agent"}
+</td>
                 <td className="px-4 py-2 flex gap-3">
                   <button onClick={() => handleEdit(c)} className="text-blue-600">
                     <FaEdit />
@@ -796,6 +844,27 @@ const renderFormView = () => (
           />
         </div>
       </div>
+      {/* Assigned Agents */}
+      {/* 3. UI for Assigned Agents */}
+      {/* ASSIGNED AGENTS SECTION */}
+          <div className="border p-4 rounded bg-blue-50">
+            <h3 className="text-sm font-bold text-blue-700 mb-3 uppercase tracking-tight">Assign Agents & Support Staff</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {availableUsers.map(user => (
+                console.log("Available User:", user) || 
+                <label key={user._id} className={`flex flex-col p-2 border rounded cursor-pointer transition-all ${customerDetails.assignedAgents.includes(user._id) ? "bg-blue-600 text-white border-blue-700" : "bg-white text-gray-700 border-gray-200"}`}>
+                  <div className="flex items-center">
+                    <input type="checkbox" className="mr-2" checked={customerDetails.assignedAgents.includes(user._id)} onChange={() => handleAgentToggle(user._id)} />
+                    <div>
+                      <div className="text-sm font-bold">Name:{user.name || user.name}</div>
+                      <div className={`text-[10px] uppercase ${customerDetails.assignedAgents.includes(user._id) ? "text-blue-100" : "text-gray-500"}`}>{user.roles?.join(", ")}</div>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
 
       {/* Footer Buttons */}
       <div className="flex justify-end space-x-3 mt-6">

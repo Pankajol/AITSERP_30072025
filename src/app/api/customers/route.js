@@ -55,7 +55,9 @@ export async function GET(req) {
     // Restrict populated fields to avoid extra data
     const customers = await Customer.find({
       companyId: user.companyId,
-    }).populate("glAccount", "accountName accountCode");
+    })
+    .populate("assignedAgents", "name email")
+    .populate("glAccount", "accountName accountCode");
 
     return NextResponse.json({ success: true, data: customers }, { status: 200 });
   } catch (err) {

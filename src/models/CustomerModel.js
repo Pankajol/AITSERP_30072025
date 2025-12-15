@@ -181,6 +181,13 @@ const addressSchema = new mongoose.Schema({
 const customerSchema = new mongoose.Schema({
   companyId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
   createdBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },
+ 
+
+assignedAgents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' }],
+lastAssignedAgentIndex: {
+  type: Number,
+  default: -1,
+},
 
   customerCode: {
     type: String,

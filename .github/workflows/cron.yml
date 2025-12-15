@@ -14,3 +14,5 @@ jobs:
       - name: Call API endpoint
         run: |
           curl -X GET https://aitserp-30072025.vercel.app/api/cron/process-campaigns
+
+

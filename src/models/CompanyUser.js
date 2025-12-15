@@ -33,6 +33,19 @@ const CompanyUserSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     roles: [{ type: String }],
+     // 🔥 AGENT STATUS
+  isActive: { type: Boolean, default: true },
+
+  onLeave: { type: Boolean, default: false },
+
+  holidays: [
+    {
+      from: Date,
+      to: Date,
+    }
+  ],
+   // 🔁 for fair assignment
+  lastAssignedAt: { type: Date },
     modules: {
       type: Map,
       of: ModuleSchema, // ✅ modules per module name
