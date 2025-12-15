@@ -160,8 +160,16 @@ export async function POST(req) {
 
    
 let agentId = null;
+
 if (customer) {
+  console.log("👤 Customer found:", customer._id.toString());
+  console.log("👥 Customer assignedAgents:", customer.assignedAgents);
+
   agentId = await getNextAvailableAgent(customer);
+
+  console.log("🎯 Selected agentId:", agentId);
+} else {
+  console.log("❌ No customer found for email:", fromEmail);
 }
 
 ticket = await Ticket.create({

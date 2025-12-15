@@ -1,6 +1,7 @@
 // helpers/autoAssignAgent.js
 
 import CompanyUser from "@/models/CompanyUser";
+import Customer from "@/models/CustomerModel";
 import { isAgentAvailable } from "./agentAvailability";
 
 export async function getNextAvailableAgent(customer) {
