@@ -171,12 +171,12 @@ ticket = await Ticket.create({
   source: "email",
   status: "open",
 
-  agentId: agentId || null,   // ✅ ONLY THIS
+  // ✅ CORRECT FIELD
+  agentId: agentId || null,
 
   emailThreadId: messageId || `local-${Date.now()}`,
   messages: [
     {
-      sender: null,
       senderType: "customer",
       externalEmail: fromEmail,
       message: text || html,

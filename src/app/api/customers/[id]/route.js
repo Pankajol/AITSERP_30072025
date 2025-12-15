@@ -51,6 +51,7 @@ export async function GET(req, { params }) {
 ================================ */
 export async function PUT(req, { params }) {
   await dbConnect();
+
   try {
     const token = getTokenFromHeader(req);
     let user;
@@ -67,10 +68,19 @@ export async function PUT(req, { params }) {
     const { id } = params;
     const body = await req.json();
 
+    // ✅ FIX: assignedAgents ko ObjectId array me convert karo
+    if (Array.isArray(body.assignedAgents)) {
+      body.assignedAgents = body.assignedAgents.map(a =>
+        typeof a === "string"
+          ? a
+          : a?._id?._id || a?._id
+      );
+    }
+
     const updated = await Customer.findOneAndUpdate(
       { _id: id, companyId: user.companyId },
-      body,
-      { new: true }
+      { $set: body },
+      { new: true, runValidators: true }
     );
 
     if (!updated) {
