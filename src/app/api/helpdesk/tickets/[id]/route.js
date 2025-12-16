@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
+import CompanyUser from "@/models/CompanyUser";
+import Customer from "@/models/CustomerModel";
+import Message from "@/models/helpdesk/Message";
+
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 const DEFAULT_AVATAR = "/mnt/data/c4bfcf65-19f2-400e-a777-0771674c53c6.png";
@@ -25,7 +29,7 @@ export async function GET(req, { params }) {
       return NextResponse.json({ success: false, msg: "Ticket id missing" }, { status: 400 });
 
     const ticket = await Ticket.findById(id)
-      .populate("customerId", "name email avatar")
+      .populate("customerId", "customerName emailId avatar")
       .populate("agentId", "name email avatar")
       .populate("messages.sender", "name email avatar")
       .lean();
