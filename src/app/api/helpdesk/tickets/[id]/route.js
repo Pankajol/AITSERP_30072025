@@ -3,7 +3,7 @@ import connectDB from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import CompanyUser from "@/models/CompanyUser";
 import Customer from "@/models/CustomerModel";
-import Message from "@/models/helpdesk/Message";
+
 
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
