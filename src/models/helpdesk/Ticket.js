@@ -15,12 +15,12 @@ const TicketMessageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompanyUser",
       required: function () {
-        return this.senderType !== "customer";   // customer email me id nahi hogi
+        return this.senderType !== "customer";
       },
     },
 
     externalEmail: {
-      type: String, // customer ka real email
+      type: String,
     },
 
     message: {
@@ -37,12 +37,18 @@ const TicketMessageSchema = new mongoose.Schema(
 
     fromEmail: String,
     toEmail: String,
-    messageId: String, // Outlook message-id
+    messageId: String,
     inReplyTo: String,
 
     aiSuggested: {
       type: Boolean,
       default: false,
+    },
+
+    sentiment: {
+      type: String,
+      enum: ["positive", "neutral", "negative"],
+      default: "neutral",
     },
   },
   { timestamps: true }
@@ -51,13 +57,11 @@ const TicketMessageSchema = new mongoose.Schema(
 /* =========================
    Ticket Main Schema
 ========================== */
-
 const TicketSchema = new mongoose.Schema(
   {
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
-      
     },
 
     customerId: {
@@ -69,12 +73,14 @@ const TicketSchema = new mongoose.Schema(
     customerEmail: {
       type: String,
       required: true,
+      index: true,
     },
 
     agentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompanyUser",
       default: null,
+      index: true,
     },
 
     source: {
@@ -97,6 +103,7 @@ const TicketSchema = new mongoose.Schema(
       type: String,
       enum: ["open", "in_progress", "waiting", "closed"],
       default: "open",
+      index: true,
     },
 
     priority: {
@@ -112,16 +119,50 @@ const TicketSchema = new mongoose.Schema(
       default: "",
     },
 
+    // ✅ IMPORTANT – SLA & AUTO CLOSE
     lastReplyAt: {
       type: Date,
       default: Date.now,
     },
-     lastCustomerReplyAt,
-  lastAgentReplyAt,
-  autoClosed: Boolean,
 
-    emailThreadId: String,
+    lastCustomerReplyAt: {
+      type: Date,
+      default: null,
+    },
 
+    lastAgentReplyAt: {
+      type: Date,
+      default: null,
+    },
+
+    autoClosed: {
+      type: Boolean,
+      default: false,
+    },
+
+    emailThreadId: {
+      type: String,
+      index: true,
+    },
+
+    sentiment: {
+      type: String,
+      enum: ["positive", "neutral", "negative"],
+      default: "neutral",
+    },
+
+    feedbackRating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
+    },
+
+    feedbackSentiment: {
+      type: String,
+      enum: ["positive", "neutral", "negative"],
+      default: null,
+    },
   },
   { timestamps: true }
 );

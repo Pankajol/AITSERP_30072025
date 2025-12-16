@@ -8,7 +8,7 @@ import TicketFeedback from "@/models/helpdesk/TicketFeedback";
 import Notification from "@/models/helpdesk/Notification";
 
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
-import { sendMail } from "@/lib/mailer";
+import sendMail  from "@/lib/mailer";
 
 const FEEDBACK_SECRET = process.env.FEEDBACK_SECRET;
 const APP_URL = process.env.NEXT_PUBLIC_BASE_URL;
