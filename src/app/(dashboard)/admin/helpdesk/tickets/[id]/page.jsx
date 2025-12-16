@@ -94,7 +94,7 @@ export default function TicketDetailPage({ params }) {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await api().post("/api/helpdesk/update-status", {
+      const res = await api().post("/api/helpdesk/close", {
         ticketId,
         status: "closed",
       });
