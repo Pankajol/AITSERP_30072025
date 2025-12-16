@@ -47,7 +47,9 @@ export async function GET(req) {
     // (no filters needed)
 
     const tickets = await Ticket.find(query)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+       .populate("agentId", "name email avatar") // 🔥 REQUIRED
+      .populate("customerId", "customerName email");;
 
     return new Response(
       JSON.stringify({ success: true, tickets }),

@@ -14,7 +14,7 @@ const VALID_ROLES = [
   "Inventory Manager",
   "Accounts Manager",
   "HR Manager",
-  "Support Executive",
+  "Agent",
   "Production Head",
   "Project Manager",
   "Employee",
@@ -58,10 +58,12 @@ export async function GET(req) {
 }
 
 // ─── POST /api/company/users ───
+// ─── POST /api/company/users ───
 export async function POST(req) {
   try {
     const company = verifyCompany(req);
-    const { name, email, password, roles = [], modules = {} } = await req.json();
+    const { employeeId, name, email, password, roles = [], modules = {} } =
+      await req.json();
 
     // Validation
     if (!name || !email || !password) {
@@ -72,29 +74,45 @@ export async function POST(req) {
     }
 
     if (!Array.isArray(roles) || roles.length === 0) {
-      return NextResponse.json({ message: "At least one role required" }, { status: 400 });
+      return NextResponse.json(
+        { message: "At least one role required" },
+        { status: 400 }
+      );
     }
 
     const invalidRole = roles.find((r) => !VALID_ROLES.includes(r));
     if (invalidRole) {
-      return NextResponse.json({ message: `Invalid role: ${invalidRole}` }, { status: 400 });
+      return NextResponse.json(
+        { message: `Invalid role: ${invalidRole}` },
+        { status: 400 }
+      );
     }
 
     if (typeof modules !== "object" || Array.isArray(modules)) {
-      return NextResponse.json({ message: "Modules must be an object" }, { status: 400 });
+      return NextResponse.json(
+        { message: "Modules must be an object" },
+        { status: 400 }
+      );
     }
 
     await dbConnect();
 
-    const dup = await CompanyUser.findOne({ companyId: company.companyId, email });
+    const dup = await CompanyUser.findOne({
+      companyId: company.companyId,
+      email,
+    });
     if (dup) {
-      return NextResponse.json({ message: "Email already exists" }, { status: 409 });
+      return NextResponse.json(
+        { message: "Email already exists" },
+        { status: 409 }
+      );
     }
 
     const hash = await bcrypt.hash(password, 10);
 
     const user = await CompanyUser.create({
       companyId: company.companyId,
+      employeeId: employeeId || undefined, // ✅ optional employee link
       name,
       email,
       password: hash,
@@ -102,7 +120,7 @@ export async function POST(req) {
       modules,
     });
 
-    localStorage.setItem("user", JSON.stringify(user));
+    // ✅ JUST RETURN DATA (NO localStorage here)
     return NextResponse.json(
       {
         id: user._id,
@@ -110,6 +128,7 @@ export async function POST(req) {
         email: user.email,
         roles: user.roles,
         modules: user.modules,
+        employeeId: user.employeeId || null,
       },
       { status: 201 }
     );

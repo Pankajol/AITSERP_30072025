@@ -1,70 +1,82 @@
 import CompanyUser from "@/models/CompanyUser";
+import Leave from "@/models/hr/Leave";
 
-/**
- * Returns next AVAILABLE agent for a customer
- * - respects isActive
- * - respects leave / holiday
- * - round-robin safe
- */
+
 export async function getNextAvailableAgent(customer) {
   if (!customer?.assignedAgents?.length) {
     console.log("❌ No assignedAgents on customer");
     return null;
   }
 
+  // normalize today (IST-safe)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // fetch agents
   const agents = await CompanyUser.find({
     _id: { $in: customer.assignedAgents },
     isActive: { $ne: false },
   }).lean();
 
   if (!agents.length) {
-    console.log("❌ No active agents found");
+    console.log("❌ No active agents");
     return null;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // filter availability
+  const availableAgents = [];
 
-  // ✅ filter available agents
-  const availableAgents = agents.filter((a) => {
-    // leave check
-    if (a.leaveFrom && a.leaveTo) {
-      const from = new Date(a.leaveFrom);
-      const to = new Date(a.leaveTo);
-      from.setHours(0, 0, 0, 0);
-      to.setHours(0, 0, 0, 0);
-      if (today >= from && today <= to) return false;
+  for (const agent of agents) {
+    // 🔴 LEAVE CHECK
+    const onLeave = await Leave.findOne({
+      agentId: agent._id,
+      status: "Approved",
+      fromDate: { $lte: today },
+      toDate: { $gte: today },
+    });
+
+    if (onLeave) {
+      console.log("⛔ On leave:", agent._id.toString());
+      continue;
     }
 
-    // holiday check
-    if (Array.isArray(a.holidays)) {
-      const isHoliday = a.holidays.some((d) => {
+    // 🔴 HOLIDAY CHECK
+    if (Array.isArray(agent.holidays)) {
+      const isHoliday = agent.holidays.some((d) => {
         const hd = new Date(d);
         hd.setHours(0, 0, 0, 0);
         return hd.getTime() === today.getTime();
       });
-      if (isHoliday) return false;
+
+      if (isHoliday) {
+        console.log("🎌 Holiday:", agent._id.toString());
+        continue;
+      }
     }
 
-    return true;
-  });
+    availableAgents.push(agent);
+  }
 
   if (!availableAgents.length) {
-    console.log("⚠️ All agents unavailable today");
+    console.log("⚠️ No agents available today");
     return null;
   }
 
-  // 🔁 ROUND ROBIN
-  const lastIndex = customer.lastAssignedAgentIndex ?? -1;
-  const nextIndex = (lastIndex + 1) % availableAgents.length;
-  const selected = availableAgents[nextIndex];
-
-  // save index back to customer
-  await customer.constructor.updateOne(
-    { _id: customer._id },
-    { $set: { lastAssignedAgentIndex: nextIndex } }
+  // 🔁 SAFE ROUND ROBIN (by agentId)
+  const lastAgentId = customer.lastAssignedAgentId;
+  let index = availableAgents.findIndex(
+    (a) => a._id.toString() === lastAgentId
   );
 
-  console.log("🎯 Selected agent:", selected._id.toString());
+  const nextIndex = (index + 1) % availableAgents.length;
+  const selected = availableAgents[nextIndex];
+
+  // save selected agent id
+  await customer.constructor.updateOne(
+    { _id: customer._id },
+    { $set: { lastAssignedAgentId: selected._id.toString() } }
+  );
+
+  console.log("🎯 Assigned agent:", selected._id.toString());
   return selected._id;
 }

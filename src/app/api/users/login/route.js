@@ -115,7 +115,7 @@ export async function POST(req) {
         email: user.email,
         roles: Array.isArray(user.roles) ? user.roles : [],
         modules,
-        type: 'company',
+        type: 'user',
       },
       SECRET,
       { expiresIn: '1d' }

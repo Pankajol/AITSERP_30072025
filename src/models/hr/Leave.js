@@ -8,11 +8,11 @@ const LeaveSchema = new mongoose.Schema(
       required: true,
     },
 
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "CompanyUser",
-      required: true,
-    },
+ employeeId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Employee",
+  required: true,
+},
 
     fromDate: { type: Date, required: true },
     toDate: { type: Date, required: true },

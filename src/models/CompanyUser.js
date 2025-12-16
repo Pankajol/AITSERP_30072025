@@ -29,6 +29,8 @@ const ModuleSchema = new mongoose.Schema(
 const CompanyUserSchema = new mongoose.Schema(
   {
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
+      employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },

@@ -72,14 +72,19 @@ export default function CustomerManagement() {
   }, []);
 
   // 2. Selection handle karne ka logic (Checkbox style)
-  const handleAgentToggle = (userId) => {
-    setCustomerDetails((prev) => {
-      const agents = prev.assignedAgents.includes(userId)
-        ? prev.assignedAgents.filter((id) => id !== userId) // Remove
-        : [...prev.assignedAgents, userId]; // Add
-      return { ...prev, assignedAgents: agents };
-    });
-  };
+const handleAgentToggle = (userId) => {
+  setCustomerDetails((prev) => {
+    const ids = prev.assignedAgents.map(id => id.toString());
+
+    return {
+      ...prev,
+      assignedAgents: ids.includes(userId.toString())
+        ? ids.filter(id => id !== userId.toString())
+        : [...ids, userId.toString()],
+    };
+  });
+};
+
 
 
   /* ✅ FETCH CUSTOMERS */
@@ -236,16 +241,23 @@ export default function CustomerManagement() {
       contactPersonName: "",
       commissionRate: "",
       glAccount: null,
+      assignedAgents: [],
     });
 
     setView("list");
   };
 
   /* ✅ EDIT */
-  const handleEdit = (c) => {
-    setCustomerDetails(c);
-    setView("form");
-  };
+ const handleEdit = (c) => {
+  setCustomerDetails({
+    ...c,
+    assignedAgents: (c.assignedAgents || []).map((a) =>
+      typeof a === "string" ? a : a._id
+    ),
+  });
+  setView("form");
+};
+
 
   /* ✅ DELETE */
   const handleDelete = async (id) => {
@@ -305,6 +317,7 @@ export default function CustomerManagement() {
 
     // ✅ GL Account (BankHead)
     "glAccount"
+
   ];
 
   const sampleRow = [
@@ -848,22 +861,52 @@ const renderFormView = () => (
       {/* 3. UI for Assigned Agents */}
       {/* ASSIGNED AGENTS SECTION */}
           <div className="border p-4 rounded bg-blue-50">
-            <h3 className="text-sm font-bold text-blue-700 mb-3 uppercase tracking-tight">Assign Agents & Support Staff</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {availableUsers.map(user => (
-                console.log("Available User:", user) || 
-                <label key={user._id} className={`flex flex-col p-2 border rounded cursor-pointer transition-all ${customerDetails.assignedAgents.includes(user._id) ? "bg-blue-600 text-white border-blue-700" : "bg-white text-gray-700 border-gray-200"}`}>
-                  <div className="flex items-center">
-                    <input type="checkbox" className="mr-2" checked={customerDetails.assignedAgents.includes(user._id)} onChange={() => handleAgentToggle(user._id)} />
-                    <div>
-                      <div className="text-sm font-bold">Name:{user.name || user.name}</div>
-                      <div className={`text-[10px] uppercase ${customerDetails.assignedAgents.includes(user._id) ? "text-blue-100" : "text-gray-500"}`}>{user.roles?.join(", ")}</div>
-                    </div>
-                  </div>
-                </label>
-              ))}
+  <h3 className="text-sm font-bold text-blue-700 mb-3 uppercase tracking-tight">
+    Assign Agents & Support Staff
+  </h3>
+
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    {availableUsers.map((user) => {
+      const isAssigned = customerDetails.assignedAgents
+        ?.map(id => id.toString())
+        .includes(user._id.toString());
+
+      return (
+        <label
+          key={user._id}
+          className={`flex flex-col p-2 border rounded cursor-pointer transition-all ${
+            isAssigned
+              ? "bg-blue-600 text-white border-blue-700"
+              : "bg-white text-gray-700 border-gray-200"
+          }`}
+        >
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              className="mr-2"
+              checked={isAssigned}
+              onChange={() => handleAgentToggle(user._id)}
+            />
+
+            <div>
+              <div className="text-sm font-bold">
+                Name: {user.name}
+              </div>
+              <div
+                className={`text-[10px] uppercase ${
+                  isAssigned ? "text-blue-100" : "text-gray-500"
+                }`}
+              >
+                {user.roles?.join(", ")}
+              </div>
             </div>
           </div>
+        </label>
+      );
+    })}
+  </div>
+</div>
+
 
 
       {/* Footer Buttons */}
