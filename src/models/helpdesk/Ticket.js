@@ -62,7 +62,7 @@ const TicketSchema = new mongoose.Schema(
 
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "CompanyUser",
+      ref: "Customer",
       default: null,
     },
 

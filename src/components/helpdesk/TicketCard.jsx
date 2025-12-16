@@ -34,6 +34,7 @@ export default function TicketCard({ ticket }) {
 
         {/* LEFT */}
         <div className="space-y-2">
+          <h1 className="text-lg font-semibold">{ticket.customerEmail}</h1>
           <h2 className="text-lg font-bold text-gray-800">
             {ticket.subject}
           </h2>

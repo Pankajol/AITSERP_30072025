@@ -1,0 +1,15 @@
+name: Helpdesk Cron Jobs
+
+on:
+  schedule:
+    - cron: "0 * * * *" # every hour
+  workflow_dispatch:
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Helpdesk Cron API
+        run: |
+          curl -X GET https://aitserp-30072025.vercel.app/api/cron/run?secret=${{ secrets.CRON_SECRET }}"
