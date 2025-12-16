@@ -1,5 +1,6 @@
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
+import CompanyUser from "@/models/CompanyUser";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 export async function GET(req) {
@@ -47,9 +48,10 @@ export async function GET(req) {
     // (no filters needed)
 
     const tickets = await Ticket.find(query)
-      .sort({ createdAt: -1 })
-       .populate("agentId", "name email avatar") // 🔥 REQUIRED
-      .populate("customerId", "customerName email");;
+     .populate("agentId", "name email avatar") // 🔥 REQUIRED
+      .populate("customerId", "customerName email")
+      .sort({ createdAt: -1 });
+      
 
     return new Response(
       JSON.stringify({ success: true, tickets }),
