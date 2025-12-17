@@ -6,7 +6,7 @@ const TicketFeedbackSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Ticket",
       required: true,
-      unique: true, // 🔒 ONE FEEDBACK PER TICKET
+      unique: true,
       index: true,
     },
 
@@ -14,6 +14,12 @@ const TicketFeedbackSchema = new mongoose.Schema(
       type: String,
       required: true,
       lowercase: true,
+      index: true,
+    },
+
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CompanyUser", // agent
       index: true,
     },
 
@@ -30,9 +36,21 @@ const TicketFeedbackSchema = new mongoose.Schema(
     },
 
     sentiment: {
+      label: {
+        type: String,
+        enum: ["positive", "neutral", "negative"],
+        default: "neutral",
+      },
+      score: {
+        type: Number, // -1 to +1
+        default: 0,
+      },
+    },
+
+    source: {
       type: String,
-      enum: ["positive", "neutral", "negative"],
-      default: "neutral",
+      enum: ["email", "portal"],
+      default: "email",
     },
   },
   { timestamps: true }
