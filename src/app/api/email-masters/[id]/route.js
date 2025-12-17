@@ -1,6 +1,6 @@
 // /app/api/email-masters/[id]/route.js
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
+import dbConnect from "@/lib/db";
 import EmailMaster from "@/models/emailMaster/emailMaster";
 import crypto from "crypto";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
@@ -76,7 +76,7 @@ async function getCompanyIdFromRequest(req, bodyCandidate) {
 ---------------------------*/
 
 async function getEmail(req, { params }) {
-  await connectDB();
+  await dbConnect();
   const id = params.id;
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
@@ -91,7 +91,7 @@ async function getEmail(req, { params }) {
 }
 
 async function updateEmail(req, { params }) {
-  await connectDB();
+  await dbConnect();
   const id = params.id;
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
@@ -125,7 +125,7 @@ async function updateEmail(req, { params }) {
 }
 
 async function deleteEmail(req, { params }) {
-  await connectDB();
+  await dbConnect();
   const id = params.id;
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
@@ -140,7 +140,7 @@ async function deleteEmail(req, { params }) {
 }
 
 async function patchOp(req, { params }) {
-  await connectDB();
+  await dbConnect();
   const id = params.id;
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 

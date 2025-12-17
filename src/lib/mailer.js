@@ -24,6 +24,15 @@ transporter.verify()
 
 export default transporter;
 
+export async function sendMail({ to, subject, html }) {
+  return transporter.sendMail({
+    from: user,
+    to,
+    subject,
+    html,
+  });
+}
+
 
 export async function sendSalesQuotationEmail(toEmails, salesQuotation) {
   // Build Items Table
