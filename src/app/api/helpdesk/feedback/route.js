@@ -5,7 +5,7 @@ import Ticket from "@/models/helpdesk/Ticket";
 import TicketFeedback from "@/models/helpdesk/TicketFeedback";
 import Notification from "@/models/helpdesk/Notification";
 import sendMail from "@/lib/mailer";
-import feedbackEmail from "@/emails/feedbackEmail"; // ✅ REQUIRED
+import feedbackEmail from "@/lib/feedbackEmail"; // ✅ REQUIRED
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import jwt from "jsonwebtoken";
 
