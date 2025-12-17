@@ -47,13 +47,18 @@ export async function POST(req) {
 
     /* ================= SEND FEEDBACK EMAIL ================= */
     // ✅ server-safe base url
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+   const baseUrl =
+  process.env.APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
 
-    // fire & forget (don’t block response)
-    fetch(`${baseUrl}/api/helpdesk/feedback?ticketId=${ticket._id}`)
-      .catch((err) =>
-        console.error("❌ Feedback trigger failed:", err)
-      );
+if (!baseUrl) {
+  console.error("❌ BASE URL missing");
+} else {
+  fetch(`${baseUrl}/api/helpdesk/feedback?ticketId=${ticket._id}`)
+    .then(() => console.log("✅ Feedback API triggered"))
+    .catch((err) =>
+      console.error("❌ Feedback trigger failed:", err)
+    );
+}
 
     /* ================= RESPONSE ================= */
     return Response.json({
