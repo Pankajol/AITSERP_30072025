@@ -425,6 +425,8 @@ export default function DashboardLayout({ children }) {
             <Item href="/admin/helpdesk/categories" icon={<HiUserGroup />} label="Categories" close={closeSidebar} />
             <Item href="/admin/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" close={closeSidebar} />
             <Item href="/admin/helpdesk/settings" icon={<HiCog />} label="Settings" close={closeSidebar} />
+            <Item href="/admin/helpdesk/feedback" icon={<HiDocumentText />} label="Feedback" close={closeSidebar} />
+            <Item href="/admin/helpdesk/feedback/analytics" icon={<HiChartSquareBar />} label="Feedback Analysis" close={closeSidebar} />
           </Section>
           
 

@@ -7,19 +7,23 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 export async function GET(req) {
   await dbConnect();
 
-  // 🔐 auth (agent/admin)
   const token = getTokenFromHeader(req);
   const user = verifyJWT(token);
 
-  const filter = {};
+  const match = {};
   if (user.role === "agent") {
-    filter.agentId = user._id;
+    match.agentId = user._id;
   }
 
-  const data = await TicketFeedback.find(filter)
-    .populate("ticketId", "subject")
-    .populate("agentId", "name")
-    .sort({ createdAt: -1 });
+  const data = await TicketFeedback.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: "$sentiment.label",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
 
   return Response.json({ data });
 }
