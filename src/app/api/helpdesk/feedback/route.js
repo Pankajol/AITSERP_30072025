@@ -1,77 +1,35 @@
 export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
-import jwt from "jsonwebtoken";
-
 import Ticket from "@/models/helpdesk/Ticket";
 import TicketFeedback from "@/models/helpdesk/TicketFeedback";
 import Notification from "@/models/helpdesk/Notification";
-import { getTokenFromHeader } from "@/lib/auth";
-
+import sendMail from "@/lib/mailer";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
-import sendMail  from "@/lib/mailer";
+import jwt from "jsonwebtoken";
 
-const FEEDBACK_SECRET = process.env.FEEDBACK_SECRET;
-const APP_URL = process.env.NEXT_PUBLIC_BASE_URL;
+/* ================= TOKEN HELPERS ================= */
 
-/* ===================== TOKEN UTILS ===================== */
+const FEEDBACK_SECRET = process.env.FEEDBACK_SECRET || "feedback-secret";
 
-// function generateToken(ticket) {
-//   return jwt.sign(
-//     {
-//       ticketId: ticket._id.toString(),
-//       customerEmail: ticket.customerEmail,
-//     },
-//     FEEDBACK_SECRET,
-//     { expiresIn: "14d" }
-//   );
-// }
-
-    /* ================= AUTH ================= */
-    const token = getTokenFromHeader(req);
-    if (!token) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-
-// function verifyToken(token) {
-//   return jwt.verify(token, FEEDBACK_SECRET);
-// }
-
-/* ===================== EMAIL TEMPLATE ===================== */
-
-function feedbackEmail(ticket, token) {
-  return `
-    <div style="font-family:Arial">
-      <h3>How was our support?</h3>
-
-      <p>Your ticket <b>${ticket.subject}</b> has been closed.</p>
-
-      <p>Please rate your experience:</p>
-
-      <div style="font-size:22px">
-        ${[1,2,3,4,5]
-          .map(
-            r =>
-              `<a href="${APP_URL}/feedback?token=${token}&rate=${r}"
-                 style="text-decoration:none;margin-right:6px">⭐</a>`
-          )
-          .join("")}
-      </div>
-
-      <p style="margin-top:15px">
-        Or leave detailed feedback:
-        <a href="${APP_URL}/feedback?token=${token}">Click here</a>
-      </p>
-
-      <p>Thanks,<br/>Support Team</p>
-    </div>
-  `;
+function generateToken(ticket) {
+  return jwt.sign(
+    {
+      ticketId: ticket._id,
+      customerEmail: ticket.customerEmail,
+    },
+    FEEDBACK_SECRET,
+    { expiresIn: "7d" }
+  );
 }
 
-/* =========================================================
-   GET → SEND FEEDBACK EMAIL (on close / auto-close)
-   ========================================================= */
+function verifyToken(token) {
+  return jwt.verify(token, FEEDBACK_SECRET);
+}
+
+/* =================================================
+   GET → SEND FEEDBACK EMAIL
+================================================= */
 
 export async function GET(req) {
   try {
@@ -89,7 +47,6 @@ export async function GET(req) {
       return Response.json({ error: "Ticket not found" }, { status: 404 });
     }
 
-    // prevent resending if feedback already given
     const exists = await TicketFeedback.findOne({ ticketId });
     if (exists) {
       return Response.json(
@@ -103,7 +60,7 @@ export async function GET(req) {
     await sendMail({
       to: ticket.customerEmail,
       subject: `How was our support? Ticket #${ticket._id}`,
-      html: feedbackEmail(ticket, token),
+      html: feedbackEmail(ticket, token), // assuming defined
     });
 
     return Response.json({
@@ -119,16 +76,15 @@ export async function GET(req) {
   }
 }
 
-/* =========================================================
-   POST → SUBMIT FEEDBACK (email click / frontend)
-   ========================================================= */
+/* =================================================
+   POST → SUBMIT FEEDBACK
+================================================= */
 
 export async function POST(req) {
   try {
     await dbConnect();
-    const body = await req.json();
 
-    const { token, rating, comment = "" } = body;
+    const { token, rating, comment = "" } = await req.json();
 
     if (!token || !rating) {
       return Response.json(
@@ -147,7 +103,6 @@ export async function POST(req) {
       );
     }
 
-    // block duplicate feedback
     const already = await TicketFeedback.findOne({
       ticketId: decoded.ticketId,
     });
@@ -158,7 +113,6 @@ export async function POST(req) {
       );
     }
 
-    // AI sentiment
     const sentiment = await analyzeSentimentAI(comment);
 
     const feedback = await TicketFeedback.create({
@@ -169,7 +123,6 @@ export async function POST(req) {
       sentiment,
     });
 
-    // save summary on ticket
     const ticket = await Ticket.findByIdAndUpdate(
       decoded.ticketId,
       {
@@ -179,7 +132,6 @@ export async function POST(req) {
       { new: true }
     );
 
-    // 🚨 LOW RATING ALERT
     if (rating <= 2 && ticket?.agentId) {
       await Notification.create({
         userId: ticket.agentId,
