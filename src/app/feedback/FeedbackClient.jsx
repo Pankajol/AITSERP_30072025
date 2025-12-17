@@ -22,7 +22,7 @@ export default function FeedbackClient() {
     setLoading(true);
     setMsg("");
 
-    const res = await fetch("/api/feedback", {
+    const res = await fetch("/api/helpdesk/feedback/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, rating, comment }),
