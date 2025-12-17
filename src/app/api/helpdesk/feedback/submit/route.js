@@ -1,3 +1,4 @@
+// app/api/helpdesk/feedback/submit/route.js
 export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
@@ -19,29 +20,19 @@ export async function POST(req) {
       return Response.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    // 🔐 verify token
-    let payload;
-    try {
-      payload = jwt.verify(token, FEEDBACK_SECRET);
-    } catch {
-      return Response.json({ error: "Invalid or expired token" }, { status: 401 });
-    }
-
+    const payload = jwt.verify(token, FEEDBACK_SECRET);
     const { ticketId, customerEmail } = payload;
 
-    // ❌ prevent duplicate
     const exists = await TicketFeedback.findOne({ ticketId });
     if (exists) {
       return Response.json({ error: "Feedback already submitted" }, { status: 409 });
     }
 
-    // 🤖 sentiment
-    const sentiment = analyzeSentimentAI(comment || "");
-
     const ticket = await Ticket.findById(ticketId);
 
-    // 💾 save
-    const feedback = await TicketFeedback.create({
+    const sentiment = analyzeSentimentAI(comment || "");
+
+    await TicketFeedback.create({
       ticketId,
       customerEmail,
       rating,
@@ -50,7 +41,6 @@ export async function POST(req) {
       agentId: ticket?.assignedTo || null,
     });
 
-    // 🔔 notify agent
     if (ticket?.assignedTo) {
       await Notification.create({
         userId: ticket.assignedTo,
@@ -60,13 +50,11 @@ export async function POST(req) {
       });
     }
 
-    return Response.json({ success: true, feedback });
+    return Response.json({ success: true });
   } catch (err) {
     if (err.code === 11000) {
       return Response.json({ error: "Feedback already submitted" }, { status: 409 });
     }
-
-    console.error("Feedback submit error:", err);
     return Response.json({ error: "Server error" }, { status: 500 });
   }
 }
