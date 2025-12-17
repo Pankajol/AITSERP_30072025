@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import axios from "axios";
 
-const DEFAULT_AVATAR = "#"; // 👈 add a real default image
+const DEFAULT_AVATAR = "https://lh3.googleusercontent.com/a/ACg8ocKR3SzcYHvO6YiFnOd7lQ1B2l4VjXwxC-NvP__OhI5GiNoKXXQZ=s360-c-no"; // ✅ public/avatar.png
 
 export default function TicketDetailPage() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function TicketDetailPage() {
 
   const api = useMemo(() => {
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : "";
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
     return axios.create({
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -42,10 +42,14 @@ export default function TicketDetailPage() {
     setMsg(null);
 
     try {
+      console.log("➡️ Fetch ticket:", ticketId);
+
       const res = await api.get(`/api/helpdesk/tickets/${ticketId}`);
+      console.log("⬅️ API response:", res.data);
 
       if (!res.data || typeof res.data !== "object") {
         setMsg({ type: "error", text: "Invalid server response" });
+        setTicket(null);
         return;
       }
 
@@ -57,7 +61,7 @@ export default function TicketDetailPage() {
 
       setTicket(res.data.ticket);
     } catch (err) {
-      console.error(err);
+      console.error("❌ Load ticket error:", err);
       setMsg({ type: "error", text: "Server error" });
       setTicket(null);
     } finally {
@@ -81,7 +85,7 @@ export default function TicketDetailPage() {
         { message: text }
       );
 
-      if (res.data?.success) {
+      if (res.data?.success && res.data.ticket) {
         setReply("");
         setTicket(res.data.ticket);
         setMsg({ type: "success", text: "Reply sent" });
@@ -102,21 +106,19 @@ export default function TicketDetailPage() {
   /* ================= CLOSE TICKET ================= */
 
   async function closeTicket() {
-    if (typeof window === "undefined") return;
     if (!window.confirm("Close this ticket?")) return;
 
     setBusy(true);
     setMsg(null);
 
     try {
-      const res = await api.post("/api/helpdesk/close", {
-        ticketId,
-        status: "closed",
-      });
+      const res = await api.post("/api/helpdesk/close", { ticketId });
 
       if (res.data?.success) {
-        setTicket(res.data.ticket);
-        setMsg({ type: "success", text: "Ticket closed" });
+        setMsg({ type: "success", text: res.data.message || "Ticket closed" });
+
+        // 🔥 IMPORTANT: reload instead of trusting response
+        await loadTicket();
       } else {
         setMsg({
           type: "error",
@@ -157,9 +159,6 @@ export default function TicketDetailPage() {
     ticket.customerEmail ||
     "Customer";
 
-  const agentDisplay =
-    ticket.agentId?.name || ticket.agentId?.email || "Agent";
-
   /* ================= RENDER ================= */
 
   return (
@@ -193,7 +192,6 @@ export default function TicketDetailPage() {
         </div>
       </div>
 
-      {/* Message */}
       {msg && (
         <div
           className={`p-3 rounded ${
@@ -210,17 +208,14 @@ export default function TicketDetailPage() {
       <div className="space-y-3">
         {ticket.messages?.length ? (
           ticket.messages.map((m) => {
-            const senderObj =
-              m.sender && typeof m.sender === "object" ? m.sender : null;
-
             const senderName =
-              senderObj?.name ||
-              senderObj?.email ||
+              m.sender?.name ||
+              m.sender?.email ||
               m.externalEmail ||
               "User";
 
             const avatar =
-              senderObj?.avatar ||
+              m.sender?.avatar ||
               (m.senderType === "agent" && ticket.agentId?.avatar) ||
               DEFAULT_AVATAR;
 
@@ -239,9 +234,7 @@ export default function TicketDetailPage() {
                   src={avatar}
                   alt={senderName}
                   className="w-10 h-10 rounded-full border object-cover"
-                  onError={(e) =>
-                    (e.currentTarget.src = DEFAULT_AVATAR)
-                  }
+                  onError={(e) => (e.currentTarget.src = DEFAULT_AVATAR)}
                 />
 
                 <div className="flex-1">
@@ -273,23 +266,13 @@ export default function TicketDetailPage() {
           className="w-full border p-2 rounded"
         />
 
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={busy || !reply.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-          >
-            {busy ? "Sending…" : "Send Reply"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setReply("")}
-            className="px-4 py-2 bg-gray-200 rounded"
-          >
-            Clear
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={busy || !reply.trim()}
+          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send Reply"}
+        </button>
       </form>
     </div>
   );

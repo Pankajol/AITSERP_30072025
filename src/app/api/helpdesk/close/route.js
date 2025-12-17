@@ -4,6 +4,10 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
+/* ===============================
+   POST → CLOSE TICKET
+================================ */
+
 export async function POST(req) {
   try {
     await dbConnect();
@@ -14,8 +18,10 @@ export async function POST(req) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const decoded = verifyJWT(token);
-    if (!decoded) {
+    let decoded;
+    try {
+      decoded = verifyJWT(token);
+    } catch {
       return Response.json({ error: "Invalid token" }, { status: 401 });
     }
 
@@ -25,26 +31,35 @@ export async function POST(req) {
       return Response.json({ error: "ticketId required" }, { status: 400 });
     }
 
-    /* ================= FIND TICKET ================= */
-    const ticket = await Ticket.findById(ticketId);
+    /* ================= CLOSE TICKET ================= */
+    const ticket = await Ticket.findByIdAndUpdate(
+      ticketId,
+      {
+        status: "closed",
+        closedAt: new Date(),
+      },
+      { new: true } // 🔥 return updated ticket
+    );
+
     if (!ticket) {
       return Response.json({ error: "Ticket not found" }, { status: 404 });
     }
 
-    /* ================= CLOSE TICKET ================= */
-    ticket.status = "closed";
-    ticket.closedAt = new Date();
-    await ticket.save();
-
     /* ================= SEND FEEDBACK EMAIL ================= */
-    // 🔥 ONE LINE – FEEDBACK EMAIL AUTO SEND
-    fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/feedback?ticketId=${ticket._id}`
-    ).catch(console.error);
+    // ✅ server-safe base url
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
+    // fire & forget (don’t block response)
+    fetch(`${baseUrl}/api/helpdesk/feedback?ticketId=${ticket._id}`)
+      .catch((err) =>
+        console.error("❌ Feedback trigger failed:", err)
+      );
+
+    /* ================= RESPONSE ================= */
     return Response.json({
       success: true,
       message: "Ticket closed and feedback email sent",
+      ticket, // 🔥 VERY IMPORTANT
     });
 
   } catch (err) {
