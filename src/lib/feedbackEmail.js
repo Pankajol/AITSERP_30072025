@@ -1,5 +1,9 @@
+import React from "react";
+
 export default function feedbackEmail(ticket, token) {
-  const link = `${process.env.APP_URL}/feedback?token=${token}`;
+  const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+
+  const link = `${baseUrl}/feedback?token=${token}`;
 
   return `
     <h2>How was our support?</h2>
@@ -16,4 +20,3 @@ export default function feedbackEmail(ticket, token) {
     </p>
   `;
 }
-// hggshqwegwjhfgjhewfbghjwb
