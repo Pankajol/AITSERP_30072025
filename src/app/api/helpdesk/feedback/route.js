@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import Ticket from "@/models/helpdesk/Ticket";
 import TicketFeedback from "@/models/helpdesk/TicketFeedback";
 import Notification from "@/models/helpdesk/Notification";
+import { getTokenFromHeader } from "@/lib/auth";
 
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import sendMail  from "@/lib/mailer";
@@ -15,20 +16,27 @@ const APP_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
 /* ===================== TOKEN UTILS ===================== */
 
-function generateToken(ticket) {
-  return jwt.sign(
-    {
-      ticketId: ticket._id.toString(),
-      customerEmail: ticket.customerEmail,
-    },
-    FEEDBACK_SECRET,
-    { expiresIn: "14d" }
-  );
-}
+// function generateToken(ticket) {
+//   return jwt.sign(
+//     {
+//       ticketId: ticket._id.toString(),
+//       customerEmail: ticket.customerEmail,
+//     },
+//     FEEDBACK_SECRET,
+//     { expiresIn: "14d" }
+//   );
+// }
 
-function verifyToken(token) {
-  return jwt.verify(token, FEEDBACK_SECRET);
-}
+    /* ================= AUTH ================= */
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+
+// function verifyToken(token) {
+//   return jwt.verify(token, FEEDBACK_SECRET);
+// }
 
 /* ===================== EMAIL TEMPLATE ===================== */
 

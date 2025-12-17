@@ -39,7 +39,7 @@ export async function POST(req) {
     /* ================= SEND FEEDBACK EMAIL ================= */
     // 🔥 ONE LINE – FEEDBACK EMAIL AUTO SEND
     fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/feedback?ticketId=${ticket._id}`
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/feedback?ticketId=${ticket._id}`
     ).catch(console.error);
 
     return Response.json({
