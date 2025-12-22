@@ -1,7 +1,9 @@
+import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
-import CompanyUser from "@/models/CompanyUser";   // for agentId
-import Customer from "@/models/CustomerModel";  
+import Customer from "@/models/CustomerModel";
+import CompanyUser from "@/models/CompanyUser";
+import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 export async function GET(req) {
@@ -9,68 +11,31 @@ export async function GET(req) {
     await dbConnect();
 
     const token = getTokenFromHeader(req);
-    if (!token) {
-      return new Response(
-        JSON.stringify({ success: false, msg: "Unauthorized" }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
-    }
+    if (!token)
+      return NextResponse.json({ success:false, msg:"Unauthorized" }, { status:401 });
 
     let user;
     try {
       user = verifyJWT(token);
     } catch {
-      return new Response(
-        JSON.stringify({ success: false, msg: "Invalid token" }),
-        {
-          status: 403,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+      return NextResponse.json({ success:false, msg:"Invalid token" }, { status:403 });
     }
 
-    // -------------------------
-    // NO COMPANYID FILTER AT ALL
-    // -------------------------
-    let query = {};
+    let query = { companyId: user.companyId };
 
-    if (user.roles?.includes("customer")) {
-      query.customerId = user.id;
-    }
-
-    if (user.roles?.includes("agent")) {
-      query.agentId = user.id;
-    }
-
-    // admin → see all tickets
-    // (no filters needed)
+    if (user.role === "customer") query.customerId = user.id;
+    if (user.role === "agent") query.agentId = user.id;
 
     const tickets = await Ticket.find(query)
-     .populate("agentId", "name email avatar") // 🔥 REQUIRED
-      .populate("customerId", "customerName emailId")
-      .sort({ createdAt: -1 });
-      
+      .sort({ createdAt: -1 })
+      .populate("agentId", "name email")
+      .populate("customerId", "name email")
+      .populate("companyId", "name");
 
-    return new Response(
-      JSON.stringify({ success: true, tickets }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
-
+    return NextResponse.json({ success: true, tickets });
   } catch (err) {
-    console.error("GET /tickets error:", err);
-    return new Response(
-      JSON.stringify({ success: false, error: err.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      }
-    );
+    console.error("List route error:", err);
+    return NextResponse.json({ success:false, msg:err.message }, { status:500 });
   }
 }
 
@@ -99,7 +64,12 @@ export async function GET(req) {
 //     query.agentId = user.id;
 
 //   const tickets = await Ticket.find(query)
-//     .sort({ createdAt: -1 });
+//     .sort({ createdAt: -1 })
+//           .sort({ createdAt: -1 })
+//       .populate("agentId", "name email")
+//       .populate("customerId", "name email")
+//       .populate("companyId", "name");
+
 
 //   return NextResponse.json({ success: true, tickets });
 // }
