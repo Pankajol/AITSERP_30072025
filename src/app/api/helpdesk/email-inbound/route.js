@@ -1,15 +1,12 @@
-
 export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
-import Company from "@/models/Company"; // ⭐ NEW for mailbox mapping
-import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
+import Company from "@/models/Company";
 import Notification from "@/models/helpdesk/Notification";
+import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
-
-// const FALLBACK_SUPPORT_EMAIL = "pankajal2099@gmail.com";
 
 /* ===================== HELPERS ===================== */
 
@@ -47,11 +44,7 @@ async function parseBody(req) {
       return Object.fromEntries(new URLSearchParams(txt));
     }
     const txt = await req.text();
-    try {
-      return JSON.parse(txt);
-    } catch {
-      return { body: txt };
-    }
+    try { return JSON.parse(txt); } catch { return { body: txt }; }
   } catch {
     return {};
   }
@@ -73,7 +66,7 @@ export async function POST(req) {
     const SECRET = process.env.INBOUND_EMAIL_SECRET;
 
     if (!SECRET || secret !== SECRET) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
@@ -87,13 +80,10 @@ export async function POST(req) {
     const html = raw.html || "";
 
     if (!fromEmail) {
-      return new Response(JSON.stringify({ error: "Missing sender" }), { status: 400 });
+      return Response.json({ error: "Missing sender" }, { status: 400 });
     }
 
-    const messageId = normalizeId(
-      raw.messageId || raw["Message-ID"] || raw["Message-Id"]
-    );
-
+    const messageId = normalizeId(raw.messageId || raw["Message-ID"] || raw["Message-Id"]);
     const inReplyTo = normalizeId(raw.inReplyTo);
     const references = (raw.references || "")
       .toString()
@@ -101,7 +91,7 @@ export async function POST(req) {
       .map(normalizeId)
       .filter(Boolean);
 
-    /* ================= COMPANY MAILBOX CHECK (SAFE MODE) ================= */
+    /* ================= COMPANY MAILBOX CHECK ================= */
     let company = null;
 
     if (toRaw) {
@@ -110,36 +100,40 @@ export async function POST(req) {
       }).select("_id name supportEmails");
     }
 
-    const SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL || FALLBACK_SUPPORT_EMAIL).toLowerCase();
+    const FALLBACK_SUPPORT_EMAIL = (process.env.SUPPORT_EMAIL || "").toLowerCase();
     const isReply = Boolean(inReplyTo || references.length);
 
-    // ❗ Safe: allow old mailbox logic if no company found
-    if (!company && !toRaw.includes(SUPPORT_EMAIL) && !isReply) {
-      return new Response(JSON.stringify({ error: "Invalid mailbox" }), { status: 403 });
+    console.log("📨 Incoming TO:", toRaw);
+    console.log("🏢 Company match:", company ? company.name : "None");
+    console.log("🛟 Fallback mailbox:", FALLBACK_SUPPORT_EMAIL || "None");
+    console.log("💬 IsReply:", isReply);
+
+    if (company) {
+      console.log(`🎯 Routed to company: ${company.name}`);
+    } else if (isReply) {
+      console.log("💬 Reply thread — bypass mailbox rules");
+    } else if (FALLBACK_SUPPORT_EMAIL && toRaw.includes(FALLBACK_SUPPORT_EMAIL)) {
+      console.log(`🛟 Using fallback mailbox: ${FALLBACK_SUPPORT_EMAIL}`);
+    } else {
+      console.log("❌ Invalid mailbox — rejecting");
+      return Response.json({ error: "Invalid mailbox" }, { status: 403 });
     }
 
     /* ---------- DUPLICATE PROTECTION ---------- */
     if (messageId) {
-      const dup = await Ticket.findOne({
-        "messages.messageId": messageId,
-      }).select("_id");
-
+      const dup = await Ticket.findOne({ "messages.messageId": messageId }).select("_id");
       if (dup) {
-        return new Response(
-          JSON.stringify({ success: true, duplicate: true, ticketId: dup._id }),
-          { status: 200 }
-        );
+        return Response.json({ success: true, duplicate: true, ticketId: dup._id }, { status: 200 });
       }
     }
 
     /* ---------- CUSTOMER LOOKUP ---------- */
     const customer = await Customer.findOne({
-      emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
+      emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") }
     });
 
-    // Optional block mode (default allow)
     if (!customer && process.env.ALLOW_UNKNOWN_CUSTOMERS === "false") {
-      return new Response(JSON.stringify({ error: "Unknown customer" }), { status: 403 });
+      return Response.json({ error: "Unknown customer" }, { status: 403 });
     }
 
     /* ---------- FIND EXISTING TICKET ---------- */
@@ -150,17 +144,15 @@ export async function POST(req) {
       ticket = await Ticket.findOne({
         $or: [
           { emailThreadId: { $in: searchIds } },
-          { "messages.messageId": { $in: searchIds } },
-        ],
+          { "messages.messageId": { $in: searchIds } }
+        ]
       });
     }
 
     /* ===================== REPLY CASE ===================== */
     if (ticket) {
-      // if company missing in old record, auto-assign safely
-      if (!ticket.companyId && customer?.companyId) {
-        ticket.companyId = customer.companyId;
-      }
+      if (!ticket.companyId && company?._id) ticket.companyId = company._id;
+      if (!ticket.companyId && customer?.companyId) ticket.companyId = customer.companyId;
 
       const sentiment = await analyzeSentimentAI(text || html);
 
@@ -182,40 +174,31 @@ export async function POST(req) {
           userId: ticket.agentId,
           type: "NEGATIVE_SENTIMENT",
           ticketId: ticket._id,
+          companyId: ticket.companyId || null,
           message: "⚠️ Negative sentiment detected in customer reply",
-          companyId: ticket.companyId || null
         });
 
         ticket.priority = "high";
       }
 
       await ticket.save();
-
-      return new Response(
-        JSON.stringify({ success: true, ticketId: ticket._id }),
-        { status: 200 }
-      );
+      return Response.json({ success: true, ticketId: ticket._id }, { status: 200 });
     }
 
     /* ===================== NEW TICKET ===================== */
-
     let agentId = null;
-
-    if (customer) {
-      // prefer company-wise auto assign
-      agentId = await getNextAvailableAgent(customer);
-    }
+    if (customer) agentId = await getNextAvailableAgent(customer);
 
     const sentiment = await analyzeSentimentAI(text || html);
 
     ticket = await Ticket.create({
-      companyId: company?._id || customer?.companyId || null, // ⭐ SAFE ADD
+      companyId: company?._id || customer?.companyId || null,
       customerId: customer?._id || null,
       customerEmail: fromEmail,
       subject,
       source: "email",
       status: "open",
-      agentId: agentId || null,
+      agentId,
       sentiment,
       priority: sentiment === "negative" ? "high" : "normal",
       emailThreadId: messageId || `local-${Date.now()}`,
@@ -242,19 +225,13 @@ export async function POST(req) {
       });
     }
 
-    return new Response(
-      JSON.stringify({ success: true, ticketId: ticket._id }),
-      { status: 200 }
-    );
-
+    return Response.json({ success: true, ticketId: ticket._id }, { status: 200 });
   } catch (err) {
     console.error("❌ Inbound error:", err);
-    return new Response(
-      JSON.stringify({ error: err.message || "Server error" }),
-      { status: 500 }
-    );
+    return Response.json({ error: err.message || "Server error" }, { status: 500 });
   }
 }
+
 
 
 // ===================== INBOUND EMAIL HANDLER =====================
