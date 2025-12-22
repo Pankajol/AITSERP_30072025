@@ -31,4 +31,5 @@ export function getTokenFromHeader(req) {
   const auth = req.headers.get("authorization") || "";
   if (!auth.startsWith("Bearer ")) return null;
   return auth.split(" ")[1];
+  
 }

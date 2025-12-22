@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Customer from "@/models/CustomerModel";
+import CompanyUser from "@/models/CompanyUser";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 // If you actually need these later you can keep them; otherwise remove to avoid unused imports
 import BankHead from "@/models/BankHead";

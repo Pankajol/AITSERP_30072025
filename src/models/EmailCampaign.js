@@ -12,6 +12,7 @@ const CampaignSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "commonUsers",
     },
+    emailMasterId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailMaster" },
 
     // --- Basic Info ---
     campaignName: { type: String, required: true },

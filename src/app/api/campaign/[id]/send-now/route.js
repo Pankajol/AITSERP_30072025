@@ -36,7 +36,7 @@ const isValidEmail = (email) =>
 // -------------------------
 function tryDecryptEncryptedPassword(encrypted) {
   if (!encrypted) return null;
-  const secret = process.env.EMAIL_MASTER_SECRET;
+  const secret = process.env.ENCRYPTION_KEY;
   if (!secret) {
     console.warn("EMAIL_MASTER_SECRET not set — can't decrypt EmailMaster.encryptedAppPassword");
     return null;
@@ -99,36 +99,105 @@ function tryDecryptEncryptedPassword(encrypted) {
 // -------------------------
 // Build transporter helper
 // -------------------------
+
+// -------------------------
+// Build transporter ONLY from EmailMaster
+// NO ENV fallback
+// -------------------------
 async function buildTransporterForEmailMaster(emailMaster) {
-  if (!emailMaster) return null;
-
-  const user = emailMaster.email || process.env.SMTP_USER || null;
-  let pass = null;
-
-  if (emailMaster.encryptedAppPassword) {
-    pass = tryDecryptEncryptedPassword(emailMaster.encryptedAppPassword);
-    if (!pass) console.warn("Could not decrypt EmailMaster.encryptedAppPassword — fallback to env if available");
-  }
-
-  if (!pass) pass = process.env.SMTP_PASS || null;
-
-  const service = (emailMaster.service || "gmail").toLowerCase();
-
-  if (!user || !pass) {
-    console.warn("Missing smtp user/pass for EmailMaster");
+  if (!emailMaster) {
+    console.error("❌ EmailMaster missing");
     return null;
   }
 
-  if (service === "gmail") {
-    return nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
-  }
-  if (service === "outlook" || service === "hotmail") {
-    return nodemailer.createTransport({ service: "hotmail", auth: { user, pass } });
+  const user = emailMaster.email;
+  if (!user) {
+    console.error("❌ EmailMaster.email missing");
+    return null;
   }
 
-  console.warn("EmailMaster.service is custom/unsupported (schema lacks host/port). Falling back to env transporter if available.");
+  let pass = null;
+  if (emailMaster.encryptedAppPassword) {
+    pass = tryDecryptEncryptedPassword(emailMaster.encryptedAppPassword);
+  }
+
+  if (!pass) {
+    console.error("❌ Cannot decrypt encryptedAppPassword. Stopping here.");
+    return null;
+  }
+
+  const service = (emailMaster.service || "").toLowerCase();
+
+  // Gmail
+  if (service === "gmail") {
+    return nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass }
+    });
+  }
+
+  // Outlook/Office365
+  if (service === "outlook" || service === "office365" || service === "hotmail") {
+    return nodemailer.createTransport({
+      host: "smtp.office365.com",
+      port: 587,
+      secure: false,
+      auth: { user, pass },
+      requireTLS: true,
+      tls: { rejectUnauthorized: false },
+    });
+  }
+
+  console.error("❌ Unsupported service in EmailMaster:", service);
   return null;
 }
+
+
+
+// async function buildTransporterForEmailMaster(emailMaster) {
+//   if (!emailMaster) return null;
+
+//   const user = emailMaster.email || process.env.SMTP_USER || null;
+//   let pass = null;
+
+//   if (emailMaster.encryptedAppPassword) {
+//     pass = tryDecryptEncryptedPassword(emailMaster.encryptedAppPassword);
+//     if (!pass) console.warn("Could not decrypt EmailMaster.encryptedAppPassword — fallback to env if available");
+//   }
+
+//   if (!pass) pass = process.env.SMTP_PASS || null;
+
+//   const service = (emailMaster.service || "gmail").toLowerCase();
+
+//   if (!user || !pass) {
+//     console.warn("Missing smtp user/pass for EmailMaster");
+//     return null;
+//   }
+
+//   if (service === "gmail") {
+//     return nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+//   }
+//   if (service === "outlook" || service === "office365" || service === "hotmail") {
+//   return nodemailer.createTransport({
+//   host: "smtp.office365.com",
+//   port: 587,
+//   secure: false,
+//   auth: {
+//     user: emailMaster.email,
+//     pass: decryptedPassword // ya app password
+//   },
+//   requireTLS: true,
+//   tls: {
+//     ciphers: "SSLv3"
+//   }
+// });
+
+// }
+
+
+//   console.warn("EmailMaster.service is custom/unsupported (schema lacks host/port). Falling back to env transporter if available.");
+//   return null;
+// }
 
 function buildTransporterFromEnv() {
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {

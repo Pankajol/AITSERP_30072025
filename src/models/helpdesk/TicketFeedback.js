@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const TicketFeedbackSchema = new mongoose.Schema(
   {
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", index: true },
     ticketId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Ticket",

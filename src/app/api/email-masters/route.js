@@ -13,28 +13,31 @@ const KEY = process.env.ENCRYPTION_KEY || "";
 
 /* --- crypto helpers --- */
 function encrypt(text = "") {
-  if (!KEY || KEY.length < 32) return text;
+  if (!KEY) return text;
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGO, Buffer.from(KEY.slice(0, 32)), iv);
-  let encrypted = cipher.update(String(text), "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString("hex") + ":" + encrypted.toString("hex");
+  const key = crypto.createHash("sha256").update(KEY).digest();
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return iv.toString("hex") + ":" + encrypted;
 }
 
 function decrypt(enc = "") {
-  if (!KEY || KEY.length < 32) return enc;
+  if (!KEY) return enc;
   try {
-    const parts = enc.split(":");
-    const iv = Buffer.from(parts.shift(), "hex");
-    const encryptedText = Buffer.from(parts.join(":"), "hex");
-    const decipher = crypto.createDecipheriv(ALGO, Buffer.from(KEY.slice(0, 32)), iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString("utf8");
-  } catch (err) {
+    const [ivHex, cipherHex] = enc.split(":");
+    const iv = Buffer.from(ivHex, "hex");
+    const encryptedText = Buffer.from(cipherHex, "hex");
+    const key = crypto.createHash("sha256").update(KEY).digest();
+    const decipher = crypto.createDecipheriv(ALGO, key, iv);
+    let decrypted = decipher.update(encryptedText, null, "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch {
     return "";
   }
 }
+
 
 function maskPassword(pwd = "") {
   if (!pwd) return "";

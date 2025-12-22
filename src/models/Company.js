@@ -24,6 +24,10 @@ const CompanySchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    supportEmails: {
+  type: [String],
+  default: [],
+},
     gstNumber: {
       type: String,
       unique: true,
