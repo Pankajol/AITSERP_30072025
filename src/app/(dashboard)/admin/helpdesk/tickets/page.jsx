@@ -20,25 +20,26 @@ export default function AdminHelpdeskTicketsPage() {
 
   const router = useRouter();
 
+  /* ================ TOKEN CHECK ================= */
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+
+  useEffect(() => {
+    if (!token) router.push("/login");
+  }, [token, router]);
+
   /* ================= API ================= */
   const api = useMemo(() => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : "";
     return axios.create({
       baseURL: "/api/helpdesk",
-      headers: { Authorization: token ? "Bearer " + token : "" },
-      validateStatus: () => true,
+      headers: token ? { Authorization: "Bearer " + token } : {},
     });
-  }, []);
+  }, [token]);
 
   /* ================= HELPERS ================= */
   const toast = useCallback((type, text, timeout = 4000) => {
     setMsg({ type, text });
     if (timeout) {
-      setTimeout(
-        () => setMsg((m) => (m?.text === text ? null : m)),
-        timeout
-      );
+      setTimeout(() => setMsg((m) => (m?.text === text ? null : m)), timeout);
     }
   }, []);
 
@@ -57,7 +58,6 @@ export default function AdminHelpdeskTicketsPage() {
         setTickets(resp.data.tickets || []);
       }
     } catch (err) {
-      console.error(err);
       toast("error", "Server error");
     } finally {
       setLoading(false);
@@ -65,21 +65,18 @@ export default function AdminHelpdeskTicketsPage() {
   }
 
   useEffect(() => {
-    loadTickets();
-    // eslint-disable-next-line
-  }, []);
+    if (token) loadTickets();
+  }, [token]);
 
   /* ================= ASSIGN ================= */
   async function assignAgent(ticketId, agentId) {
-    if (!agentId) {
-      toast("error", "Select an agent");
-      return;
-    }
+    if (!agentId) return toast("error", "Select an agent");
+
     setMapFlag(setAiLoadingMap, ticketId, true);
     try {
       const resp = await api.post("/assign", { ticketId, agentId });
       if (resp.data?.success) {
-        toast("success", "Assigned successfully");
+        toast("success", "Assigned");
         await loadTickets();
       } else {
         toast("error", resp.data?.msg || "Assign failed");
@@ -97,7 +94,7 @@ export default function AdminHelpdeskTicketsPage() {
     try {
       const resp = await api.post("/update-status", { ticketId, status });
       if (resp.data?.success) {
-        toast("success", "Status updated");
+        toast("success", "Updated");
         await loadTickets();
       } else {
         toast("error", resp.data?.msg || "Update failed");
@@ -122,10 +119,7 @@ export default function AdminHelpdeskTicketsPage() {
 
     setMapFlag(setAiLoadingMap, ticketId, true);
     try {
-      const resp = await api.post("/ai/auto-assign", {
-        ticketId,
-        preview: true,
-      });
+      const resp = await api.post("/ai/auto-assign", { ticketId, preview: true });
 
       if (resp.data?.success && resp.data.preview) {
         setAiSuggestions((m) => ({
@@ -153,10 +147,7 @@ export default function AdminHelpdeskTicketsPage() {
 
     setMapFlag(setAiLoadingMap, ticketId, true);
     try {
-      const resp = await api.post("/assign", {
-        ticketId,
-        agentId: sug.agentId,
-      });
+      const resp = await api.post("/assign", { ticketId, agentId: sug.agentId });
       if (resp.data?.success) {
         toast("success", "Assigned by AI");
         setAiSuggestions((m) => {
@@ -183,7 +174,7 @@ export default function AdminHelpdeskTicketsPage() {
 
   /* ================= RENDER ================= */
   if (loading) {
-    return <div className="p-6 text-gray-500">Loading tickets…</div>;
+    return <div className="p-6 text-gray-500">Loading…</div>;
   }
 
   return (
@@ -194,17 +185,13 @@ export default function AdminHelpdeskTicketsPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setView("list")}
-            className={`px-3 py-2 rounded ${
-              view === "list" ? "bg-blue-600 text-white" : "bg-gray-200"
-            }`}
+            className={`px-3 py-2 rounded ${view === "list" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
           >
             List
           </button>
           <button
             onClick={() => setView("kanban")}
-            className={`px-3 py-2 rounded ${
-              view === "kanban" ? "bg-blue-600 text-white" : "bg-gray-200"
-            }`}
+            className={`px-3 py-2 rounded ${view === "kanban" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
           >
             Kanban
           </button>
@@ -220,9 +207,7 @@ export default function AdminHelpdeskTicketsPage() {
       {msg && (
         <div
           className={`p-3 rounded ${
-            msg.type === "error"
-              ? "bg-red-100 text-red-700"
-              : "bg-green-100 text-green-700"
+            msg.type === "error" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
           }`}
         >
           {msg.text}
@@ -236,26 +221,23 @@ export default function AdminHelpdeskTicketsPage() {
             const aiLoading = !!aiLoadingMap[t._id];
             const suggestion = aiSuggestions[t._id];
             const agentLabel =
-              typeof t.agentId === "object"
-                ? t.agentId?.name || t.agentId?.email
-                : "Unassigned";
+              typeof t.agentId === "object" ? t.agentId?.name || t.agentId?.email : "Unassigned";
 
             return (
-              <div
-                key={t._id}
-                className="p-4 bg-white rounded-xl shadow flex gap-4"
-              >
+              <div key={t._id} className="p-4 bg-white rounded-xl shadow flex gap-4">
                 <div
                   className="flex-1 cursor-pointer"
-                  onClick={() =>
-                    router.push(`/admin/helpdesk/tickets/${t._id}`)
-                  }
+                  onClick={() => router.push(`/admin/helpdesk/tickets/${t._id}`)}
                 >
                   <TicketCard ticket={t} />
+
+                  {/* Company name */}
+                  <div className="text-xs text-gray-500 mt-1">
+                    Company: {t.companyId?.name || "-"}
+                  </div>
                 </div>
 
                 <div className="w-96 space-y-3">
-                  {/* Assign */}
                   <AgentSelector
                     value={
                       typeof t.agentId === "object"
@@ -265,7 +247,6 @@ export default function AdminHelpdeskTicketsPage() {
                     onSelect={(aid) => assignAgent(t._id, aid)}
                   />
 
-                  {/* AI */}
                   <button
                     onClick={() => aiPreview(t._id)}
                     disabled={aiLoading}
@@ -283,12 +264,8 @@ export default function AdminHelpdeskTicketsPage() {
                           alt=""
                         />
                         <div className="flex-1">
-                          <div className="font-medium">
-                            {suggestion.agentName}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {suggestion.agentId}
-                          </div>
+                          <div className="font-medium">{suggestion.agentName}</div>
+                          <div className="text-xs text-gray-500">{suggestion.agentId}</div>
                         </div>
                         <button
                           onClick={() => acceptAiSuggestion(t._id)}
@@ -312,12 +289,9 @@ export default function AdminHelpdeskTicketsPage() {
                     </div>
                   )}
 
-                  {/* Status */}
                   <select
                     value={t.status}
-                    onChange={(e) =>
-                      updateStatus(t._id, e.target.value)
-                    }
+                    onChange={(e) => updateStatus(t._id, e.target.value)}
                     className="w-full p-2 bg-gray-100 rounded"
                   >
                     <option value="open">Open</option>
@@ -328,10 +302,8 @@ export default function AdminHelpdeskTicketsPage() {
 
                   <div className="text-xs text-gray-500">
                     <div>Agent: {agentLabel}</div>
-                    <div>
-                      Created:{" "}
-                      {new Date(t.createdAt).toLocaleString()}
-                    </div>
+                    <div>Created: {new Date(t.createdAt).toLocaleString()}</div>
+                    <div>Company: {t.companyId?.name || "-"}</div>
                   </div>
                 </div>
               </div>
@@ -353,15 +325,14 @@ export default function AdminHelpdeskTicketsPage() {
                   <div
                     key={t._id}
                     className="p-3 bg-white rounded shadow cursor-pointer"
-                    onClick={() =>
-                      router.push(`/admin/helpdesk/tickets/${t._id}`)
-                    }
+                    onClick={() => router.push(`/admin/helpdesk/tickets/${t._id}`)}
                   >
                     <div className="font-medium">{t.subject}</div>
                     <div className="text-xs text-gray-500">
-                      {typeof t.agentId === "object"
-                        ? t.agentId?.name
-                        : "Unassigned"}
+                      {typeof t.agentId === "object" ? t.agentId?.name : "Unassigned"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Company: {t.companyId?.name || "-"}
                     </div>
                   </div>
                 ))}
@@ -376,6 +347,388 @@ export default function AdminHelpdeskTicketsPage() {
 
 
 
+///////////////////////////////////////////////
+
+
+
+// "use client";
+
+// import { useEffect, useState, useMemo, useCallback } from "react";
+// import axios from "axios";
+// import TicketCard from "@/components/helpdesk/TicketCard";
+// import AgentSelector from "@/components/helpdesk/AgentSelector";
+// import { FiRefreshCw, FiCpu, FiCheck, FiX } from "react-icons/fi";
+// import { useRouter } from "next/navigation";
+
+// const SAMPLE_IMAGE = "/mnt/data/c4bfcf65-19f2-400e-a777-0771674c53c6.png";
+
+// export default function AdminHelpdeskTicketsPage() {
+//   const [tickets, setTickets] = useState([]);
+//   const [loading, setLoading] = useState(true);
+//   const [view, setView] = useState("list");
+//   const [msg, setMsg] = useState(null);
+
+//   const [aiLoadingMap, setAiLoadingMap] = useState({});
+//   const [aiSuggestions, setAiSuggestions] = useState({});
+
+//   const router = useRouter();
+
+//   /* ================= API ================= */
+//   const api = useMemo(() => {
+//     const token =
+//       typeof window !== "undefined" ? localStorage.getItem("token") : "";
+//     return axios.create({
+//       baseURL: "/api/helpdesk",
+//       headers: { Authorization: token ? "Bearer " + token : "" },
+//       validateStatus: () => true,
+//     });
+//   }, []);
+
+//   /* ================= HELPERS ================= */
+//   const toast = useCallback((type, text, timeout = 4000) => {
+//     setMsg({ type, text });
+//     if (timeout) {
+//       setTimeout(
+//         () => setMsg((m) => (m?.text === text ? null : m)),
+//         timeout
+//       );
+//     }
+//   }, []);
+
+//   const setMapFlag = (setter, ticketId, v) =>
+//     setter((m) => ({ ...m, [ticketId]: v }));
+
+//   /* ================= LOAD ================= */
+//   async function loadTickets() {
+//     setLoading(true);
+//     try {
+//       const resp = await api.get("/list");
+//       if (!resp.data?.success) {
+//         toast("error", resp.data?.msg || "Failed to load tickets");
+//         setTickets([]);
+//       } else {
+//         setTickets(resp.data.tickets || []);
+//       }
+//     } catch (err) {
+//       console.error(err);
+//       toast("error", "Server error");
+//     } finally {
+//       setLoading(false);
+//     }
+//   }
+
+//   useEffect(() => {
+//     loadTickets();
+//     // eslint-disable-next-line
+//   }, []);
+
+//   /* ================= ASSIGN ================= */
+//   async function assignAgent(ticketId, agentId) {
+//     if (!agentId) {
+//       toast("error", "Select an agent");
+//       return;
+//     }
+//     setMapFlag(setAiLoadingMap, ticketId, true);
+//     try {
+//       const resp = await api.post("/assign", { ticketId, agentId });
+//       if (resp.data?.success) {
+//         toast("success", "Assigned successfully");
+//         await loadTickets();
+//       } else {
+//         toast("error", resp.data?.msg || "Assign failed");
+//       }
+//     } catch {
+//       toast("error", "Assign error");
+//     } finally {
+//       setMapFlag(setAiLoadingMap, ticketId, false);
+//     }
+//   }
+
+//   /* ================= STATUS ================= */
+//   async function updateStatus(ticketId, status) {
+//     setMapFlag(setAiLoadingMap, ticketId, true);
+//     try {
+//       const resp = await api.post("/update-status", { ticketId, status });
+//       if (resp.data?.success) {
+//         toast("success", "Status updated");
+//         await loadTickets();
+//       } else {
+//         toast("error", resp.data?.msg || "Update failed");
+//       }
+//     } catch {
+//       toast("error", "Status error");
+//     } finally {
+//       setMapFlag(setAiLoadingMap, ticketId, false);
+//     }
+//   }
+
+//   /* ================= AI ================= */
+//   async function aiPreview(ticketId) {
+//     if (aiSuggestions[ticketId]) {
+//       setAiSuggestions((s) => {
+//         const c = { ...s };
+//         delete c[ticketId];
+//         return c;
+//       });
+//       return;
+//     }
+
+//     setMapFlag(setAiLoadingMap, ticketId, true);
+//     try {
+//       const resp = await api.post("/ai/auto-assign", {
+//         ticketId,
+//         preview: true,
+//       });
+
+//       if (resp.data?.success && resp.data.preview) {
+//         setAiSuggestions((m) => ({
+//           ...m,
+//           [ticketId]: {
+//             agentId: resp.data.agentId,
+//             agentName: resp.data.agentName || "Suggested Agent",
+//             confidence: resp.data.confidence || null,
+//             reasons: resp.data.reasons || [],
+//           },
+//         }));
+//       } else {
+//         toast("error", resp.data?.msg || "AI failed");
+//       }
+//     } catch {
+//       toast("error", "AI error");
+//     } finally {
+//       setMapFlag(setAiLoadingMap, ticketId, false);
+//     }
+//   }
+
+//   async function acceptAiSuggestion(ticketId) {
+//     const sug = aiSuggestions[ticketId];
+//     if (!sug?.agentId) return;
+
+//     setMapFlag(setAiLoadingMap, ticketId, true);
+//     try {
+//       const resp = await api.post("/assign", {
+//         ticketId,
+//         agentId: sug.agentId,
+//       });
+//       if (resp.data?.success) {
+//         toast("success", "Assigned by AI");
+//         setAiSuggestions((m) => {
+//           const c = { ...m };
+//           delete c[ticketId];
+//           return c;
+//         });
+//         await loadTickets();
+//       }
+//     } catch {
+//       toast("error", "AI assign error");
+//     } finally {
+//       setMapFlag(setAiLoadingMap, ticketId, false);
+//     }
+//   }
+
+//   /* ================= KANBAN ================= */
+//   const kanban = {
+//     open: tickets.filter((t) => t.status === "open"),
+//     in_progress: tickets.filter((t) => t.status === "in_progress"),
+//     waiting: tickets.filter((t) => t.status === "waiting"),
+//     closed: tickets.filter((t) => t.status === "closed"),
+//   };
+
+//   /* ================= RENDER ================= */
+//   if (loading) {
+//     return <div className="p-6 text-gray-500">Loading tickets…</div>;
+//   }
+
+//   return (
+//     <div className="p-6 space-y-6">
+//       {/* Header */}
+//       <div className="flex justify-between items-center">
+//         <h1 className="text-3xl font-bold">Helpdesk Admin</h1>
+//         <div className="flex gap-2">
+//           <button
+//             onClick={() => setView("list")}
+//             className={`px-3 py-2 rounded ${
+//               view === "list" ? "bg-blue-600 text-white" : "bg-gray-200"
+//             }`}
+//           >
+//             List
+//           </button>
+//           <button
+//             onClick={() => setView("kanban")}
+//             className={`px-3 py-2 rounded ${
+//               view === "kanban" ? "bg-blue-600 text-white" : "bg-gray-200"
+//             }`}
+//           >
+//             Kanban
+//           </button>
+//           <button
+//             onClick={loadTickets}
+//             className="px-3 py-2 bg-gray-800 text-white rounded flex items-center gap-2"
+//           >
+//             <FiRefreshCw /> Refresh
+//           </button>
+//         </div>
+//       </div>
+
+//       {msg && (
+//         <div
+//           className={`p-3 rounded ${
+//             msg.type === "error"
+//               ? "bg-red-100 text-red-700"
+//               : "bg-green-100 text-green-700"
+//           }`}
+//         >
+//           {msg.text}
+//         </div>
+//       )}
+
+//       {/* LIST VIEW */}
+//       {view === "list" && (
+//         <div className="space-y-4">
+//           {tickets.map((t) => {
+//             const aiLoading = !!aiLoadingMap[t._id];
+//             const suggestion = aiSuggestions[t._id];
+//             const agentLabel =
+//               typeof t.agentId === "object"
+//                 ? t.agentId?.name || t.agentId?.email
+//                 : "Unassigned";
+
+//             return (
+//               <div
+//                 key={t._id}
+//                 className="p-4 bg-white rounded-xl shadow flex gap-4"
+//               >
+//                 <div
+//                   className="flex-1 cursor-pointer"
+//                   onClick={() =>
+//                     router.push(`/admin/helpdesk/tickets/${t._id}`)
+//                   }
+//                 >
+//                   <TicketCard ticket={t} />
+//                 </div>
+
+//                 <div className="w-96 space-y-3">
+//                   {/* Assign */}
+//                   <AgentSelector
+//                     value={
+//                       typeof t.agentId === "object"
+//                         ? t.agentId?._id
+//                         : t.agentId
+//                     }
+//                     onSelect={(aid) => assignAgent(t._id, aid)}
+//                   />
+
+//                   {/* AI */}
+//                   <button
+//                     onClick={() => aiPreview(t._id)}
+//                     disabled={aiLoading}
+//                     className="w-full px-3 py-2 bg-indigo-600 text-white rounded flex justify-center gap-2"
+//                   >
+//                     <FiCpu /> {suggestion ? "Hide AI" : "AI Suggest"}
+//                   </button>
+
+//                   {suggestion && (
+//                     <div className="p-3 bg-gray-50 border rounded">
+//                       <div className="flex items-center gap-3">
+//                         <img
+//                           src={SAMPLE_IMAGE}
+//                           className="w-10 h-10 rounded-full"
+//                           alt=""
+//                         />
+//                         <div className="flex-1">
+//                           <div className="font-medium">
+//                             {suggestion.agentName}
+//                           </div>
+//                           <div className="text-xs text-gray-500">
+//                             {suggestion.agentId}
+//                           </div>
+//                         </div>
+//                         <button
+//                           onClick={() => acceptAiSuggestion(t._id)}
+//                           className="px-2 py-1 bg-green-600 text-white rounded text-sm"
+//                         >
+//                           <FiCheck />
+//                         </button>
+//                         <button
+//                           onClick={() =>
+//                             setAiSuggestions((m) => {
+//                               const c = { ...m };
+//                               delete c[t._id];
+//                               return c;
+//                             })
+//                           }
+//                           className="px-2 py-1 bg-gray-200 rounded text-sm"
+//                         >
+//                           <FiX />
+//                         </button>
+//                       </div>
+//                     </div>
+//                   )}
+
+//                   {/* Status */}
+//                   <select
+//                     value={t.status}
+//                     onChange={(e) =>
+//                       updateStatus(t._id, e.target.value)
+//                     }
+//                     className="w-full p-2 bg-gray-100 rounded"
+//                   >
+//                     <option value="open">Open</option>
+//                     <option value="in_progress">In Progress</option>
+//                     <option value="waiting">Waiting</option>
+//                     <option value="closed">Closed</option>
+//                   </select>
+
+//                   <div className="text-xs text-gray-500">
+//                     <div>Agent: {agentLabel}</div>
+//                     <div>
+//                       Created:{" "}
+//                       {new Date(t.createdAt).toLocaleString()}
+//                     </div>
+//                   </div>
+//                 </div>
+//               </div>
+//             );
+//           })}
+//         </div>
+//       )}
+
+//       {/* KANBAN */}
+//       {view === "kanban" && (
+//         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+//           {Object.entries(kanban).map(([status, list]) => (
+//             <div key={status} className="bg-gray-100 rounded p-3">
+//               <h2 className="font-semibold mb-2 capitalize">
+//                 {status.replace("_", " ")} ({list.length})
+//               </h2>
+//               <div className="space-y-3">
+//                 {list.map((t) => (
+//                   <div
+//                     key={t._id}
+//                     className="p-3 bg-white rounded shadow cursor-pointer"
+//                     onClick={() =>
+//                       router.push(`/admin/helpdesk/tickets/${t._id}`)
+//                     }
+//                   >
+//                     <div className="font-medium">{t.subject}</div>
+//                     <div className="text-xs text-gray-500">
+//                       {typeof t.agentId === "object"
+//                         ? t.agentId?.name
+//                         : "Unassigned"}
+//                     </div>
+//                   </div>
+//                 ))}
+//               </div>
+//             </div>
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
+
+// ///////////////////////////////////////////////////////////////////////////////////////
 // "use client";
 
 // import { useEffect, useState, useMemo, useCallback } from "react";

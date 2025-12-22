@@ -132,9 +132,18 @@ export async function POST(req) {
       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") }
     });
 
-    if (!customer && process.env.ALLOW_UNKNOWN_CUSTOMERS === "false") {
-      return Response.json({ error: "Unknown customer" }, { status: 403 });
-    }
+   /* ---------- CUSTOMER LOOKUP ---------- */
+
+if (!customer) {
+  console.log("⛔ Blocked unknown customer:", fromEmail);
+  return Response.json({ error: "Unknown customer" }, { status: 403 });
+}
+
+if (!customer.companyId) {
+  console.log("⛔ Customer not linked to company:", fromEmail);
+  return Response.json({ error: "Customer has no company assigned" }, { status: 403 });
+}
+
 
     /* ---------- FIND EXISTING TICKET ---------- */
     let ticket = null;
