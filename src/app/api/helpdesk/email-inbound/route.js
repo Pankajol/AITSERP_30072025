@@ -127,28 +127,21 @@ export async function POST(req) {
       }
     }
 
-  
-/* ---------- CUSTOMER LOOKUP ---------- */
+    /* ---------- CUSTOMER LOOKUP ---------- */
+    const customer = await Customer.findOne({
+      emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") }
+    });
 
-const customer = await Customer.findOne({
-  emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") }
-}).select("_id name emailId companyId");
+   /* ---------- CUSTOMER LOOKUP ---------- */
 
 if (!customer) {
-  console.log("⛔ Unknown customer:", fromEmail);
-
-  return Response.json(
-    { error: "Customer not registered — ticket not created" },
-    { status: 403 }
-  );
+  console.log("⛔ Blocked unknown customer:", fromEmail);
+  return Response.json({ error: "Unknown customer" }, { status: 403 });
 }
 
-// company link auto resolve
-let resolvedCompany = company;
-
-if (!resolvedCompany && customer.companyId) {
-  resolvedCompany = await Company.findById(customer.companyId).select("_id name");
-  console.log("🏢 Company resolved from customer:", resolvedCompany?.name);
+if (!customer.companyId) {
+  console.log("⛔ Customer not linked to company:", fromEmail);
+  return Response.json({ error: "Customer has no company assigned" }, { status: 403 });
 }
 
 
@@ -207,30 +200,29 @@ if (!resolvedCompany && customer.companyId) {
 
     const sentiment = await analyzeSentimentAI(text || html);
 
-  ticket = await Ticket.create({
-  companyId: resolvedCompany?._id || null,
-  customerId: customer?._id || null,
-  customerEmail: fromEmail,
-  subject,
-  source: "email",
-  status: "open",
-  agentId,
-  sentiment,
-  priority: sentiment === "negative" ? "high" : "normal",
-  emailThreadId: messageId || `local-${Date.now()}`,
-  messages: [
-    {
-      senderType: "customer",
-      externalEmail: fromEmail,
-      message: text || html,
-      messageId,
+    ticket = await Ticket.create({
+      companyId: company?._id || customer?.companyId || null,
+      customerId: customer?._id || null,
+      customerEmail: fromEmail,
+      subject,
+      source: "email",
+      status: "open",
+      agentId,
       sentiment,
-      createdAt: new Date(),
-    },
-  ],
-  lastCustomerReplyAt: new Date(),
-});
-
+      priority: sentiment === "negative" ? "high" : "normal",
+      emailThreadId: messageId || `local-${Date.now()}`,
+      messages: [
+        {
+          senderType: "customer",
+          externalEmail: fromEmail,
+          message: text || html,
+          messageId,
+          sentiment,
+          createdAt: new Date(),
+        },
+      ],
+      lastCustomerReplyAt: new Date(),
+    });
 
     if (sentiment === "negative" && agentId) {
       await Notification.create({
