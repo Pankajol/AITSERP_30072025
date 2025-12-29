@@ -32,7 +32,8 @@ const CompanyUserSchema = new mongoose.Schema(
       employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
 
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+
     password: { type: String, required: true },
     roles: [{ type: String }],
      // 🔥 AGENT STATUS
