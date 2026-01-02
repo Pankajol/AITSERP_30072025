@@ -169,7 +169,7 @@ export default function DashboardLayout({ children }) {
         {/* Sidebar Menu */}
                <nav className="mt-6 px-2 pb-6 space-y-3">
           {/* Masters */}
-          <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
+          {/* <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
             <Item href="/agent-dashboard/Countries" icon={<HiGlobeAlt />} label="Countries" close={closeSidebar} />
             <Item href="/agent-dashboard/State" icon={<HiFlag />} label="State" close={closeSidebar} />
             <Item href="/agent-dashboard/CreateGroup" icon={<HiUserGroup />} label="Create Group" close={closeSidebar} />
@@ -180,10 +180,10 @@ export default function DashboardLayout({ children }) {
             <Item href="/agent-dashboard/supplier" icon={<HiUserGroup />} label="Supplier" close={closeSidebar} />
             <Item href="/agent-dashboard/item" icon={<HiCube />} label="Item" close={closeSidebar} />
             <Item href="/agent-dashboard/WarehouseDetailsForm" icon={<HiOutlineLibrary />} label="Warehouse Details" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Masters View */}
-          <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
+          {/* <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
             <Item href="/agent-dashboard/customer-view" icon={<HiUsers />} label="Customer View" close={closeSidebar} />
             <Item href="/agent-dashboard/supplier" icon={<HiUserGroup />} label="Supplier View" close={closeSidebar} />
             <Item href="/agent-dashboard/item" icon={<HiCube />} label="Item View" close={closeSidebar} />
@@ -191,13 +191,13 @@ export default function DashboardLayout({ children }) {
             <Item href="/agent-dashboard/bank-head-details-view" icon={<HiCurrencyDollar />} label="General Ledger View " close={closeSidebar} />
             <Item href="/agent-dashboard/email-templates" icon={<HiDocumentText />} label="Email Templates" close={closeSidebar} />
             <Item href="/agent-dashboard/email-masters" icon={<HiOutlineCreditCard />} label="Email & App Password Master" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Other sections ... add your other menus here in the same format ... */}
 
           
           {/* Transactions View */}
-          <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === "transactionsView"} onToggle={() => toggleMenu("transactionsView")}>
+          {/* <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === "transactionsView"} onToggle={() => toggleMenu("transactionsView")}>
             <Submenu isOpen={!!openSubmenus["tvSales"]} onToggle={() => toggleSubmenu("tvSales")} icon={<HiShoppingCart />} label="Sales">
               <Item href="/agent-dashboard/sales-quotation-view" icon={<SiCivicrm />} label="Quotation View" close={closeSidebar} />
               <Item href="/agent-dashboard/sales-order-view" icon={<HiPuzzle />} label="Order View" close={closeSidebar} />
@@ -216,48 +216,48 @@ export default function DashboardLayout({ children }) {
               <Item href="/agent-dashboard/debit-notes-view" icon={<HiReceiptTax />} label="Debit Notes View" close={closeSidebar} />
               <Item href="/agent-dashboard/purchase-report" icon={<HiChartSquareBar />} label="Report" close={closeSidebar} />
             </Submenu>
-          </Section>
+          </Section> */}
 
           {/* User */}
-          <Section title="User" icon={<SiCivicrm />} isOpen={openMenu === "user"} onToggle={() => toggleMenu("user")}>
+          {/* <Section title="User" icon={<SiCivicrm />} isOpen={openMenu === "user"} onToggle={() => toggleMenu("user")}>
             <Item href="/agent-dashboard/users" icon={<HiUserGroup />} label="User" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* task */}
-          <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
+          {/* <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
             <Item href="/agent-dashboard/tasks" icon={<HiUserGroup />} label="Tasks" close={closeSidebar} />
-            {/* <Item href="/agent-dashboard/task-board" icon={<HiUserGroup />} label="Task Board" close={closeSidebar} /> */}
+            
             <Item href="/agent-dashboard/tasks/board" icon={<HiPuzzle />} label="Tasks Board" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* CRM-View */}
-          <Section title="CRM-View" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
+          {/* <Section title="CRM-View" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
             <Item href="/agent-dashboard/leads-view" icon={<HiUserGroup />} label="Lead Generation" close={closeSidebar} />
             <Item href="/agent-dashboard/opportunities" icon={<HiPuzzle />} label="Opportunity" close={closeSidebar} />
             <Item href="/agent-dashboard/crm/campaign" icon={<HiPuzzle />} label="Campaign" close={closeSidebar} />
 
-          </Section>
+          </Section> */}
 
           {/* Stock */}
-          <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
+          {/* <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
             <Item href="/agent-dashboard/InventoryView" icon={<HiOutlineLibrary />} label="Inventory View" close={closeSidebar} />
             <Item href="/agent-dashboard/InventoryEntry" icon={<HiOutlineLibrary />} label="Inventory Entry" close={closeSidebar} />
             <Item href="/agent-dashboard/InventoryAdjustmentsView" icon={<HiOutlineLibrary />} label="Inventory Ledger" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Payment */}
-          <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
+          {/* <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
             <Item href="/agent-dashboard/Payment" icon={<HiCurrencyDollar />} label="Payment Form" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Finance */}
-         <Section
+         {/* <Section
   title="Finance"
-  icon={<HiOutlineCreditCard />} // Finance main icon
+  icon={<HiOutlineCreditCard />} 
   isOpen={openMenu === "finance"}
   onToggle={() => toggleMenu("finance")}
 >
-  {/* Journal Entry */}
+
   <Submenu
     isOpen={!!openSubmenus["journalEntry"]}
     onToggle={() => toggleSubmenu("journalEntry")}
@@ -272,14 +272,14 @@ export default function DashboardLayout({ children }) {
     />
   </Submenu>
 
-  {/* Reports */}
+ 
   <Submenu
     isOpen={!!openSubmenus["report"]}
     onToggle={() => toggleSubmenu("report")}
     icon={<HiChartSquareBar />} // Report icon
     label="Report"
   >
-    {/* Financial Reports */}
+
     <Submenu
       isOpen={!!openSubmenus["financialReport"]}
       onToggle={() => toggleSubmenu("financialReport")}
@@ -306,7 +306,7 @@ export default function DashboardLayout({ children }) {
       />
     </Submenu>
 
-    {/* Ageing Reports */}
+   
     <Submenu
       isOpen={!!openSubmenus["ageingReport"]}
       onToggle={() => toggleSubmenu("ageingReport")}
@@ -327,7 +327,7 @@ export default function DashboardLayout({ children }) {
       />
     </Submenu>
 
-    {/* Statement Reports */}
+
     <Submenu
       isOpen={!!openSubmenus["statementReport"]}
       onToggle={() => toggleSubmenu("statementReport")}
@@ -354,25 +354,25 @@ export default function DashboardLayout({ children }) {
       />
     </Submenu>
   </Submenu>
-</Section>
+</Section> */}
 
           {/* Production */}
-          <Section title="Production" icon={<HiPuzzle />} isOpen={openMenu === "Production"} onToggle={() => toggleMenu("Production")}>
+          {/* <Section title="Production" icon={<HiPuzzle />} isOpen={openMenu === "Production"} onToggle={() => toggleMenu("Production")}>
             <Item href="/agent-dashboard/bom" icon={<HiOutlineCube />} label="BoM" close={closeSidebar} />
             <Item href="/agent-dashboard/ProductionOrder" icon={<HiReceiptTax />} label="Production Order" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Production View */}
-          <Section title="Production View" icon={<HiOutlineLibrary />} isOpen={openMenu === "ProductionView"} onToggle={() => toggleMenu("ProductionView")}>
+          {/* <Section title="Production View" icon={<HiOutlineLibrary />} isOpen={openMenu === "ProductionView"} onToggle={() => toggleMenu("ProductionView")}>
            
             <Item href="/agent-dashboard/bom-view" icon={<HiOutlineCube />} label="BoM View" close={closeSidebar} />
             <Item href="/agent-dashboard/productionorders-list-view" icon={<HiReceiptTax />} label="Production Orders View" close={closeSidebar} />
            
             <Item href="/agent-dashboard/production-board" icon={<HiChartSquareBar />} label="Production Board" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* Project */}
-          <Section
+          {/* <Section
             title={<Link href="/agent-dashboard/project" onClick={closeSidebar} className="flex items-center gap-2">Project</Link>}
             icon={<HiViewGrid />}
             isOpen={openMenu === "project"}
@@ -382,10 +382,10 @@ export default function DashboardLayout({ children }) {
             <Item href="/agent-dashboard/project/projects" icon={<HiOutlineCube />} label="Projects" close={closeSidebar} />
             <Item href="/agent-dashboard/project/tasks/board" icon={<HiPuzzle />} label="Tasks Board" close={closeSidebar} />
             <Item href="/agent-dashboard/project/tasks" icon={<HiPuzzle />} label="Tasks List" close={closeSidebar} />
-          </Section>
+          </Section> */}
 
           {/* HR  */}
-          <Section title="HR" icon={<HiUserGroup />} isOpen={openMenu === "hr"} onToggle={() => toggleMenu("hr")}>
+          {/* <Section title="HR" icon={<HiUserGroup />} isOpen={openMenu === "hr"} onToggle={() => toggleMenu("hr")}>
           <Item href="/agent-dashboard/hr/employee-onboarding" icon={<HiUserGroup />} label="Employee Onboarding" close={closeSidebar} />
           <Item href="/agent-dashboard/hr/Dashboard" icon={<HiUserGroup />} label="Employee Details" close={closeSidebar} />
           <Item href="/agent-dashboard/hr/masters" icon={<HiUserGroup />} label="Department" close={closeSidebar} />
@@ -399,25 +399,25 @@ export default function DashboardLayout({ children }) {
           <Item href="/agent-dashboard/hr/profile" icon={<HiUser />} label="Profile" close={closeSidebar} />
           
           
-          </Section>
+          </Section> */}
 
 
 
           {/* ppc */}
-          <Section title="PPC" icon={<HiPuzzle />} isOpen={openMenu === "ppc"} onToggle={() => toggleMenu("ppc")}>
+          {/* <Section title="PPC" icon={<HiPuzzle />} isOpen={openMenu === "ppc"} onToggle={() => toggleMenu("ppc")}>
             <Item href="/agent-dashboard/ppc/operatorsPage" icon={<HiUser />} label="Operators" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/machinesPage" icon={<HiOutlineCube />} label="Machines" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/resourcesPage" icon={<HiOutlineLibrary />} label="Resources" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/machineOutputPage" icon={<HiOutlineLibrary />}  label="Machine Outputs" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/holidaysPage" icon={<HiGlobeAlt />} label="Holidays" close={closeSidebar} />
-            {/* machine and operator mapping */}
+         
             <Item href="/agent-dashboard/ppc/operatorMachineMappingPage" icon={<HiPuzzle />} label="Machine-Operator Mapping" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/operations" icon={<HiPuzzle />} label="Operations" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/productionOrderPage" icon={<HiReceiptTax />} label="Production Planning" close={closeSidebar} />
             <Item href="/agent-dashboard/ppc/jobcards" icon={<HiReceiptTax />} label="Job Card" close={closeSidebar} />
              <Item href="/agent-dashboard/ppc/downtime" icon={<HiReceiptTax />} label="Downtime" close={closeSidebar} />
 
-          </Section>
+          </Section> */}
 
           <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
             <Item href="/agent-dashboard/helpdesk/tickets" icon={<HiDocumentText />} label="Tickets" close={closeSidebar} />
@@ -425,7 +425,7 @@ export default function DashboardLayout({ children }) {
             <Item href="/agent-dashboard/helpdesk/categories" icon={<HiUserGroup />} label="Categories" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/settings" icon={<HiCog />} label="Settings" close={closeSidebar} />
-          </Section>
+          </Section> 
           
 
           {/* Logout */}

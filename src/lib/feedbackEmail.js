@@ -1,22 +1,174 @@
-import React from "react";
-
 export default function feedbackEmail(ticket, token) {
-  const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  const baseUrl =
+    process.env.APP_URL || process.env.NEXT_PUBLIC_BASE_URL || "";
 
-  const link = `${baseUrl}/feedback?token=${token}`;
+  const feedbackLink = `${baseUrl}/feedback?token=${token}`;
 
   return `
-    <h2>How was our support?</h2>
-    <p>Ticket: <b>${ticket.subject}</b></p>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+</head>
 
-    <p>Please rate us:</p>
+<body style="
+  margin:0;
+  padding:0;
+  background:#f4f6f8;
+  font-family: Arial, Helvetica, sans-serif;
+">
 
-    <p>
-      <a href="${link}&rating=5">⭐⭐⭐⭐⭐</a><br/>
-      <a href="${link}&rating=4">⭐⭐⭐⭐</a><br/>
-      <a href="${link}&rating=3">⭐⭐⭐</a><br/>
-      <a href="${link}&rating=2">⭐⭐</a><br/>
-      <a href="${link}&rating=1">⭐</a>
-    </p>
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td align="center" style="padding:30px 10px;">
+
+      <!-- CARD -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="
+        max-width:560px;
+        background:#ffffff;
+        border-radius:10px;
+        box-shadow:0 4px 10px rgba(0,0,0,0.08);
+        overflow:hidden;
+      ">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="
+            background:#0b5ed7;
+            color:#ffffff;
+            padding:22px;
+            text-align:center;
+          ">
+            <h2 style="margin:0;font-size:22px;">
+              How was our support?
+            </h2>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="padding:26px;color:#333333;">
+
+            <p style="margin:0 0 14px;">
+              We’d love to hear your feedback on your recent support experience.
+            </p>
+
+            <!-- TICKET INFO -->
+            <table width="100%" cellpadding="6" cellspacing="0" style="
+              background:#f8f9fb;
+              border-radius:6px;
+              margin-bottom:18px;
+            ">
+              <tr>
+                <td><b>Ticket No:</b> ${ticket.ticketNo || ticket.name}</td>
+              </tr>
+              <tr>
+                <td><b>Subject:</b> ${ticket.subject}</td>
+              </tr>
+            </table>
+
+            <!-- AGENT INFO -->
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+              <tr>
+                <td style="padding-right:10px;">
+                  <img
+                    src="${ticket.agent?.photo || "https://via.placeholder.com/48"}"
+                    width="48"
+                    height="48"
+                    style="border-radius:50%;display:block;"
+                  />
+                </td>
+                <td style="vertical-align:middle;">
+                  <div style="font-weight:600;">
+                    ${ticket.agent?.name || "Support Agent"}
+                  </div>
+                  <div style="font-size:12px;color:#666;">
+                    Handled your request
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <p style="font-weight:600;margin-bottom:10px;">
+              Please rate your experience:
+            </p>
+
+            <!-- RATING BUTTONS -->
+            <table width="100%" cellpadding="6" cellspacing="0">
+              <tr>
+                <td align="center">
+
+                  ${ratingBtn(5, "Excellent", feedbackLink)}
+                  ${ratingBtn(4, "Good", feedbackLink)}
+                  ${ratingBtn(3, "Average", feedbackLink)}
+                  ${ratingBtn(2, "Poor", feedbackLink)}
+                  ${ratingBtn(1, "Very Poor", feedbackLink)}
+
+                </td>
+              </tr>
+            </table>
+
+            <p style="
+              font-size:12px;
+              color:#777;
+              text-align:center;
+              margin-top:18px;
+            ">
+              Clicking a rating will open a short comment form.<br/>
+              No login required.
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="
+            background:#f1f3f5;
+            padding:14px;
+            text-align:center;
+            font-size:12px;
+            color:#777;
+          ">
+            Thank you for choosing our support team
+          </td>
+        </tr>
+
+      </table>
+      <!-- END CARD -->
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
+  `;
+}
+
+/* ===========================
+   Email-safe rating button
+=========================== */
+function ratingBtn(stars, label, link) {
+  return `
+    <a href="${link}&rating=${stars}"
+      style="
+        display:inline-block;
+        margin:6px 4px;
+        padding:10px 14px;
+        text-decoration:none;
+        background:#ffffff;
+        border:1px solid #dee2e6;
+        border-radius:8px;
+        color:#212529;
+        font-size:13px;
+      ">
+      <div style="font-size:18px;line-height:20px;">
+        ${"⭐".repeat(stars)}
+      </div>
+      <div style="font-size:11px;color:#555;">
+        ${label}
+      </div>
+    </a>
   `;
 }

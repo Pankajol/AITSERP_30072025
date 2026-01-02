@@ -247,6 +247,22 @@ export default function TicketDetailPage() {
                   <div className="mt-1 whitespace-pre-wrap">
                     {m.message}
                   </div>
+                  {/* ATTACHMENTS */}
+{m.attachments?.length > 0 && (
+  <div className="mt-2 space-y-1">
+    {m.attachments.map((file, idx) => (
+      <a
+        key={idx}
+        href={file.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
+      >
+        📎 {file.filename || "Attachment"}
+      </a>
+    ))}
+  </div>
+)}
                 </div>
               </div>
             );

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
+import Customer from "@/models/CustomerModel";
+import CompanyUser from "@/models/CompanyUser";
+import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import mongoose from "mongoose";
 
@@ -43,15 +46,17 @@ export async function GET(req) {
         { status: 403 }
       );
     }
-
+   const roles = user.roles || [];
     // 👤 role based restriction
     if (user.role === "customer") {
       query.customerId = new mongoose.Types.ObjectId(user.id);
     }
 
-    if (user.role === "agent") {
-      query.agentId = new mongoose.Types.ObjectId(user.id);
-    }
+   // AGENT
+if (roles.includes("Agent")) {
+  query.agentId = new mongoose.Types.ObjectId(user.id);
+}
+
 
     console.log("🎯 Ticket list query:", query);
 
@@ -60,7 +65,7 @@ export async function GET(req) {
     const tickets = await Ticket.find(query)
       .sort({ createdAt: -1 })
       .populate("agentId", "name email")
-      .populate("customerId", "name email")
+      .populate("customerId", "customerName emailId")
       .populate("companyId", "companyName");
 
     console.log(`📦 Tickets found: ${tickets.length}`);
