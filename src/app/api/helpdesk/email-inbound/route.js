@@ -7,6 +7,7 @@ import Company from "@/models/Company";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import { simpleParser } from "mailparser";
+import cloudinary from "@/lib/cloudinary";
 
 
 /* ===================== HELPERS ===================== */
@@ -115,17 +116,47 @@ function parseAttachments(raw) {
 
 
 async function parseOutlookAttachments(raw) {
-  if (!raw.raw && !raw.mime && !raw.email) return [];
+  const source =
+    raw.raw || raw.mime || raw.email || raw.content || null;
 
-  const source = raw.raw || raw.mime || raw.email;
+  if (!source) return [];
+
   const parsed = await simpleParser(source);
 
   return (parsed.attachments || []).map(a => ({
     filename: a.filename,
     contentType: a.contentType,
     size: a.size,
-    content: a.content.toString("base64"),
+    buffer: a.content, // Buffer
   }));
+}
+
+
+async function uploadAttachmentsToCloudinary(attachments, ticketId) {
+  const uploaded = [];
+
+  for (const file of attachments) {
+    if (!file.buffer) continue;
+
+    const base64 = `data:${file.contentType};base64,${file.buffer.toString(
+      "base64"
+    )}`;
+
+    const res = await cloudinary.uploader.upload(base64, {
+      folder: `helpdesk/tickets/${ticketId}`,
+      resource_type: "auto",
+    });
+
+    uploaded.push({
+      filename: file.filename,
+      url: res.secure_url,
+      publicId: res.public_id,
+      contentType: file.contentType,
+      size: file.size,
+    });
+  }
+
+  return uploaded;
 }
 
 
@@ -161,11 +192,21 @@ export async function POST(req) {
       .map(normalizeId)
       .filter(Boolean);
 
-    let attachments = parseAttachments(raw);
+let attachments = parseAttachments(raw);
 
-    if (!attachments.length) {
-      attachments = await parseOutlookAttachments(raw);
-    }
+if (!attachments.length) {
+  attachments = await parseOutlookAttachments(raw);
+}
+
+let uploadedAttachments = [];
+
+if (attachments.length) {
+  uploadedAttachments = await uploadAttachmentsToCloudinary(
+    attachments,
+    "temp"
+  );
+}
+
 
 
     console.log("📨 Incoming TO:", toEmail);
@@ -205,7 +246,7 @@ export async function POST(req) {
         message: body,
         messageId,
         sentiment,
-        attachments,
+        attachments: uploadedAttachments,
         createdAt: new Date(),
       });
 
@@ -271,7 +312,7 @@ export async function POST(req) {
           message: body,
           messageId,
           sentiment,
-          attachments,
+           attachments: uploadedAttachments,
           createdAt: new Date(),
         },
       ],
