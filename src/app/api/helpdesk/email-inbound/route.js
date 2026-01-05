@@ -7,7 +7,7 @@ import Company from "@/models/Company";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import { simpleParser } from "mailparser";
-import cloudinary from "@/lib/";
+import cloudinary from "@/lib/cloudinary";
 
 
 /* ===================== HELPERS ===================== */
