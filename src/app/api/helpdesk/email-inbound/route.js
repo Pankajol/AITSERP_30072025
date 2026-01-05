@@ -58,22 +58,59 @@ function escapeRegExp(str) {
 function parseAttachments(raw) {
   const files = [];
 
-  const attachments = raw.attachments || raw.attachment || [];
+  /* ================= POSTMARK ================= */
+  if (Array.isArray(raw.Attachments)) {
+    for (const a of raw.Attachments) {
+      files.push({
+        filename: a.Name,
+        contentType: a.ContentType,
+        size: a.ContentLength,
+        content: a.Content, // base64
+      });
+    }
+  }
 
-  if (!Array.isArray(attachments)) return files;
+  /* ================= SENDGRID ================= */
+  if (raw["attachment-info"]) {
+    try {
+      const info = JSON.parse(raw["attachment-info"]);
+      for (const key in info) {
+        const meta = info[key];
+        const file = raw[key];
 
-  for (const a of attachments) {
-    files.push({
-      filename: a.filename || "attachment",
-      url: a.url || null,              // if provider gives hosted URL
-      contentType: a.contentType || a.type || "application/octet-stream",
-      size: a.size || null,
-      content: a.content || null,      // base64 (optional)
-    });
+        if (file) {
+          files.push({
+            filename: meta.filename,
+            contentType: meta.type,
+            size: meta.size,
+            content: file, // base64
+          });
+        }
+      }
+    } catch (e) {
+      console.log("❌ attachment-info parse failed");
+    }
+  }
+
+  /* ================= MAILGUN ================= */
+  if (raw["attachment-count"]) {
+    const count = Number(raw["attachment-count"]);
+    for (let i = 1; i <= count; i++) {
+      const a = raw[`attachment-${i}`];
+      if (a) {
+        files.push({
+          filename: a.filename,
+          contentType: a.contentType,
+          size: a.size,
+          content: a.data || null,
+        });
+      }
+    }
   }
 
   return files;
 }
+
 
 /* ===================== MAIN ===================== */
 
