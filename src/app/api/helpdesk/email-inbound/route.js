@@ -6,6 +6,8 @@ import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
+import { simpleParser } from "mailparser";
+
 
 /* ===================== HELPERS ===================== */
 
@@ -112,6 +114,21 @@ function parseAttachments(raw) {
 }
 
 
+async function parseOutlookAttachments(raw) {
+  if (!raw.raw && !raw.mime && !raw.email) return [];
+
+  const source = raw.raw || raw.mime || raw.email;
+  const parsed = await simpleParser(source);
+
+  return (parsed.attachments || []).map(a => ({
+    filename: a.filename,
+    contentType: a.contentType,
+    size: a.size,
+    content: a.content.toString("base64"),
+  }));
+}
+
+
 /* ===================== MAIN ===================== */
 
 export async function POST(req) {
@@ -144,7 +161,12 @@ export async function POST(req) {
       .map(normalizeId)
       .filter(Boolean);
 
-    const attachments = parseAttachments(raw);
+    let attachments = parseAttachments(raw);
+
+    if (!attachments.length) {
+      attachments = await parseOutlookAttachments(raw);
+    }
+
 
     console.log("📨 Incoming TO:", toEmail);
     console.log("📎 Attachments:", attachments.length);
