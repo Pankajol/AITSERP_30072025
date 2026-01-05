@@ -237,26 +237,45 @@ if (attachments.length) {
        2️⃣ REPLY → APPEND MESSAGE
     ===================================================== */
 
-    if (ticket) {
-      const sentiment = await analyzeSentimentAI(body);
+   if (ticket) {
+  const sentiment = await analyzeSentimentAI(body);
 
-      ticket.messages.push({
-        senderType: "customer",
-        externalEmail: fromEmail,
-        message: body,
-        messageId,
-        sentiment,
-        attachments: uploadedAttachments,
-        createdAt: new Date(),
-      });
+  /* 🔥 AUTO REOPEN LOGIC */
+  let reopened = false;
+  if (ticket.status === "closed") {
+    ticket.status = "open";
+    ticket.autoClosed = false;
+    reopened = true;
+  }
 
-      ticket.lastCustomerReplyAt = new Date();
-      ticket.sentiment = sentiment;
-      await ticket.save();
+  ticket.messages.push({
+    senderType: "customer",
+    externalEmail: fromEmail,
+    message: body,
+    messageId,
+    sentiment,
+    attachments: uploadedAttachments,
+    createdAt: new Date(),
+  });
 
-      console.log("🔁 Reply appended with attachments");
-      return Response.json({ success: true, ticketId: ticket._id });
-    }
+  ticket.lastReplyAt = new Date();
+  ticket.lastCustomerReplyAt = new Date();
+  ticket.sentiment = sentiment;
+
+  await ticket.save();
+
+  console.log(
+    reopened
+      ? "🔓 Ticket reopened by customer email"
+      : "🔁 Reply appended with attachments"
+  );
+
+  return Response.json({
+    success: true,
+    ticketId: ticket._id,
+    reopened,
+  });
+}
 
     /* =====================================================
        3️⃣ NEW EMAIL → COMPANY
