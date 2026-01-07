@@ -32,6 +32,9 @@ const TicketMessageSchema = new mongoose.Schema(
       {
         filename: String,
         url: String,
+        publicId: String,
+        contentType: String,
+        size: Number
       },
     ],
 

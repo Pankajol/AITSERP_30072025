@@ -9,7 +9,6 @@ import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import { simpleParser } from "mailparser";
 import cloudinary from "@/lib/cloudinary";
 
-
 /* ===================== HELPERS ===================== */
 
 function normalizeId(id) {
@@ -22,29 +21,20 @@ function normalizeId(id) {
 function extractEmail(value) {
   if (!value) return "";
   if (Array.isArray(value)) value = value[0];
-
   if (typeof value === "object" && value !== null) {
-    return (value.email || value.address || value.mail || "")
-      .toString()
-      .toLowerCase();
+    return (value.email || value.address || value.mail || "").toString().toLowerCase();
   }
-
-  const m = String(value).match(
-    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
-  );
+  const m = String(value).match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   return m ? m[1].toLowerCase() : "";
 }
 
 async function parseBody(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
-
   if (ct.includes("application/json")) return await req.json();
-
   if (ct.includes("application/x-www-form-urlencoded")) {
     const txt = await req.text();
     return Object.fromEntries(new URLSearchParams(txt));
   }
-
   try {
     return JSON.parse(await req.text());
   } catch {
@@ -61,32 +51,31 @@ function escapeRegExp(str) {
 function parseAttachments(raw) {
   const files = [];
 
-  /* ================= POSTMARK ================= */
+  // Postmark
   if (Array.isArray(raw.Attachments)) {
     for (const a of raw.Attachments) {
       files.push({
         filename: a.Name,
         contentType: a.ContentType,
         size: a.ContentLength,
-        content: a.Content, // base64
+        content: a.Content, // Base64 string
       });
     }
   }
 
-  /* ================= SENDGRID ================= */
+  // SendGrid
   if (raw["attachment-info"]) {
     try {
       const info = JSON.parse(raw["attachment-info"]);
       for (const key in info) {
         const meta = info[key];
         const file = raw[key];
-
         if (file) {
           files.push({
             filename: meta.filename,
             contentType: meta.type,
             size: meta.size,
-            content: file, // base64
+            content: file, 
           });
         }
       }
@@ -95,34 +84,13 @@ function parseAttachments(raw) {
     }
   }
 
-  /* ================= MAILGUN ================= */
-  if (raw["attachment-count"]) {
-    const count = Number(raw["attachment-count"]);
-    for (let i = 1; i <= count; i++) {
-      const a = raw[`attachment-${i}`];
-      if (a) {
-        files.push({
-          filename: a.filename,
-          contentType: a.contentType,
-          size: a.size,
-          content: a.data || null,
-        });
-      }
-    }
-  }
-
   return files;
 }
 
-
 async function parseOutlookAttachments(raw) {
-  const source =
-    raw.raw || raw.mime || raw.email || raw.content || null;
-
+  const source = raw.raw || raw.mime || raw.email || raw.content || null;
   if (!source) return [];
-
   const parsed = await simpleParser(source);
-
   return (parsed.attachments || []).map(a => ({
     filename: a.filename,
     contentType: a.contentType,
@@ -131,34 +99,42 @@ async function parseOutlookAttachments(raw) {
   }));
 }
 
-
-async function uploadAttachmentsToCloudinary(attachments, ticketId) {
+async function uploadAttachmentsToCloudinary(attachments, folderId) {
   const uploaded = [];
-
   for (const file of attachments) {
-    if (!file.buffer) continue;
+    // Problem Fix: Buffer ya Base64 content dono handle karna
+    const dataToUpload = file.buffer || file.content;
+    if (!dataToUpload) continue;
 
-    const base64 = `data:${file.contentType};base64,${file.buffer.toString(
-      "base64"
-    )}`;
+    let uploadStr;
+    if (Buffer.isBuffer(dataToUpload)) {
+      uploadStr = `data:${file.contentType};base64,${dataToUpload.toString("base64")}`;
+    } else {
+      // Agar base64 string hai
+      uploadStr = dataToUpload.startsWith('data:') 
+        ? dataToUpload 
+        : `data:${file.contentType};base64,${dataToUpload}`;
+    }
 
-    const res = await cloudinary.uploader.upload(base64, {
-      folder: `helpdesk/tickets/${ticketId}`,
-      resource_type: "auto",
-    });
+    try {
+      const res = await cloudinary.uploader.upload(uploadStr, {
+        folder: `helpdesk/tickets/${folderId}`,
+        resource_type: "auto",
+      });
 
-    uploaded.push({
-      filename: file.filename,
-      url: res.secure_url,
-      publicId: res.public_id,
-      contentType: file.contentType,
-      size: file.size,
-    });
+      uploaded.push({
+        filename: file.filename,
+        url: res.secure_url,
+        publicId: res.public_id,
+        contentType: file.contentType,
+        size: file.size,
+      });
+    } catch (err) {
+      console.error("❌ Cloudinary Upload Error:", err.message);
+    }
   }
-
   return uploaded;
 }
-
 
 /* ===================== MAIN ===================== */
 
@@ -166,7 +142,6 @@ export async function POST(req) {
   try {
     console.log("📩 INBOUND EMAIL RECEIVED");
 
-    /* ---------- AUTH ---------- */
     const { searchParams } = new URL(req.url);
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -175,7 +150,6 @@ export async function POST(req) {
     await dbConnect();
     const raw = await parseBody(req);
 
-    /* ---------- EMAIL DATA ---------- */
     const fromEmail = extractEmail(raw.from || raw.sender || raw["From"]);
     const toEmail = extractEmail(raw.to || raw.recipient);
     const subject = raw.subject || "No Subject";
@@ -187,44 +161,23 @@ export async function POST(req) {
 
     const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
     const inReplyTo = normalizeId(raw.inReplyTo || raw["In-Reply-To"]);
-    const references = (raw.references || "")
-      .split(/\s+/)
-      .map(normalizeId)
-      .filter(Boolean);
+    const references = (raw.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
 
-let attachments = parseAttachments(raw);
+    // Initial parsing
+    let attachments = parseAttachments(raw);
+    if (!attachments.length) {
+      attachments = await parseOutlookAttachments(raw);
+    }
 
-if (!attachments.length) {
-  attachments = await parseOutlookAttachments(raw);
-}
+    /* 1️⃣ FIND EXISTING TICKET (REPLY) */
+    const ticket = await Ticket.findOne({
+      $or: [
+        { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
+        { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
+      ],
+    });
 
-let uploadedAttachments = [];
-
-if (attachments.length) {
-  uploadedAttachments = await uploadAttachmentsToCloudinary(
-    attachments,
-    "temp"
-  );
-}
-
-
-
-    console.log("📨 Incoming TO:", toEmail);
-    console.log("📎 Attachments:", attachments.length);
-
-    /* =====================================================
-       1️⃣ FIND EXISTING TICKET (REPLY)
-    ===================================================== */
-
-    const ticket =
-      (await Ticket.findOne({
-        $or: [
-          { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
-          { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
-        ],
-      })) || null;
-
-    /* ---------- DUPLICATE ---------- */
+    /* DUPLICATE CHECK */
     if (ticket && messageId) {
       const exists = ticket.messages.find(m => m.messageId === messageId);
       if (exists) {
@@ -233,66 +186,46 @@ if (attachments.length) {
       }
     }
 
-    /* =====================================================
-       2️⃣ REPLY → APPEND MESSAGE
-    ===================================================== */
+    /* 2️⃣ REPLY → APPEND MESSAGE */
+    if (ticket) {
+      const sentiment = await analyzeSentimentAI(body);
+      
+      // Upload with Ticket ID
+      let uploadedAttachments = [];
+      if (attachments.length) {
+        uploadedAttachments = await uploadAttachmentsToCloudinary(attachments, ticket._id);
+      }
 
-   if (ticket) {
-  const sentiment = await analyzeSentimentAI(body);
+      let reopened = false;
+      if (ticket.status === "closed") {
+        ticket.status = "open";
+        ticket.autoClosed = false;
+        reopened = true;
+      }
 
-  /* 🔥 AUTO REOPEN LOGIC */
-  let reopened = false;
-  if (ticket.status === "closed") {
-    ticket.status = "open";
-    ticket.autoClosed = false;
-    reopened = true;
-  }
+      ticket.messages.push({
+        senderType: "customer",
+        externalEmail: fromEmail,
+        message: body,
+        messageId,
+        sentiment,
+        attachments: uploadedAttachments,
+        createdAt: new Date(),
+      });
 
-  ticket.messages.push({
-    senderType: "customer",
-    externalEmail: fromEmail,
-    message: body,
-    messageId,
-    sentiment,
-    attachments: uploadedAttachments,
-    createdAt: new Date(),
-  });
+      ticket.lastReplyAt = new Date();
+      ticket.lastCustomerReplyAt = new Date();
+      ticket.sentiment = sentiment;
 
-  ticket.lastReplyAt = new Date();
-  ticket.lastCustomerReplyAt = new Date();
-  ticket.sentiment = sentiment;
-
-  await ticket.save();
-
-  console.log(
-    reopened
-      ? "🔓 Ticket reopened by customer email"
-      : "🔁 Reply appended with attachments"
-  );
-
-  return Response.json({
-    success: true,
-    ticketId: ticket._id,
-    reopened,
-  });
-}
-
-    /* =====================================================
-       3️⃣ NEW EMAIL → COMPANY
-    ===================================================== */
-
-    const company = await Company.findOne({
-      supportEmails: toEmail,
-    }).select("_id companyName");
-
-    if (!company) {
-      console.log("⛔ Invalid mailbox");
-      return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+      await ticket.save();
+      return Response.json({ success: true, ticketId: ticket._id, reopened });
     }
 
-    /* =====================================================
-       4️⃣ CUSTOMER
-    ===================================================== */
+    /* 3️⃣ NEW TICKET LOGIC */
+    const company = await Company.findOne({ supportEmails: toEmail }).select("_id companyName");
+    if (!company) {
+      return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+    }
 
     const customer = await Customer.findOne({
       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
@@ -300,18 +233,14 @@ if (attachments.length) {
     });
 
     if (!customer) {
-      console.log("⛔ Unknown customer:", fromEmail);
       return Response.json({ error: "Unknown customer" }, { status: 403 });
     }
-
-    /* =====================================================
-       5️⃣ CREATE TICKET
-    ===================================================== */
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
 
-    const newTicket = await Ticket.create({
+    // Create ticket first to get ID for folder naming, or use "new-tickets"
+    const newTicket = new Ticket({
       companyId: company._id,
       customerId: customer._id,
       customerEmail: fromEmail,
@@ -323,30 +252,38 @@ if (attachments.length) {
       priority: sentiment === "negative" ? "high" : "normal",
       emailThreadId: messageId || `mail-${Date.now()}`,
       emailAlias: toEmail,
-
-      messages: [
-        {
-          senderType: "customer",
-          externalEmail: fromEmail,
-          message: body,
-          messageId,
-          sentiment,
-           attachments: uploadedAttachments,
-          createdAt: new Date(),
-        },
-      ],
-
+      messages: [],
       lastCustomerReplyAt: new Date(),
     });
 
-    console.log("🎯 New ticket created with attachments:", newTicket._id);
+    // Upload attachments for the new ticket
+    let uploadedAttachments = [];
+    if (attachments.length) {
+      uploadedAttachments = await uploadAttachmentsToCloudinary(attachments, newTicket._id);
+    }
 
+    newTicket.messages.push({
+      senderType: "customer",
+      externalEmail: fromEmail,
+      message: body,
+      messageId,
+      sentiment,
+      attachments: uploadedAttachments,
+      createdAt: new Date(),
+    });
+
+    await newTicket.save();
+    console.log("🎯 New ticket created:", newTicket._id);
     return Response.json({ success: true, ticketId: newTicket._id });
+
   } catch (err) {
     console.error("❌ Inbound error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
+
+
+
 
 
 
@@ -357,9 +294,11 @@ if (attachments.length) {
 // import Ticket from "@/models/helpdesk/Ticket";
 // import Customer from "@/models/CustomerModel";
 // import Company from "@/models/Company";
-// import Notification from "@/models/helpdesk/Notification";
 // import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 // import { analyzeSentimentAI } from "@/utils/aiSentiment";
+// import { simpleParser } from "mailparser";
+// import cloudinary from "@/lib/cloudinary";
+
 
 // /* ===================== HELPERS ===================== */
 
@@ -373,11 +312,13 @@ if (attachments.length) {
 // function extractEmail(value) {
 //   if (!value) return "";
 //   if (Array.isArray(value)) value = value[0];
+
 //   if (typeof value === "object" && value !== null) {
 //     return (value.email || value.address || value.mail || "")
 //       .toString()
 //       .toLowerCase();
 //   }
+
 //   const m = String(value).match(
 //     /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
 //   );
@@ -386,11 +327,14 @@ if (attachments.length) {
 
 // async function parseBody(req) {
 //   const ct = (req.headers.get("content-type") || "").toLowerCase();
+
 //   if (ct.includes("application/json")) return await req.json();
+
 //   if (ct.includes("application/x-www-form-urlencoded")) {
 //     const txt = await req.text();
 //     return Object.fromEntries(new URLSearchParams(txt));
 //   }
+
 //   try {
 //     return JSON.parse(await req.text());
 //   } catch {
@@ -401,6 +345,110 @@ if (attachments.length) {
 // function escapeRegExp(str) {
 //   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // }
+
+// /* ===================== ATTACHMENT PARSER ===================== */
+
+// function parseAttachments(raw) {
+//   const files = [];
+
+//   /* ================= POSTMARK ================= */
+//   if (Array.isArray(raw.Attachments)) {
+//     for (const a of raw.Attachments) {
+//       files.push({
+//         filename: a.Name,
+//         contentType: a.ContentType,
+//         size: a.ContentLength,
+//         content: a.Content, // base64
+//       });
+//     }
+//   }
+
+//   /* ================= SENDGRID ================= */
+//   if (raw["attachment-info"]) {
+//     try {
+//       const info = JSON.parse(raw["attachment-info"]);
+//       for (const key in info) {
+//         const meta = info[key];
+//         const file = raw[key];
+
+//         if (file) {
+//           files.push({
+//             filename: meta.filename,
+//             contentType: meta.type,
+//             size: meta.size,
+//             content: file, // base64
+//           });
+//         }
+//       }
+//     } catch (e) {
+//       console.log("❌ attachment-info parse failed");
+//     }
+//   }
+
+//   /* ================= MAILGUN ================= */
+//   if (raw["attachment-count"]) {
+//     const count = Number(raw["attachment-count"]);
+//     for (let i = 1; i <= count; i++) {
+//       const a = raw[`attachment-${i}`];
+//       if (a) {
+//         files.push({
+//           filename: a.filename,
+//           contentType: a.contentType,
+//           size: a.size,
+//           content: a.data || null,
+//         });
+//       }
+//     }
+//   }
+
+//   return files;
+// }
+
+
+// async function parseOutlookAttachments(raw) {
+//   const source =
+//     raw.raw || raw.mime || raw.email || raw.content || null;
+
+//   if (!source) return [];
+
+//   const parsed = await simpleParser(source);
+
+//   return (parsed.attachments || []).map(a => ({
+//     filename: a.filename,
+//     contentType: a.contentType,
+//     size: a.size,
+//     buffer: a.content, // Buffer
+//   }));
+// }
+
+
+// async function uploadAttachmentsToCloudinary(attachments, ticketId) {
+//   const uploaded = [];
+
+//   for (const file of attachments) {
+//     if (!file.buffer) continue;
+
+//     const base64 = `data:${file.contentType};base64,${file.buffer.toString(
+//       "base64"
+//     )}`;
+
+//     const res = await cloudinary.uploader.upload(base64, {
+//       folder: `helpdesk/tickets/${ticketId}`,
+//       resource_type: "auto",
+//     });
+
+//     uploaded.push({
+//       filename: file.filename,
+//       url: res.secure_url,
+//       publicId: res.public_id,
+//       contentType: file.contentType,
+//       size: file.size,
+//     });
+//   }
+
+//   return uploaded;
+// }
+
 
 // /* ===================== MAIN ===================== */
 
@@ -428,45 +476,36 @@ if (attachments.length) {
 //     }
 
 //     const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
-//     const inReplyTo = normalizeId(raw.inReplyTo);
+//     const inReplyTo = normalizeId(raw.inReplyTo || raw["In-Reply-To"]);
 //     const references = (raw.references || "")
 //       .split(/\s+/)
 //       .map(normalizeId)
 //       .filter(Boolean);
 
-//     /* ---------- COMPANY MATCH ---------- */
-//     const company = await Company.findOne({
-//       supportEmails: toEmail,
-//     }).select("_id companyName supportEmails");
+// let attachments = parseAttachments(raw);
+
+// if (!attachments.length) {
+//   attachments = await parseOutlookAttachments(raw);
+// }
+
+// let uploadedAttachments = [];
+
+// if (attachments.length) {
+//   uploadedAttachments = await uploadAttachmentsToCloudinary(
+//     attachments,
+//     "temp"
+//   );
+// }
+
+
 
 //     console.log("📨 Incoming TO:", toEmail);
-//     console.log("🏢 Company match:", company?.companyName || "None");
+//     console.log("📎 Attachments:", attachments.length);
 
-//     if (!company && !inReplyTo && references.length === 0) {
-//       console.log("⛔ Invalid mailbox");
-//       return Response.json({ error: "Invalid mailbox" }, { status: 403 });
-//     }
+//     /* =====================================================
+//        1️⃣ FIND EXISTING TICKET (REPLY)
+//     ===================================================== */
 
-//     /* ---------- CUSTOMER ---------- */
-//     const customer = await Customer.findOne({
-//       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
-//       companyId: company?._id,
-//     });
-
-//     if (!customer) {
-//       console.log("⛔ Unknown customer:", fromEmail);
-//       return Response.json({ error: "Unknown customer" }, { status: 403 });
-//     }
-
-//     /* ---------- DUPLICATE ---------- */
-//     if (messageId) {
-//       const dup = await Ticket.findOne({ "messages.messageId": messageId });
-//       if (dup) {
-//         return Response.json({ success: true, ticketId: dup._id });
-//       }
-//     }
-
-//     /* ---------- FIND TICKET ---------- */
 //     const ticket =
 //       (await Ticket.findOne({
 //         $or: [
@@ -475,27 +514,91 @@ if (attachments.length) {
 //         ],
 //       })) || null;
 
-//     const sentiment = await analyzeSentimentAI(body);
-
-//     /* ---------- REPLY ---------- */
-//     if (ticket) {
-//       ticket.messages.push({
-//         senderType: "customer",
-//         externalEmail: fromEmail,
-//         message: body,
-//         messageId,
-//         sentiment,
-//         createdAt: new Date(),
-//       });
-
-//       ticket.lastCustomerReplyAt = new Date();
-//       ticket.sentiment = sentiment;
-//       await ticket.save();
-
-//       return Response.json({ success: true, ticketId: ticket._id });
+//     /* ---------- DUPLICATE ---------- */
+//     if (ticket && messageId) {
+//       const exists = ticket.messages.find(m => m.messageId === messageId);
+//       if (exists) {
+//         console.log("♻️ Duplicate email ignored");
+//         return Response.json({ success: true, ticketId: ticket._id });
+//       }
 //     }
 
-//     /* ---------- NEW TICKET ---------- */
+//     /* =====================================================
+//        2️⃣ REPLY → APPEND MESSAGE
+//     ===================================================== */
+
+//    if (ticket) {
+//   const sentiment = await analyzeSentimentAI(body);
+
+//   /* 🔥 AUTO REOPEN LOGIC */
+//   let reopened = false;
+//   if (ticket.status === "closed") {
+//     ticket.status = "open";
+//     ticket.autoClosed = false;
+//     reopened = true;
+//   }
+
+//   ticket.messages.push({
+//     senderType: "customer",
+//     externalEmail: fromEmail,
+//     message: body,
+//     messageId,
+//     sentiment,
+//     attachments: uploadedAttachments,
+//     createdAt: new Date(),
+//   });
+
+//   ticket.lastReplyAt = new Date();
+//   ticket.lastCustomerReplyAt = new Date();
+//   ticket.sentiment = sentiment;
+
+//   await ticket.save();
+
+//   console.log(
+//     reopened
+//       ? "🔓 Ticket reopened by customer email"
+//       : "🔁 Reply appended with attachments"
+//   );
+
+//   return Response.json({
+//     success: true,
+//     ticketId: ticket._id,
+//     reopened,
+//   });
+// }
+
+//     /* =====================================================
+//        3️⃣ NEW EMAIL → COMPANY
+//     ===================================================== */
+
+//     const company = await Company.findOne({
+//       supportEmails: toEmail,
+//     }).select("_id companyName");
+
+//     if (!company) {
+//       console.log("⛔ Invalid mailbox");
+//       return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+//     }
+
+//     /* =====================================================
+//        4️⃣ CUSTOMER
+//     ===================================================== */
+
+//     const customer = await Customer.findOne({
+//       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
+//       companyId: company._id,
+//     });
+
+//     if (!customer) {
+//       console.log("⛔ Unknown customer:", fromEmail);
+//       return Response.json({ error: "Unknown customer" }, { status: 403 });
+//     }
+
+//     /* =====================================================
+//        5️⃣ CREATE TICKET
+//     ===================================================== */
+
+//     const sentiment = await analyzeSentimentAI(body);
 //     const agentId = await getNextAvailableAgent(customer);
 
 //     const newTicket = await Ticket.create({
@@ -509,6 +612,8 @@ if (attachments.length) {
 //       sentiment,
 //       priority: sentiment === "negative" ? "high" : "normal",
 //       emailThreadId: messageId || `mail-${Date.now()}`,
+//       emailAlias: toEmail,
+
 //       messages: [
 //         {
 //           senderType: "customer",
@@ -516,14 +621,15 @@ if (attachments.length) {
 //           message: body,
 //           messageId,
 //           sentiment,
+//            attachments: uploadedAttachments,
 //           createdAt: new Date(),
 //         },
 //       ],
+
 //       lastCustomerReplyAt: new Date(),
 //     });
 
-//     console.log("🎯 Routed to company:", company.companyName);
-//     console.log("🎯 Assigned agent:", agentId);
+//     console.log("🎯 New ticket created with attachments:", newTicket._id);
 
 //     return Response.json({ success: true, ticketId: newTicket._id });
 //   } catch (err) {
@@ -531,5 +637,6 @@ if (attachments.length) {
 //     return Response.json({ error: err.message }, { status: 500 });
 //   }
 // }
+
 
 
