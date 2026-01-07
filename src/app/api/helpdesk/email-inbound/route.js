@@ -159,10 +159,11 @@ export async function POST(req) {
     /* ===== FIND EXISTING TICKET ===== */
 
     let ticket = await Ticket.findOne({
-      $or: [
-        { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
-        { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
-      ],
+       $or: [
+    { emailThreadId: inReplyTo },
+    { emailThreadId: { $in: references } },
+    { "messages.messageId": inReplyTo },
+  ],
     });
 
     /* ===== REPLY ===== */
