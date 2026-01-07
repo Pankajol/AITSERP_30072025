@@ -35,112 +35,98 @@ async function parseBody(req) {
     const txt = await req.text();
     return Object.fromEntries(new URLSearchParams(txt));
   }
-  try {
-    return JSON.parse(await req.text());
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(await req.text()); } catch { return {}; }
 }
 
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/* ===================== ATTACHMENT PARSER ===================== */
+/* ===================== UNIVERSAL ATTACHMENT PARSER ===================== */
 
-function parseAttachments(raw) {
-  const files = [];
+async function getUniversalAttachments(raw) {
+  let files = [];
 
-  // Postmark
-  if (Array.isArray(raw.Attachments)) {
-    for (const a of raw.Attachments) {
-      files.push({
-        filename: a.Name,
-        contentType: a.ContentType,
-        size: a.ContentLength,
-        content: a.Content, // Base64 string
-      });
+  // 1. Check for Raw MIME (Gmail/Outlook standard)
+  const source = raw.raw || raw.mime || raw["body-mime"] || raw.email || raw.content;
+  if (source) {
+    try {
+      const parsed = await simpleParser(source);
+      if (parsed.attachments && parsed.attachments.length > 0) {
+        files = parsed.attachments.map(a => ({
+          filename: a.filename,
+          contentType: a.contentType,
+          size: a.size,
+          buffer: a.content // Buffer format
+        }));
+      }
+    } catch (e) {
+      console.log("❌ MIME Parse failed, falling back to JSON fields");
     }
   }
 
-  // SendGrid
-  if (raw["attachment-info"]) {
-    try {
-      const info = JSON.parse(raw["attachment-info"]);
-      for (const key in info) {
-        const meta = info[key];
-        const file = raw[key];
-        if (file) {
-          files.push({
-            filename: meta.filename,
-            contentType: meta.type,
-            size: meta.size,
-            content: file, 
-          });
-        }
+  // 2. If no files yet, check Postmark/SendGrid JSON format
+  if (files.length === 0) {
+    // Postmark
+    if (Array.isArray(raw.Attachments)) {
+      files = raw.Attachments.map(a => ({
+        filename: a.Name,
+        contentType: a.ContentType,
+        size: a.ContentLength,
+        content: a.Content // Base64 format
+      }));
+    } 
+    // Mailgun
+    else if (raw["attachment-count"]) {
+      const count = Number(raw["attachment-count"]);
+      for (let i = 1; i <= count; i++) {
+        const a = raw[`attachment-${i}`];
+        if (a) files.push({ filename: a.filename, contentType: a.contentType, size: a.size, content: a.data });
       }
-    } catch (e) {
-      console.log("❌ attachment-info parse failed");
     }
   }
 
   return files;
 }
 
-async function parseOutlookAttachments(raw) {
-  const source = raw.raw || raw.mime || raw.email || raw.content || null;
-  if (!source) return [];
-  const parsed = await simpleParser(source);
-  return (parsed.attachments || []).map(a => ({
-    filename: a.filename,
-    contentType: a.contentType,
-    size: a.size,
-    buffer: a.content, // Buffer
-  }));
-}
+/* ===================== CLOUDINARY UPLOADER ===================== */
 
-async function uploadAttachmentsToCloudinary(attachments, folderId) {
+async function uploadToCloudinary(attachments, folderId) {
   const uploaded = [];
   for (const file of attachments) {
-    // Problem Fix: Buffer ya Base64 content dono handle karna
-    const dataToUpload = file.buffer || file.content;
-    if (!dataToUpload) continue;
-
-    let uploadStr;
-    if (Buffer.isBuffer(dataToUpload)) {
-      uploadStr = `data:${file.contentType};base64,${dataToUpload.toString("base64")}`;
-    } else {
-      // Agar base64 string hai
-      uploadStr = dataToUpload.startsWith('data:') 
-        ? dataToUpload 
-        : `data:${file.contentType};base64,${dataToUpload}`;
-    }
+    const data = file.buffer || file.content;
+    if (!data) continue;
 
     try {
+      const uploadStr = Buffer.isBuffer(data)
+        ? `data:${file.contentType};base64,${data.toString("base64")}`
+        : (data.startsWith("data:") ? data : `data:${file.contentType};base64,${data}`);
+
       const res = await cloudinary.uploader.upload(uploadStr, {
         folder: `helpdesk/tickets/${folderId}`,
         resource_type: "auto",
       });
 
       uploaded.push({
-        filename: file.filename,
+        filename: file.filename || "attachment",
         url: res.secure_url,
         publicId: res.public_id,
         contentType: file.contentType,
         size: file.size,
       });
+      console.log("✅ Cloudinary Success:", file.filename);
     } catch (err) {
-      console.error("❌ Cloudinary Upload Error:", err.message);
+      console.error("❌ Cloudinary Error:", err.message);
     }
   }
   return uploaded;
 }
 
-/* ===================== MAIN ===================== */
+/* ===================== MAIN POST ROUTE ===================== */
 
 export async function POST(req) {
   try {
-    console.log("📩 INBOUND EMAIL RECEIVED");
+    console.log("📩 NEW INBOUND EMAIL RECEIVED");
 
     const { searchParams } = new URL(req.url);
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
@@ -150,57 +136,37 @@ export async function POST(req) {
     await dbConnect();
     const raw = await parseBody(req);
 
+    // 1. Get Attachments first
+    const allAttachments = await getUniversalAttachments(raw);
+    console.log(`📎 Found ${allAttachments.length} attachments`);
+
     const fromEmail = extractEmail(raw.from || raw.sender || raw["From"]);
     const toEmail = extractEmail(raw.to || raw.recipient);
     const subject = raw.subject || "No Subject";
     const body = raw.text || raw.html || "";
 
-    if (!fromEmail || !toEmail) {
-      return Response.json({ error: "Invalid email" }, { status: 400 });
-    }
+    if (!fromEmail || !toEmail) return Response.json({ error: "Invalid email" }, { status: 400 });
 
     const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
     const inReplyTo = normalizeId(raw.inReplyTo || raw["In-Reply-To"]);
     const references = (raw.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
 
-    // Initial parsing
-    let attachments = parseAttachments(raw);
-    if (!attachments.length) {
-      attachments = await parseOutlookAttachments(raw);
-    }
-
-    /* 1️⃣ FIND EXISTING TICKET (REPLY) */
-    const ticket = await Ticket.findOne({
+    /* 2. FIND TICKET (FOR REPLIES) */
+    let ticket = await Ticket.findOne({
       $or: [
         { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
         { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
       ],
     });
 
-    /* DUPLICATE CHECK */
-    if (ticket && messageId) {
-      const exists = ticket.messages.find(m => m.messageId === messageId);
-      if (exists) {
-        console.log("♻️ Duplicate email ignored");
-        return Response.json({ success: true, ticketId: ticket._id });
-      }
-    }
-
-    /* 2️⃣ REPLY → APPEND MESSAGE */
+    // Handle Reply
     if (ticket) {
       const sentiment = await analyzeSentimentAI(body);
-      
-      // Upload with Ticket ID
-      let uploadedAttachments = [];
-      if (attachments.length) {
-        uploadedAttachments = await uploadAttachmentsToCloudinary(attachments, ticket._id);
-      }
+      const uploaded = await uploadToCloudinary(allAttachments, ticket._id);
 
-      let reopened = false;
       if (ticket.status === "closed") {
         ticket.status = "open";
         ticket.autoClosed = false;
-        reopened = true;
       }
 
       ticket.messages.push({
@@ -209,37 +175,31 @@ export async function POST(req) {
         message: body,
         messageId,
         sentiment,
-        attachments: uploadedAttachments,
+        attachments: uploaded,
         createdAt: new Date(),
       });
 
       ticket.lastReplyAt = new Date();
       ticket.lastCustomerReplyAt = new Date();
-      ticket.sentiment = sentiment;
-
       await ticket.save();
-      return Response.json({ success: true, ticketId: ticket._id, reopened });
+      return Response.json({ success: true, ticketId: ticket._id });
     }
 
-    /* 3️⃣ NEW TICKET LOGIC */
-    const company = await Company.findOne({ supportEmails: toEmail }).select("_id companyName");
-    if (!company) {
-      return Response.json({ error: "Invalid mailbox" }, { status: 403 });
-    }
+    /* 3. NEW TICKET LOGIC */
+    const company = await Company.findOne({ supportEmails: toEmail });
+    if (!company) return Response.json({ error: "Invalid mailbox" }, { status: 403 });
 
     const customer = await Customer.findOne({
       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
       companyId: company._id,
     });
 
-    if (!customer) {
-      return Response.json({ error: "Unknown customer" }, { status: 403 });
-    }
+    if (!customer) return Response.json({ error: "Unknown customer" }, { status: 403 });
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
 
-    // Create ticket first to get ID for folder naming, or use "new-tickets"
+    // Create ticket
     const newTicket = new Ticket({
       companyId: company._id,
       customerId: customer._id,
@@ -249,18 +209,14 @@ export async function POST(req) {
       status: "open",
       agentId,
       sentiment,
-      priority: sentiment === "negative" ? "high" : "normal",
       emailThreadId: messageId || `mail-${Date.now()}`,
       emailAlias: toEmail,
       messages: [],
       lastCustomerReplyAt: new Date(),
     });
 
-    // Upload attachments for the new ticket
-    let uploadedAttachments = [];
-    if (attachments.length) {
-      uploadedAttachments = await uploadAttachmentsToCloudinary(attachments, newTicket._id);
-    }
+    // Upload files using newTicket._id
+    const uploaded = await uploadToCloudinary(allAttachments, newTicket._id);
 
     newTicket.messages.push({
       senderType: "customer",
@@ -268,21 +224,18 @@ export async function POST(req) {
       message: body,
       messageId,
       sentiment,
-      attachments: uploadedAttachments,
+      attachments: uploaded,
       createdAt: new Date(),
     });
 
     await newTicket.save();
-    console.log("🎯 New ticket created:", newTicket._id);
     return Response.json({ success: true, ticketId: newTicket._id });
 
   } catch (err) {
-    console.error("❌ Inbound error:", err);
+    console.error("❌ Fatal Error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
-
-
 
 
 
