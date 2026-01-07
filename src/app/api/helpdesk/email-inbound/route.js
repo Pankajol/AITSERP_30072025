@@ -4,19 +4,12 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
-import Notification from "@/models/helpdesk/Notification";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
+import { simpleParser } from "mailparser";
 import cloudinary from "@/lib/cloudinary";
 
 /* ================= HELPERS ================= */
-
-function extractEmail(v) {
-  const m = String(v || "").match(
-    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
-  );
-  return m ? m[1].toLowerCase() : "";
-}
 
 function normalizeId(id) {
   if (!id) return "";
@@ -25,35 +18,109 @@ function normalizeId(id) {
   return s.replace(/[\r\n\s]+/g, "");
 }
 
-/* ================= ATTACHMENTS ================= */
+function extractEmail(value) {
+  if (!value) return "";
+  if (Array.isArray(value)) value = value[0];
 
-async function uploadAttachments(attachments, ticketId) {
+  if (typeof value === "object" && value !== null) {
+    return (value.email || value.address || "")
+      .toString()
+      .toLowerCase();
+  }
+
+  const m = String(value).match(
+    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+  );
+  return m ? m[1].toLowerCase() : "";
+}
+
+async function parseBody(req) {
+  const ct = (req.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("application/json")) return await req.json();
+  return {};
+}
+
+/* ================= ATTACHMENT PARSERS ================= */
+
+function parseAttachments(raw) {
+  const files = [];
+
+  if (Array.isArray(raw.Attachments)) {
+    for (const a of raw.Attachments) {
+      files.push({
+        filename: a.Name,
+        contentType: a.ContentType,
+        size: a.ContentLength,
+        content: a.Content,
+      });
+    }
+  }
+
+  if (raw["attachment-info"]) {
+    try {
+      const info = JSON.parse(raw["attachment-info"]);
+      for (const key in info) {
+        files.push({
+          filename: info[key].filename,
+          contentType: info[key].type,
+          size: info[key].size,
+          content: raw[key],
+        });
+      }
+    } catch {}
+  }
+
+  return files;
+}
+
+async function parseOutlookAttachments(raw) {
+  const source = raw.raw || raw.mime || raw.email;
+  if (!source) return [];
+
+  const parsed = await simpleParser(source);
+  return (parsed.attachments || []).map(a => ({
+    filename: a.filename,
+    contentType: a.contentType,
+    size: a.size,
+    buffer: a.content,
+  }));
+}
+
+function normalizeAttachments(files = []) {
+  return files
+    .map(f => {
+      if (f.buffer) return f;
+      if (f.content) {
+        return {
+          filename: f.filename,
+          contentType: f.contentType,
+          size: f.size,
+          buffer: Buffer.from(f.content, "base64"),
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+async function uploadAttachments(files, ticketId) {
   const uploaded = [];
 
-  for (const a of attachments || []) {
-    try {
-      if (!a?.content) continue;
+  for (const f of files) {
+    const base64 = `data:${f.contentType};base64,${f.buffer.toString("base64")}`;
 
-      const buffer = Buffer.from(a.content, "base64");
-      const mime = a.contentType || "application/octet-stream";
+    const res = await cloudinary.uploader.upload(base64, {
+      folder: `helpdesk/tickets/${ticketId}`,
+      resource_type: "auto",
+    });
 
-      const res = await cloudinary.uploader.upload(
-        `data:${mime};base64,${buffer.toString("base64")}`,
-        {
-          folder: `helpdesk/tickets/${ticketId}`,
-          resource_type: "auto",
-        }
-      );
-
-      uploaded.push({
-        filename: a.filename || "file",
-        url: res.secure_url,
-        contentType: mime,
-        size: a.size || buffer.length,
-      });
-    } catch (err) {
-      console.error("❌ Attachment upload failed:", err.message);
-    }
+    uploaded.push({
+      filename: f.filename,
+      url: res.secure_url,
+      publicId: res.public_id,
+      contentType: f.contentType,
+      size: f.size,
+    });
   }
 
   return uploaded;
@@ -63,26 +130,18 @@ async function uploadAttachments(attachments, ticketId) {
 
 export async function POST(req) {
   try {
-    console.log("📩 INBOUND EMAIL RECEIVED");
-
-    /* ---------- SECURITY ---------- */
     const { searchParams } = new URL(req.url);
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
-    const raw = await req.json();
+    const raw = await parseBody(req);
 
-    /* ---------- EMAIL DATA ---------- */
-    const fromEmail = extractEmail(raw.from || raw.fromEmail);
-    const toEmail = extractEmail(raw.to);
+    const fromEmail = extractEmail(raw.from || raw.sender);
+    const toEmail = extractEmail(raw.to || raw.recipient);
     const subject = raw.subject || "No Subject";
     const body = raw.text || raw.html || "";
-
-    if (!fromEmail) {
-      return Response.json({ error: "Missing sender" }, { status: 400 });
-    }
 
     const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
     const inReplyTo = normalizeId(raw.inReplyTo);
@@ -91,103 +150,56 @@ export async function POST(req) {
       .map(normalizeId)
       .filter(Boolean);
 
-    console.log("📧 FROM:", fromEmail);
-    console.log("📬 TO:", toEmail);
-    console.log("🧵 messageId:", messageId);
-    console.log("↩ inReplyTo:", inReplyTo);
-    console.log("📎 refs:", references);
-
-    /* ---------- DUPLICATE PROTECTION ---------- */
-    if (messageId) {
-      const dup = await Ticket.findOne({
-        "messages.messageId": messageId,
-      }).select("_id");
-
-      if (dup) {
-        console.log("⚠ Duplicate email ignored:", messageId);
-        return Response.json({
-          success: true,
-          duplicate: true,
-          ticketId: dup._id,
-        });
-      }
+    let attachments = parseAttachments(raw);
+    if (!attachments.length) {
+      attachments = await parseOutlookAttachments(raw);
     }
+    attachments = normalizeAttachments(attachments);
 
-    /* ---------- CUSTOMER ---------- */
-    const customer = await Customer.findOne({
-      emailId: new RegExp(`^${fromEmail}$`, "i"),
+    /* ===== FIND EXISTING TICKET ===== */
+
+    let ticket = await Ticket.findOne({
+      $or: [
+        { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
+        { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
+      ],
     });
 
-    if (!customer || !customer.companyId) {
-      console.log("⛔ Unknown customer:", fromEmail);
-      return Response.json({ error: "Unknown customer" }, { status: 403 });
-    }
+    /* ===== REPLY ===== */
 
-    /* ---------- FIND EXISTING TICKET (FIXED 🔥) ---------- */
-    const searchIds = [
-      messageId,
-      inReplyTo,
-      ...references,
-    ].filter(Boolean);
-
-    let ticket = null;
-
-    if (searchIds.length) {
-      ticket = await Ticket.findOne({
-        $or: [
-          { emailThreadId: { $in: searchIds } },
-          { "messages.messageId": { $in: searchIds } },
-        ],
-      });
-    }
-
-    /* ================= REPLY CASE ================= */
     if (ticket) {
-      console.log("🔁 Reply matched ticket:", ticket._id);
-
-      const sentiment = await analyzeSentimentAI(body);
-      const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+      const uploaded = attachments.length
+        ? await uploadAttachments(attachments, ticket._id)
+        : [];
 
       ticket.messages.push({
         senderType: "customer",
         externalEmail: fromEmail,
         message: body,
         messageId,
-        sentiment,
         attachments: uploaded,
         createdAt: new Date(),
       });
 
-      ticket.sentiment = sentiment;
-      ticket.lastReplyAt = new Date();
       ticket.lastCustomerReplyAt = new Date();
-      ticket.updatedAt = new Date();
-
-      if (sentiment === "negative" && ticket.agentId) {
-        await Notification.create({
-          userId: ticket.agentId,
-          type: "NEGATIVE_SENTIMENT",
-          ticketId: ticket._id,
-          companyId: ticket.companyId,
-          message: "⚠️ Negative sentiment detected in customer reply",
-        });
-
-        ticket.priority = "high";
-      }
-
       await ticket.save();
+
       return Response.json({ success: true, ticketId: ticket._id });
     }
 
-    /* ================= NEW TICKET ================= */
-    console.log("🆕 Creating new ticket");
+    /* ===== NEW TICKET ===== */
 
-    const company = await Company.findOne({
-      supportEmails: toEmail,
-    });
-
+    const company = await Company.findOne({ supportEmails: toEmail });
     if (!company) {
       return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+    }
+
+    const customer = await Customer.findOne({
+      emailId: fromEmail,
+      companyId: company._id,
+    });
+    if (!customer) {
+      return Response.json({ error: "Unknown customer" }, { status: 403 });
     }
 
     const sentiment = await analyzeSentimentAI(body);
@@ -202,36 +214,31 @@ export async function POST(req) {
       status: "open",
       agentId,
       sentiment,
-      priority: sentiment === "negative" ? "high" : "normal",
-      emailThreadId: messageId || `mail-${Date.now()}`,
+      emailThreadId: messageId,
       emailAlias: toEmail,
       messages: [],
       lastCustomerReplyAt: new Date(),
     });
 
-    const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+    const uploaded = attachments.length
+      ? await uploadAttachments(attachments, ticket._id)
+      : [];
 
     ticket.messages.push({
       senderType: "customer",
       externalEmail: fromEmail,
       message: body,
       messageId,
-      sentiment,
       attachments: uploaded,
       createdAt: new Date(),
     });
 
     await ticket.save();
 
-    console.log("🎯 Ticket created:", ticket._id);
     return Response.json({ success: true, ticketId: ticket._id });
-
   } catch (err) {
-    console.error("❌ Inbound email error:", err);
-    return Response.json(
-      { error: err.message || "Server error" },
-      { status: 500 }
-    );
+    console.error("❌ Inbound error:", err);
+    return Response.json({ error: err.message }, { status: 500 });
   }
 }
 
