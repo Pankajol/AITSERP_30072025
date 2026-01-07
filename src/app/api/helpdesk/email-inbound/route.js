@@ -4,190 +4,315 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
-import Notification from "@/models/helpdesk/Notification";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import { simpleParser } from "mailparser";
 import cloudinary from "@/lib/cloudinary";
 
+
 /* ===================== HELPERS ===================== */
 
 function normalizeId(id) {
   if (!id) return "";
-  try {
-    let s = String(id).trim();
-    if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1);
-    return s.replace(/[\r\n\s]+/g, "");
-  } catch { return ""; }
+  let s = String(id).trim();
+  if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1);
+  return s.replace(/[\r\n\s]+/g, "");
 }
 
 function extractEmail(value) {
   if (!value) return "";
   if (Array.isArray(value)) value = value[0];
+
   if (typeof value === "object" && value !== null) {
-    return (value.email || value.address || value.mail || "").toString().toLowerCase();
+    return (value.email || value.address || value.mail || "")
+      .toString()
+      .toLowerCase();
   }
-  const m = String(value).match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+
+  const m = String(value).match(
+    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+  );
   return m ? m[1].toLowerCase() : "";
 }
 
 async function parseBody(req) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
+
+  if (ct.includes("application/json")) return await req.json();
+
+  if (ct.includes("application/x-www-form-urlencoded")) {
+    const txt = await req.text();
+    return Object.fromEntries(new URLSearchParams(txt));
+  }
+
   try {
-    if (ct.includes("application/json")) return await req.json();
-    if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
-      const formData = await req.formData();
-      return Object.fromEntries(formData);
-    }
-    return { body: await req.text() };
-  } catch { return {}; }
+    return JSON.parse(await req.text());
+  } catch {
+    return {};
+  }
 }
 
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// 🔥 CLOUDINARY UPLOAD HELPER
-async function uploadToCloudinary(buffer, filename, ticketId) {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: `helpdesk/tickets/${ticketId}`, resource_type: "auto" },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
+/* ===================== ATTACHMENT PARSER ===================== */
+
+function parseAttachments(raw) {
+  const files = [];
+
+  /* ================= POSTMARK ================= */
+  if (Array.isArray(raw.Attachments)) {
+    for (const a of raw.Attachments) {
+      files.push({
+        filename: a.Name,
+        contentType: a.ContentType,
+        size: a.ContentLength,
+        content: a.Content, // base64
+      });
+    }
+  }
+
+  /* ================= SENDGRID ================= */
+  if (raw["attachment-info"]) {
+    try {
+      const info = JSON.parse(raw["attachment-info"]);
+      for (const key in info) {
+        const meta = info[key];
+        const file = raw[key];
+
+        if (file) {
+          files.push({
+            filename: meta.filename,
+            contentType: meta.type,
+            size: meta.size,
+            content: file, // base64
+          });
+        }
       }
-    );
-    uploadStream.end(buffer);
-  });
+    } catch (e) {
+      console.log("❌ attachment-info parse failed");
+    }
+  }
+
+  /* ================= MAILGUN ================= */
+  if (raw["attachment-count"]) {
+    const count = Number(raw["attachment-count"]);
+    for (let i = 1; i <= count; i++) {
+      const a = raw[`attachment-${i}`];
+      if (a) {
+        files.push({
+          filename: a.filename,
+          contentType: a.contentType,
+          size: a.size,
+          content: a.data || null,
+        });
+      }
+    }
+  }
+
+  return files;
 }
+
+
+async function parseOutlookAttachments(raw) {
+  const source =
+    raw.raw || raw.mime || raw.email || raw.content || null;
+
+  if (!source) return [];
+
+  const parsed = await simpleParser(source);
+
+  return (parsed.attachments || []).map(a => ({
+    filename: a.filename,
+    contentType: a.contentType,
+    size: a.size,
+    buffer: a.content, // Buffer
+  }));
+}
+
+
+async function uploadAttachmentsToCloudinary(attachments, ticketId) {
+  const uploaded = [];
+
+  for (const file of attachments) {
+    if (!file.buffer) continue;
+
+    const base64 = `data:${file.contentType};base64,${file.buffer.toString(
+      "base64"
+    )}`;
+
+    const res = await cloudinary.uploader.upload(base64, {
+      folder: `helpdesk/tickets/${ticketId}`,
+      resource_type: "auto",
+    });
+
+    uploaded.push({
+      filename: file.filename,
+      url: res.secure_url,
+      publicId: res.public_id,
+      contentType: file.contentType,
+      size: file.size,
+    });
+  }
+
+  return uploaded;
+}
+
 
 /* ===================== MAIN ===================== */
 
 export async function POST(req) {
   try {
     console.log("📩 INBOUND EMAIL RECEIVED");
-    await dbConnect();
 
     /* ---------- AUTH ---------- */
     const { searchParams } = new URL(req.url);
-    const secret = searchParams.get("secret");
-    if (!process.env.INBOUND_EMAIL_SECRET || secret !== process.env.INBOUND_EMAIL_SECRET) {
+    if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    await dbConnect();
     const raw = await parseBody(req);
-    let fromEmail, toRaw, subject, text, messageId, inReplyTo, references = [];
-    let attachmentsToUpload = [];
 
-    /* ---------- 🛡️ ADVANCED PARSING (MAILPARSER) ---------- */
-    const emailSource = raw.raw || raw.email || raw.content || raw.body;
+    /* ---------- EMAIL DATA ---------- */
+    const fromEmail = extractEmail(raw.from || raw.sender || raw["From"]);
+    const toEmail = extractEmail(raw.to || raw.recipient);
+    const subject = raw.subject || "No Subject";
+    const body = raw.text || raw.html || "";
 
-    if (emailSource && typeof emailSource === "string" && emailSource.includes("From:")) {
-      const parsed = await simpleParser(emailSource);
-      fromEmail = extractEmail(parsed.from?.text);
-      toRaw = extractEmail(parsed.to?.text);
-      subject = parsed.subject;
-      text = parsed.text || parsed.html;
-      messageId = normalizeId(parsed.messageId);
-      inReplyTo = normalizeId(parsed.inReplyTo);
-      references = (parsed.references || []).map(normalizeId);
-
-      if (parsed.attachments) {
-        attachmentsToUpload = parsed.attachments.map(att => ({
-          buffer: att.content,
-          filename: att.filename,
-          contentType: att.contentType,
-          size: att.size
-        }));
-      }
-    } else {
-      // Fallback for simple JSON providers
-      fromEmail = extractEmail(raw.from || raw.sender);
-      toRaw = extractEmail(raw.to || raw.recipient);
-      subject = raw.subject || "No Subject";
-      text = raw.text || raw.body || "";
-      messageId = normalizeId(raw.messageId || raw["Message-ID"]);
-      inReplyTo = normalizeId(raw.inReplyTo);
+    if (!fromEmail || !toEmail) {
+      return Response.json({ error: "Invalid email" }, { status: 400 });
     }
 
-    if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
+    const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
+    const inReplyTo = normalizeId(raw.inReplyTo || raw["In-Reply-To"]);
+    const references = (raw.references || "")
+      .split(/\s+/)
+      .map(normalizeId)
+      .filter(Boolean);
 
-    /* ---------- CUSTOMER & COMPANY CHECK ---------- */
+let attachments = parseAttachments(raw);
+
+if (!attachments.length) {
+  attachments = await parseOutlookAttachments(raw);
+}
+
+let uploadedAttachments = [];
+
+if (attachments.length) {
+  uploadedAttachments = await uploadAttachmentsToCloudinary(
+    attachments,
+    "temp"
+  );
+}
+
+
+
+    console.log("📨 Incoming TO:", toEmail);
+    console.log("📎 Attachments:", attachments.length);
+
+    /* =====================================================
+       1️⃣ FIND EXISTING TICKET (REPLY)
+    ===================================================== */
+
+    const ticket =
+      (await Ticket.findOne({
+        $or: [
+          { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
+          { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
+        ],
+      })) || null;
+
+    /* ---------- DUPLICATE ---------- */
+    if (ticket && messageId) {
+      const exists = ticket.messages.find(m => m.messageId === messageId);
+      if (exists) {
+        console.log("♻️ Duplicate email ignored");
+        return Response.json({ success: true, ticketId: ticket._id });
+      }
+    }
+
+    /* =====================================================
+       2️⃣ REPLY → APPEND MESSAGE
+    ===================================================== */
+
+   if (ticket) {
+  const sentiment = await analyzeSentimentAI(body);
+
+  /* 🔥 AUTO REOPEN LOGIC */
+  let reopened = false;
+  if (ticket.status === "closed") {
+    ticket.status = "open";
+    ticket.autoClosed = false;
+    reopened = true;
+  }
+
+  ticket.messages.push({
+    senderType: "customer",
+    externalEmail: fromEmail,
+    message: body,
+    messageId,
+    sentiment,
+    attachments: uploadedAttachments,
+    createdAt: new Date(),
+  });
+
+  ticket.lastReplyAt = new Date();
+  ticket.lastCustomerReplyAt = new Date();
+  ticket.sentiment = sentiment;
+
+  await ticket.save();
+
+  console.log(
+    reopened
+      ? "🔓 Ticket reopened by customer email"
+      : "🔁 Reply appended with attachments"
+  );
+
+  return Response.json({
+    success: true,
+    ticketId: ticket._id,
+    reopened,
+  });
+}
+
+    /* =====================================================
+       3️⃣ NEW EMAIL → COMPANY
+    ===================================================== */
+
+    const company = await Company.findOne({
+      supportEmails: toEmail,
+    }).select("_id companyName");
+
+    if (!company) {
+      console.log("⛔ Invalid mailbox");
+      return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+    }
+
+    /* =====================================================
+       4️⃣ CUSTOMER
+    ===================================================== */
+
     const customer = await Customer.findOne({
-      emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") }
+      emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
+      companyId: company._id,
     });
 
-    if (!customer || !customer.companyId) {
-      console.log("⛔ Unknown or unlinked customer:", fromEmail);
-      return Response.json({ error: "Access denied" }, { status: 403 });
+    if (!customer) {
+      console.log("⛔ Unknown customer:", fromEmail);
+      return Response.json({ error: "Unknown customer" }, { status: 403 });
     }
 
-    /* ---------- DUPLICATE PROTECTION ---------- */
-    if (messageId) {
-      const dup = await Ticket.findOne({ "messages.messageId": messageId }).select("_id");
-      if (dup) return Response.json({ success: true, ticketId: dup._id });
-    }
+    /* =====================================================
+       5️⃣ CREATE TICKET
+    ===================================================== */
 
-    /* ---------- FIND TICKET ---------- */
-    const searchIds = [messageId, inReplyTo, ...references].filter(Boolean);
-    let ticket = await Ticket.findOne({
-      $or: [
-        { emailThreadId: { $in: searchIds } },
-        { "messages.messageId": { $in: searchIds } }
-      ]
-    });
-
-    // 🔥 UPLOAD ATTACHMENTS
-    let uploadedFiles = [];
-    for (const file of attachmentsToUpload) {
-      try {
-        const res = await uploadToCloudinary(file.buffer, file.filename, ticket?._id || "temp");
-        uploadedFiles.push({
-          filename: file.filename,
-          url: res.secure_url,
-          contentType: file.contentType,
-          size: file.size
-        });
-      } catch (e) { console.error("Cloudinary Error:", e); }
-    }
-
-    const sentiment = await analyzeSentimentAI(text);
-
-    /* ===================== REPLY CASE ===================== */
-    if (ticket) {
-      ticket.messages.push({
-        senderType: "customer",
-        externalEmail: fromEmail,
-        message: text,
-        messageId,
-        sentiment,
-        attachments: uploadedFiles,
-        createdAt: new Date(),
-      });
-
-      if (ticket.status === "closed") ticket.status = "open";
-      ticket.sentiment = sentiment;
-      ticket.lastCustomerReplyAt = new Date();
-      
-      if (sentiment === "negative" && ticket.agentId) {
-        await Notification.create({
-          userId: ticket.agentId,
-          type: "NEGATIVE_SENTIMENT",
-          ticketId: ticket._id,
-          message: "⚠️ Negative sentiment in reply",
-        });
-        ticket.priority = "high";
-      }
-
-      await ticket.save();
-      return Response.json({ success: true, ticketId: ticket._id });
-    }
-
-    /* ===================== NEW TICKET ===================== */
+    const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
 
-    ticket = await Ticket.create({
-      companyId: customer.companyId,
+    const newTicket = await Ticket.create({
+      companyId: company._id,
       customerId: customer._id,
       customerEmail: fromEmail,
       subject,
@@ -197,31 +322,214 @@ export async function POST(req) {
       sentiment,
       priority: sentiment === "negative" ? "high" : "normal",
       emailThreadId: messageId || `mail-${Date.now()}`,
-      messages: [{
-        senderType: "customer",
-        externalEmail: fromEmail,
-        message: text,
-        messageId,
-        sentiment,
-        attachments: uploadedFiles,
-        createdAt: new Date(),
-      }],
+      emailAlias: toEmail,
+
+      messages: [
+        {
+          senderType: "customer",
+          externalEmail: fromEmail,
+          message: body,
+          messageId,
+          sentiment,
+           attachments: uploadedAttachments,
+          createdAt: new Date(),
+        },
+      ],
+
       lastCustomerReplyAt: new Date(),
     });
 
-    if (sentiment === "negative" && agentId) {
-      await Notification.create({
-        userId: agentId,
-        type: "NEGATIVE_SENTIMENT",
-        ticketId: ticket._id,
-        message: "⚠️ Negative sentiment in new ticket",
-      });
-    }
+    console.log("🎯 New ticket created with attachments:", newTicket._id);
 
-    return Response.json({ success: true, ticketId: ticket._id });
-
+    return Response.json({ success: true, ticketId: newTicket._id });
   } catch (err) {
     console.error("❌ Inbound error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
+
+
+
+
+// export const runtime = "nodejs";
+
+// import dbConnect from "@/lib/db";
+// import Ticket from "@/models/helpdesk/Ticket";
+// import Customer from "@/models/CustomerModel";
+// import Company from "@/models/Company";
+// import Notification from "@/models/helpdesk/Notification";
+// import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
+// import { analyzeSentimentAI } from "@/utils/aiSentiment";
+
+// /* ===================== HELPERS ===================== */
+
+// function normalizeId(id) {
+//   if (!id) return "";
+//   let s = String(id).trim();
+//   if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1);
+//   return s.replace(/[\r\n\s]+/g, "");
+// }
+
+// function extractEmail(value) {
+//   if (!value) return "";
+//   if (Array.isArray(value)) value = value[0];
+//   if (typeof value === "object" && value !== null) {
+//     return (value.email || value.address || value.mail || "")
+//       .toString()
+//       .toLowerCase();
+//   }
+//   const m = String(value).match(
+//     /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+//   );
+//   return m ? m[1].toLowerCase() : "";
+// }
+
+// async function parseBody(req) {
+//   const ct = (req.headers.get("content-type") || "").toLowerCase();
+//   if (ct.includes("application/json")) return await req.json();
+//   if (ct.includes("application/x-www-form-urlencoded")) {
+//     const txt = await req.text();
+//     return Object.fromEntries(new URLSearchParams(txt));
+//   }
+//   try {
+//     return JSON.parse(await req.text());
+//   } catch {
+//     return {};
+//   }
+// }
+
+// function escapeRegExp(str) {
+//   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// }
+
+// /* ===================== MAIN ===================== */
+
+// export async function POST(req) {
+//   try {
+//     console.log("📩 INBOUND EMAIL RECEIVED");
+
+//     /* ---------- AUTH ---------- */
+//     const { searchParams } = new URL(req.url);
+//     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
+//       return Response.json({ error: "Unauthorized" }, { status: 401 });
+//     }
+
+//     await dbConnect();
+//     const raw = await parseBody(req);
+
+//     /* ---------- EMAIL DATA ---------- */
+//     const fromEmail = extractEmail(raw.from || raw.sender || raw["From"]);
+//     const toEmail = extractEmail(raw.to || raw.recipient);
+//     const subject = raw.subject || "No Subject";
+//     const body = raw.text || raw.html || "";
+
+//     if (!fromEmail || !toEmail) {
+//       return Response.json({ error: "Invalid email" }, { status: 400 });
+//     }
+
+//     const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
+//     const inReplyTo = normalizeId(raw.inReplyTo);
+//     const references = (raw.references || "")
+//       .split(/\s+/)
+//       .map(normalizeId)
+//       .filter(Boolean);
+
+//     /* ---------- COMPANY MATCH ---------- */
+//     const company = await Company.findOne({
+//       supportEmails: toEmail,
+//     }).select("_id companyName supportEmails");
+
+//     console.log("📨 Incoming TO:", toEmail);
+//     console.log("🏢 Company match:", company?.companyName || "None");
+
+//     if (!company && !inReplyTo && references.length === 0) {
+//       console.log("⛔ Invalid mailbox");
+//       return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+//     }
+
+//     /* ---------- CUSTOMER ---------- */
+//     const customer = await Customer.findOne({
+//       emailId: { $regex: new RegExp("^" + escapeRegExp(fromEmail) + "$", "i") },
+//       companyId: company?._id,
+//     });
+
+//     if (!customer) {
+//       console.log("⛔ Unknown customer:", fromEmail);
+//       return Response.json({ error: "Unknown customer" }, { status: 403 });
+//     }
+
+//     /* ---------- DUPLICATE ---------- */
+//     if (messageId) {
+//       const dup = await Ticket.findOne({ "messages.messageId": messageId });
+//       if (dup) {
+//         return Response.json({ success: true, ticketId: dup._id });
+//       }
+//     }
+
+//     /* ---------- FIND TICKET ---------- */
+//     const ticket =
+//       (await Ticket.findOne({
+//         $or: [
+//           { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
+//           { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
+//         ],
+//       })) || null;
+
+//     const sentiment = await analyzeSentimentAI(body);
+
+//     /* ---------- REPLY ---------- */
+//     if (ticket) {
+//       ticket.messages.push({
+//         senderType: "customer",
+//         externalEmail: fromEmail,
+//         message: body,
+//         messageId,
+//         sentiment,
+//         createdAt: new Date(),
+//       });
+
+//       ticket.lastCustomerReplyAt = new Date();
+//       ticket.sentiment = sentiment;
+//       await ticket.save();
+
+//       return Response.json({ success: true, ticketId: ticket._id });
+//     }
+
+//     /* ---------- NEW TICKET ---------- */
+//     const agentId = await getNextAvailableAgent(customer);
+
+//     const newTicket = await Ticket.create({
+//       companyId: company._id,
+//       customerId: customer._id,
+//       customerEmail: fromEmail,
+//       subject,
+//       source: "email",
+//       status: "open",
+//       agentId,
+//       sentiment,
+//       priority: sentiment === "negative" ? "high" : "normal",
+//       emailThreadId: messageId || `mail-${Date.now()}`,
+//       messages: [
+//         {
+//           senderType: "customer",
+//           externalEmail: fromEmail,
+//           message: body,
+//           messageId,
+//           sentiment,
+//           createdAt: new Date(),
+//         },
+//       ],
+//       lastCustomerReplyAt: new Date(),
+//     });
+
+//     console.log("🎯 Routed to company:", company.companyName);
+//     console.log("🎯 Assigned agent:", agentId);
+
+//     return Response.json({ success: true, ticketId: newTicket._id });
+//   } catch (err) {
+//     console.error("❌ Inbound error:", err);
+//     return Response.json({ error: err.message }, { status: 500 });
+//   }
+// }
+
+
