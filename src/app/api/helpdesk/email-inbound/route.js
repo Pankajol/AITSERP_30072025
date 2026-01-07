@@ -10,8 +10,8 @@ import cloudinary from "@/lib/cloudinary";
 
 /* ================= HELPERS ================= */
 
-function extractEmail(value) {
-  const m = String(value || "").match(
+function extractEmail(v) {
+  const m = String(v || "").match(
     /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
   );
   return m ? m[1].toLowerCase() : "";
@@ -33,12 +33,13 @@ async function uploadAttachments(attachments, ticketId) {
     const buffer = Buffer.from(a.content, "base64");
     const mime = a.contentType || "application/octet-stream";
 
-    const base64 = `data:${mime};base64,${buffer.toString("base64")}`;
-
-    const res = await cloudinary.uploader.upload(base64, {
-      folder: `helpdesk/tickets/${ticketId}`,
-      resource_type: "auto",
-    });
+    const res = await cloudinary.uploader.upload(
+      `data:${mime};base64,${buffer.toString("base64")}`,
+      {
+        folder: `helpdesk/tickets/${ticketId}`,
+        resource_type: "auto",
+      }
+    );
 
     uploaded.push({
       filename: a.filename,
@@ -70,23 +71,24 @@ export async function POST(req) {
 
     const messageId = normalizeId(raw.messageId);
     const inReplyTo = normalizeId(raw.inReplyTo);
-    const references = String(raw.references || "")
+    const references = (raw.references || "")
       .split(/\s+/)
       .map(normalizeId)
       .filter(Boolean);
 
     /* =====================================================
-       🔍 FIND EXISTING TICKET (ROBUST LOGIC)
+       🔍 FIND EXISTING TICKET (CORRECT LOGIC)
     ===================================================== */
 
     let ticket = await Ticket.findOne({
       $or: [
-        { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
-        { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
+        { emailThreadId: inReplyTo },
+        { emailThreadId: { $in: references } },
+        { "messages.messageId": inReplyTo },
       ],
     });
 
-    // 🔥 LEVEL 2: customer + mailbox match
+    // fallback: same customer + same mailbox
     if (!ticket) {
       ticket = await Ticket.findOne({
         customerEmail: fromEmail,
@@ -122,7 +124,7 @@ export async function POST(req) {
     }
 
     /* =====================================================
-       🆕 CREATE NEW TICKET (ONLY IF NO MATCH)
+       🆕 CREATE NEW TICKET (FIRST MAIL ONLY)
     ===================================================== */
 
     const company = await Company.findOne({ supportEmails: toEmail });
@@ -152,8 +154,11 @@ export async function POST(req) {
       priority: sentiment === "negative" ? "high" : "normal",
       agentId,
       sentiment,
-      emailThreadId: messageId,
+
+      // 🔥 IMPORTANT
+      emailThreadId: messageId, // FIRST MAIL ONLY
       emailAlias: toEmail,
+
       messages: [],
       lastCustomerReplyAt: new Date(),
     });
@@ -180,7 +185,6 @@ export async function POST(req) {
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
-
 
 
 
