@@ -201,10 +201,13 @@ export default function DashboardLayout({ children }) {
             <Submenu isOpen={!!openSubmenus["tvSales"]} onToggle={() => toggleSubmenu("tvSales")} icon={<HiShoppingCart />} label="Sales">
               <Item href="/admin/sales-quotation-view" icon={<SiCivicrm />} label="Quotation View" close={closeSidebar} />
               <Item href="/admin/sales-order-view" icon={<HiPuzzle />} label="Order View" close={closeSidebar} />
+              <Item href="/admin/pos" icon={<HiCube />} label="POS Invoice View" close={closeSidebar} />
+
               <Item href="/admin/delivery-view" icon={<HiOutlineCube />} label="Delivery View" close={closeSidebar} />
               <Item href="/admin/sales-invoice-view" icon={<HiOutlineCreditCard />} label="Invoice View" close={closeSidebar} />
               <Item href="/admin/credit-memo-veiw" icon={<HiReceiptTax />} label="Credit Memo View" close={closeSidebar} />
               <Item href="/admin/sales-report" icon={<HiChartSquareBar />} label="Report" close={closeSidebar} />
+              <Item href="/admin/pos/reports" icon={<HiChartSquareBar />} label="POS Report" close={closeSidebar} />
               <Item href="/admin/sales-board" icon={<HiChartSquareBar />} label="Sales Board" close={closeSidebar} />
             </Submenu>
 

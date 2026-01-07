@@ -9,8 +9,7 @@ const StockMovementSchema = new mongoose.Schema({
   bin: { type: mongoose.Schema.Types.ObjectId, ref: "Bin" },
   movementType: { 
     type: String, 
-    // enum: ['IN', 'OUT', 'TRANSFER', 'RESERVE', 'FULFILL','ON_ORDER','RETURN','ADJUSTMENT',' STOCK_ISSUE','RECEIPT_FROM_PRODUCTION_ORDER'], 
-    // required: true 
+  
   },
   quantity: { type: Number, required: true },
   reference: { type: String }, // e.g. invoice number, GRN, etc.

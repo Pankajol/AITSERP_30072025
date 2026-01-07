@@ -1,0 +1,158 @@
+
+
+
+
+"use client";
+import { X, Printer, CheckCircle } from "lucide-react";
+import { motion } from "framer-motion";
+
+export default function POSInvoiceModal({ isOpen, onClose, data }) {
+  // Prevent rendering if modal is closed or data is missing
+  if (!isOpen || !data) return null;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Helper to ensure we have numbers for .toFixed()
+  const formatNum = (num) => (Number(num) || 0).toFixed(2);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:p-0 print:bg-white">
+      {/* --- UI MODAL (Hidden during print) --- */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }} 
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden print:hidden"
+      >
+        <div className="p-4 flex justify-between items-center border-b bg-slate-50">
+          <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+            <CheckCircle size={18} /> Sale Complete
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[70vh] space-y-4">
+          <div className="text-center pb-4 border-b border-dashed">
+            <h2 className="font-black text-xl uppercase tracking-tighter">Tax Invoice</h2>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              INV: {data.invoiceNo ? data.invoiceNo.toUpperCase() : 'PENDING'}
+            </p>
+          </div>
+
+          <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
+            <div>
+              <p className="text-slate-300">Customer</p>
+              <p className="text-slate-900">{data.customer?.name || "Walk-in Guest"}</p>
+              <p>{data.customer?.phone || data.customer?.mobile || "N/A"}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-slate-300">Date</p>
+              <p className="text-slate-900">{new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left text-[11px]">
+            <thead>
+              <tr className="border-b text-slate-400 font-black uppercase">
+                <th className="py-2">Item</th>
+                <th className="py-2 text-center">Qty</th>
+                <th className="py-2 text-right">Price</th>
+              </tr>
+            </thead>
+            <tbody className="font-bold">
+              {data.items?.map((item, i) => (
+                <tr key={i} className="border-b border-slate-50">
+                  <td className="py-2 uppercase">
+                    {item.itemName}
+                    <span className="block text-[8px] text-slate-400 font-medium italic">GST {item.gstRate || 0}%</span>
+                  </td>
+                  <td className="py-2 text-center">{item.qty}</td>
+                  <td className="py-2 text-right">₹{( (item.qty || 0) * (item.price || 0) ).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="space-y-1 text-[11px] font-bold">
+            <div className="flex justify-between">
+              <span>Taxable Value</span>
+              <span>₹{formatNum(data.taxable)}</span>
+            </div>
+            {/* Dynamic CGST/SGST display */}
+            <div className="flex justify-between text-slate-400 font-medium italic">
+              <span>CGST Total</span>
+              <span>₹{formatNum(data.cgst)}</span>
+            </div>
+            <div className="flex justify-between text-slate-400 font-medium italic">
+              <span>SGST Total</span>
+              <span>₹{formatNum(data.sgst)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-black pt-2 border-t border-dashed">
+              <span>TOTAL</span>
+              <span>₹{formatNum(data.grand)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 bg-slate-50 flex gap-2">
+          <button onClick={handlePrint} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 hover:bg-black transition-colors">
+            <Printer size={16} /> PRINT
+          </button>
+          <button onClick={onClose} className="flex-1 bg-white border border-slate-200 text-slate-600 py-3 rounded-xl font-black text-sm hover:bg-slate-100 transition-colors">
+            DONE
+          </button>
+        </div>
+      </motion.div>
+
+      {/* --- 📄 THERMAL PRINT LAYOUT (80mm Width) --- */}
+      <div className="hidden print:block bg-white text-black p-4" style={{ width: '80mm', fontFamily: 'monospace' }}>
+        <div style={{ textAlign: 'center', marginBottom: '10px', borderBottom: '1px solid #000', paddingBottom: '10px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, textTransform: 'uppercase' }}>Tax Invoice</h2>
+          <p style={{ fontSize: '10px', margin: '2px 0' }}>{new Date().toLocaleString()}</p>
+        </div>
+        
+        <div style={{ fontSize: '11px', marginBottom: '10px', borderBottom: '1px dashed #000', paddingBottom: '5px' }}>
+          <p style={{ margin: '2px 0' }}><strong>INV NO:</strong>  {data.invoiceNo ? data.invoiceNo.toUpperCase() : 'PENDING'}</p>
+          <p style={{ margin: '2px 0' }}><strong>CUST:</strong> {data.customer?.name}</p>
+          <p style={{ margin: '2px 0' }}><strong>MOB:</strong> {data.customer?.phone || data.customer?.mobile}</p>
+        </div>
+
+        <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #000' }}>
+              <th align="left">ITEM</th>
+              <th align="center">QTY</th>
+              <th align="right">AMT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items?.map((item, i) => (
+              <tr key={i}>
+                <td style={{ padding: '4px 0' }}>{item.itemName?.substring(0, 18).toUpperCase()}</td>
+                <td align="center">{item.qty}</td>
+                <td align="right">₹{formatNum(item.qty * item.price)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{ fontSize: '11px', marginTop: '10px', borderTop: '1px solid #000', paddingTop: '5px', textAlign: 'right', lineHeight: '1.6' }}>
+          <p style={{ margin: 0 }}>TAXABLE: ₹{formatNum(data.taxable)}</p>
+          <p style={{ margin: 0 }}>CGST: ₹{formatNum(data.cgst)}</p>
+          <p style={{ margin: 0 }}>SGST: ₹{formatNum(data.sgst)}</p>
+          <p style={{ fontSize: '15px', fontWeight: 'bold', borderTop: '1px dashed #000', marginTop: '5px', paddingTop: '5px' }}>
+            TOTAL: ₹{formatNum(data.grand)}
+          </p>
+        </div>
+        
+        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '10px', borderTop: '1px solid #000', paddingTop: '10px' }}>
+          <p style={{ margin: 0 }}>--- THANK YOU ---</p>
+          <p style={{ margin: '4px 0 0 0' }}>Visit Again!</p>
+        </div>
+      </div>
+    </div>
+  );
+}
