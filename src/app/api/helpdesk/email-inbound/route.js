@@ -22,42 +22,32 @@ function normalizeId(id) {
   return String(id).replace(/[<>]/g, "").trim();
 }
 
-/* ================= ATTACHMENT UPLOAD ================= */
+/* ================= ATTACHMENTS ================= */
 
 async function uploadAttachments(attachments, ticketId) {
   const uploaded = [];
 
-  console.log("📎 Incoming attachments:", attachments?.length || 0);
-
   for (const a of attachments || []) {
-    try {
-      if (!a?.content) continue;
+    if (!a?.content) continue;
 
-      const buffer = Buffer.from(a.content, "base64");
-      const mime = a.contentType || "application/octet-stream";
+    const buffer = Buffer.from(a.content, "base64");
+    const mime = a.contentType || "application/octet-stream";
 
-      const base64 = `data:${mime};base64,${buffer.toString("base64")}`;
+    const base64 = `data:${mime};base64,${buffer.toString("base64")}`;
 
-      const res = await cloudinary.uploader.upload(base64, {
-        folder: `helpdesk/tickets/${ticketId}`,
-        resource_type: "auto",
-      });
+    const res = await cloudinary.uploader.upload(base64, {
+      folder: `helpdesk/tickets/${ticketId}`,
+      resource_type: "auto",
+    });
 
-      uploaded.push({
-        filename: a.filename || "file",
-        url: res.secure_url,
-        publicId: res.public_id,
-        contentType: mime,
-        size: a.size || buffer.length,
-      });
-
-      console.log("✅ Uploaded:", a.filename);
-    } catch (err) {
-      console.error("❌ Attachment failed:", a?.filename, err.message);
-    }
+    uploaded.push({
+      filename: a.filename,
+      url: res.secure_url,
+      contentType: mime,
+      size: a.size || buffer.length,
+    });
   }
 
-  console.log("📎 Total uploaded:", uploaded.length);
   return uploaded;
 }
 
@@ -65,7 +55,6 @@ async function uploadAttachments(attachments, ticketId) {
 
 export async function POST(req) {
   try {
-    /* ---------- SECURITY ---------- */
     const { searchParams } = new URL(req.url);
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -74,7 +63,6 @@ export async function POST(req) {
     await dbConnect();
     const raw = await req.json();
 
-    /* ---------- BASIC EMAIL DATA ---------- */
     const fromEmail = extractEmail(raw.fromEmail || raw.from);
     const toEmail = extractEmail(raw.to);
     const subject = raw.subject || "No Subject";
@@ -87,30 +75,31 @@ export async function POST(req) {
       .map(normalizeId)
       .filter(Boolean);
 
-    if (!fromEmail || !toEmail) {
-      return Response.json({ error: "Invalid email" }, { status: 400 });
-    }
-
     /* =====================================================
-       1️⃣ CHECK EXISTING TICKET (REPLY)
+       🔍 FIND EXISTING TICKET (ROBUST LOGIC)
     ===================================================== */
 
-    const ticket = await Ticket.findOne({
+    let ticket = await Ticket.findOne({
       $or: [
         { emailThreadId: { $in: [messageId, inReplyTo, ...references] } },
         { "messages.messageId": { $in: [messageId, inReplyTo, ...references] } },
       ],
     });
 
-    /* ================= REPLY ================= */
+    // 🔥 LEVEL 2: customer + mailbox match
+    if (!ticket) {
+      ticket = await Ticket.findOne({
+        customerEmail: fromEmail,
+        emailAlias: toEmail,
+        status: { $ne: "closed" },
+      }).sort({ updatedAt: -1 });
+    }
+
+    /* ================= APPEND REPLY ================= */
 
     if (ticket) {
       const sentiment = await analyzeSentimentAI(body);
-
-      const uploaded = await uploadAttachments(
-        raw.attachments || [],
-        ticket._id
-      );
+      const uploaded = await uploadAttachments(raw.attachments, ticket._id);
 
       ticket.messages.push({
         senderType: "customer",
@@ -128,27 +117,18 @@ export async function POST(req) {
 
       await ticket.save();
 
-      console.log("🔁 Reply appended:", ticket._id);
-
+      console.log("🔁 Reply appended to ticket:", ticket._id);
       return Response.json({ success: true, ticketId: ticket._id });
     }
 
     /* =====================================================
-       2️⃣ NEW EMAIL → COMPANY
+       🆕 CREATE NEW TICKET (ONLY IF NO MATCH)
     ===================================================== */
 
-    const company = await Company.findOne({
-      supportEmails: toEmail,
-    });
-
+    const company = await Company.findOne({ supportEmails: toEmail });
     if (!company) {
-      console.log("⛔ Invalid mailbox:", toEmail);
       return Response.json({ error: "Invalid mailbox" }, { status: 403 });
     }
-
-    /* =====================================================
-       3️⃣ CUSTOMER
-    ===================================================== */
 
     const customer = await Customer.findOne({
       emailId: fromEmail,
@@ -156,13 +136,8 @@ export async function POST(req) {
     });
 
     if (!customer) {
-      console.log("⛔ Unknown customer:", fromEmail);
       return Response.json({ error: "Unknown customer" }, { status: 403 });
     }
-
-    /* =====================================================
-       4️⃣ CREATE NEW TICKET
-    ===================================================== */
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
@@ -177,16 +152,13 @@ export async function POST(req) {
       priority: sentiment === "negative" ? "high" : "normal",
       agentId,
       sentiment,
-      emailThreadId: messageId || `mail-${Date.now()}`,
+      emailThreadId: messageId,
       emailAlias: toEmail,
       messages: [],
       lastCustomerReplyAt: new Date(),
     });
 
-    const uploaded = await uploadAttachments(
-      raw.attachments || [],
-      newTicket._id
-    );
+    const uploaded = await uploadAttachments(raw.attachments, newTicket._id);
 
     newTicket.messages.push({
       senderType: "customer",
@@ -201,7 +173,6 @@ export async function POST(req) {
     await newTicket.save();
 
     console.log("🎯 New ticket created:", newTicket._id);
-
     return Response.json({ success: true, ticketId: newTicket._id });
 
   } catch (err) {
@@ -209,6 +180,7 @@ export async function POST(req) {
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
+
 
 
 

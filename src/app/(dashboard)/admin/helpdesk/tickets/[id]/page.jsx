@@ -15,6 +15,7 @@ export default function TicketDetailPage() {
   const [ticket, setTicket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState("");
+  const [files, setFiles] = useState([]); // 🔥 NEW
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -61,23 +62,34 @@ export default function TicketDetailPage() {
     }
   }
 
-  /* ================= SEND REPLY ================= */
+  /* ================= SEND REPLY WITH ATTACHMENTS ================= */
 
   async function sendReply(e) {
     e.preventDefault();
-    if (!reply.trim() || isClosed) return;
+    if ((!reply.trim() && files.length === 0) || isClosed) return;
 
     setBusy(true);
     setMsg(null);
 
     try {
+      const formData = new FormData();
+      formData.append("message", reply.trim());
+
+      files.forEach((file) => {
+        formData.append("attachments", file);
+      });
+
       const res = await api.post(
         `/api/helpdesk/tickets/${ticketId}/message`,
-        { message: reply.trim() }
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
       );
 
       if (res.data?.success && res.data.ticket) {
         setReply("");
+        setFiles([]); // reset
         setTicket(res.data.ticket);
         setMsg({ type: "success", text: "Reply sent successfully" });
       } else {
@@ -108,7 +120,7 @@ export default function TicketDetailPage() {
 
       if (res.data?.success) {
         setMsg({ type: "success", text: "Ticket closed successfully" });
-        await loadTicket(); // reload fresh state
+        await loadTicket();
       } else {
         setMsg({
           type: "error",
@@ -275,9 +287,9 @@ export default function TicketDetailPage() {
         )}
       </div>
 
-      {/* REPLY */}
+      {/* REPLY WITH ATTACHMENTS */}
       {!isClosed ? (
-        <form onSubmit={sendReply} className="space-y-2">
+        <form onSubmit={sendReply} className="space-y-3">
           <textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}
@@ -286,9 +298,26 @@ export default function TicketDetailPage() {
             className="w-full border p-2 rounded"
           />
 
+          {/* 🔥 ATTACHMENT INPUT */}
+          <input
+            type="file"
+            multiple
+            onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            className="block text-sm"
+          />
+
+          {/* Selected files preview */}
+          {files.length > 0 && (
+            <div className="text-sm text-gray-600">
+              {files.map((f, i) => (
+                <div key={i}>📎 {f.name}</div>
+              ))}
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={busy || !reply.trim()}
+            disabled={busy || (!reply.trim() && files.length === 0)}
             className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
           >
             {busy ? "Sending…" : "Send Reply"}
@@ -311,7 +340,8 @@ export default function TicketDetailPage() {
 // import { useRouter, useParams } from "next/navigation";
 // import axios from "axios";
 
-// const DEFAULT_AVATAR = "https://lh3.googleusercontent.com/a/ACg8ocKR3SzcYHvO6YiFnOd7lQ1B2l4VjXwxC-NvP__OhI5GiNoKXXQZ=s360-c-no"; // ✅ public/avatar.png
+// const DEFAULT_AVATAR =
+//   "https://lh3.googleusercontent.com/a/ACg8ocKR3SzcYHvO6YiFnOd7lQ1B2l4VjXwxC-NvP__OhI5GiNoKXXQZ=s360-c-no";
 
 // export default function TicketDetailPage() {
 //   const router = useRouter();
@@ -349,26 +379,17 @@ export default function TicketDetailPage() {
 //     setMsg(null);
 
 //     try {
-//       console.log("➡️ Fetch ticket:", ticketId);
-
 //       const res = await api.get(`/api/helpdesk/tickets/${ticketId}`);
-//       console.log("⬅️ API response:", res.data);
 
-//       if (!res.data || typeof res.data !== "object") {
-//         setMsg({ type: "error", text: "Invalid server response" });
-//         setTicket(null);
-//         return;
-//       }
-
-//       if (!res.data.success) {
-//         setMsg({ type: "error", text: res.data.msg || "Ticket not found" });
+//       if (!res.data?.success) {
+//         setMsg({ type: "error", text: res.data?.msg || "Ticket not found" });
 //         setTicket(null);
 //         return;
 //       }
 
 //       setTicket(res.data.ticket);
 //     } catch (err) {
-//       console.error("❌ Load ticket error:", err);
+//       console.error(err);
 //       setMsg({ type: "error", text: "Server error" });
 //       setTicket(null);
 //     } finally {
@@ -380,8 +401,7 @@ export default function TicketDetailPage() {
 
 //   async function sendReply(e) {
 //     e.preventDefault();
-//     const text = reply.trim();
-//     if (!text) return;
+//     if (!reply.trim() || isClosed) return;
 
 //     setBusy(true);
 //     setMsg(null);
@@ -389,13 +409,13 @@ export default function TicketDetailPage() {
 //     try {
 //       const res = await api.post(
 //         `/api/helpdesk/tickets/${ticketId}/message`,
-//         { message: text }
+//         { message: reply.trim() }
 //       );
 
 //       if (res.data?.success && res.data.ticket) {
 //         setReply("");
 //         setTicket(res.data.ticket);
-//         setMsg({ type: "success", text: "Reply sent" });
+//         setMsg({ type: "success", text: "Reply sent successfully" });
 //       } else {
 //         setMsg({
 //           type: "error",
@@ -413,7 +433,8 @@ export default function TicketDetailPage() {
 //   /* ================= CLOSE TICKET ================= */
 
 //   async function closeTicket() {
-//     if (!window.confirm("Close this ticket?")) return;
+//     if (isClosed) return;
+//     if (!window.confirm("Are you sure you want to close this ticket?")) return;
 
 //     setBusy(true);
 //     setMsg(null);
@@ -422,10 +443,8 @@ export default function TicketDetailPage() {
 //       const res = await api.post("/api/helpdesk/close", { ticketId });
 
 //       if (res.data?.success) {
-//         setMsg({ type: "success", text: res.data.message || "Ticket closed" });
-
-//         // 🔥 IMPORTANT: reload instead of trusting response
-//         await loadTicket();
+//         setMsg({ type: "success", text: "Ticket closed successfully" });
+//         await loadTicket(); // reload fresh state
 //       } else {
 //         setMsg({
 //           type: "error",
@@ -460,6 +479,8 @@ export default function TicketDetailPage() {
 //     );
 //   }
 
+//   const isClosed = ticket.status === "closed";
+
 //   const customerDisplay =
 //     ticket.customerId?.name ||
 //     ticket.customerId?.email ||
@@ -470,24 +491,35 @@ export default function TicketDetailPage() {
 
 //   return (
 //     <div className="p-6 max-w-3xl mx-auto space-y-6">
-//       {/* Header */}
+
+//       {/* HEADER */}
 //       <div className="flex items-center justify-between">
 //         <div>
 //           <h1 className="text-2xl font-bold">{ticket.subject}</h1>
 //           <p className="text-sm text-gray-500">{customerDisplay}</p>
-//           <p className="text-xs text-gray-400">
-//             Status: {ticket.status} • Priority:{" "}
-//             {ticket.priority || "normal"}
-//           </p>
+
+//           <span
+//             className={`inline-block mt-1 px-3 py-1 text-xs rounded-full ${
+//               isClosed
+//                 ? "bg-red-100 text-red-700"
+//                 : "bg-green-100 text-green-700"
+//             }`}
+//           >
+//             {isClosed ? "Closed" : "Open"}
+//           </span>
 //         </div>
 
 //         <div className="flex gap-2">
 //           <button
 //             onClick={closeTicket}
-//             disabled={busy}
-//             className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50"
+//             disabled={busy || isClosed}
+//             className={`px-4 py-2 rounded text-white ${
+//               isClosed
+//                 ? "bg-gray-400 cursor-not-allowed"
+//                 : "bg-red-600 hover:bg-red-700"
+//             }`}
 //           >
-//             Close
+//             {isClosed ? "Closed" : "Close Ticket"}
 //           </button>
 
 //           <button
@@ -499,6 +531,7 @@ export default function TicketDetailPage() {
 //         </div>
 //       </div>
 
+//       {/* MESSAGE */}
 //       {msg && (
 //         <div
 //           className={`p-3 rounded ${
@@ -511,7 +544,7 @@ export default function TicketDetailPage() {
 //         </div>
 //       )}
 
-//       {/* Messages */}
+//       {/* MESSAGES */}
 //       <div className="space-y-3">
 //         {ticket.messages?.length ? (
 //           ticket.messages.map((m) => {
@@ -551,25 +584,24 @@ export default function TicketDetailPage() {
 //                       {new Date(m.createdAt).toLocaleString()}
 //                     </span>
 //                   </div>
-//                   <div className="mt-1 whitespace-pre-wrap">
-//                     {m.message}
-//                   </div>
-//                   {/* ATTACHMENTS */}
-// {m.attachments?.length > 0 && (
-//   <div className="mt-2 space-y-1">
-//     {m.attachments.map((file, idx) => (
-//       <a
-//         key={idx}
-//         href={file.url}
-//         target="_blank"
-//         rel="noopener noreferrer"
-//         className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
-//       >
-//         📎 {file.filename || "Attachment"}
-//       </a>
-//     ))}
-//   </div>
-// )}
+
+//                   <div className="mt-1 whitespace-pre-wrap">{m.message}</div>
+
+//                   {m.attachments?.length > 0 && (
+//                     <div className="mt-2 space-y-1">
+//                       {m.attachments.map((file, idx) => (
+//                         <a
+//                           key={idx}
+//                           href={file.url}
+//                           target="_blank"
+//                           rel="noopener noreferrer"
+//                           className="block text-sm text-blue-600 hover:underline"
+//                         >
+//                           📎 {file.filename || "Attachment"}
+//                         </a>
+//                       ))}
+//                     </div>
+//                   )}
 //                 </div>
 //               </div>
 //             );
@@ -579,24 +611,32 @@ export default function TicketDetailPage() {
 //         )}
 //       </div>
 
-//       {/* Reply */}
-//       <form onSubmit={sendReply} className="space-y-2">
-//         <textarea
-//           value={reply}
-//           onChange={(e) => setReply(e.target.value)}
-//           placeholder="Type your reply…"
-//           rows={3}
-//           className="w-full border p-2 rounded"
-//         />
+//       {/* REPLY */}
+//       {!isClosed ? (
+//         <form onSubmit={sendReply} className="space-y-2">
+//           <textarea
+//             value={reply}
+//             onChange={(e) => setReply(e.target.value)}
+//             placeholder="Type your reply…"
+//             rows={3}
+//             className="w-full border p-2 rounded"
+//           />
 
-//         <button
-//           type="submit"
-//           disabled={busy || !reply.trim()}
-//           className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-//         >
-//           {busy ? "Sending…" : "Send Reply"}
-//         </button>
-//       </form>
+//           <button
+//             type="submit"
+//             disabled={busy || !reply.trim()}
+//             className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+//           >
+//             {busy ? "Sending…" : "Send Reply"}
+//           </button>
+//         </form>
+//       ) : (
+//         <div className="p-3 text-sm bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
+//           🔒 This ticket is closed. No further replies are allowed.
+//         </div>
+//       )}
 //     </div>
 //   );
 // }
+
+
