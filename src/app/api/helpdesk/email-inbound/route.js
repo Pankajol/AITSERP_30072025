@@ -6,10 +6,11 @@ import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
-import { simpleParser } from "mailparser";
+import { simpleParser } from "mailparser"; // Ise install kar lena: npm install mailparser
 import cloudinary from "@/lib/cloudinary";
 
 /* ===================== HELPERS ===================== */
+
 function normalizeId(id) {
   if (!id) return "";
   let s = String(id).trim();
@@ -20,76 +21,66 @@ function normalizeId(id) {
 function extractEmail(value) {
   if (!value) return "";
   if (Array.isArray(value)) value = value[0];
-  if (typeof value === "object" && value !== null) {
-    return (value.email || value.address || value.mail || "").toString().toLowerCase();
-  }
+  if (typeof value === "object") return (value.email || value.address || "").toLowerCase();
   const m = String(value).match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   return m ? m[1].toLowerCase() : "";
 }
 
-async function parseBody(req) {
-  const ct = (req.headers.get("content-type") || "").toLowerCase();
-  if (ct.includes("application/json")) return await req.json();
-  const txt = await req.text();
-  try { return JSON.parse(txt); } catch { 
-    return Object.fromEntries(new URLSearchParams(txt)); 
-  }
+// Cloudinary Upload Helper (Fix for Inbound)
+async function uploadToCloudinary(buffer, filename, folder) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: "auto", public_id: filename.split('.')[0] },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    uploadStream.end(buffer);
+  });
 }
 
-async function uploadAttachmentsToCloudinary(attachments, ticketId) {
-  const uploaded = [];
-  for (const file of attachments) {
-    const buffer = file.buffer || (file.content ? Buffer.from(file.content, 'base64') : null);
-    if (!buffer) continue;
-    const base64 = `data:${file.contentType};base64,${buffer.toString("base64")}`;
-    const res = await cloudinary.uploader.upload(base64, {
-      folder: `helpdesk/tickets/${ticketId}`,
-      resource_type: "auto",
-    });
-    uploaded.push({
-      filename: file.filename,
-      url: res.secure_url,
-      publicId: res.public_id,
-      contentType: file.contentType,
-      size: file.size,
-    });
-  }
-  return uploaded;
-}
+/* ===================== MAIN ROUTE ===================== */
 
-/* ===================== MAIN POST ===================== */
 export async function POST(req) {
   try {
     await dbConnect();
+    
+    // Auth Check
     const { searchParams } = new URL(req.url);
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const raw = await parseBody(req);
-    const fromEmail = extractEmail(raw.from || raw.sender || raw["From"]);
-    const toEmail = extractEmail(raw.to || raw.recipient);
-    const subject = raw.subject || "No Subject";
-    const body = raw.text || raw.html || "";
-    const messageId = normalizeId(raw.messageId || raw["Message-ID"]);
-    const inReplyTo = normalizeId(raw.inReplyTo || raw["In-Reply-To"]);
-    const references = (raw.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
-
-    // PARSE ATTACHMENTS (Using mailparser for accuracy)
-    let attachments = [];
-    const source = raw.raw || raw.mime || raw.email || raw.content;
-    if (source) {
-      const parsed = await simpleParser(source);
-      attachments = (parsed.attachments || []).map(a => ({
-        filename: a.filename,
-        contentType: a.contentType,
-        size: a.size,
-        buffer: a.content,
-      }));
+    // Parse Multi-part or JSON Body
+    const contentType = req.headers.get("content-type") || "";
+    let rawBody;
+    
+    // Sabse safe method: Pure email source ko pakadna
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      rawBody = Object.fromEntries(formData);
+    } else {
+      rawBody = await req.json();
     }
 
-    // 1. FIND TICKET (Search by Thread IDs)
-    const threadIds = [messageId, inReplyTo, ...references].filter(Boolean);
+    // 1. Parse Email with SimpleParser (Sabse important step for files)
+    const emailSource = rawBody.raw || rawBody.email || rawBody.content || rawBody.body;
+    const parsedEmail = await simpleParser(emailSource);
+
+    const fromEmail = extractEmail(parsedEmail.from?.text || rawBody.from);
+    const toEmail = extractEmail(parsedEmail.to?.text || rawBody.to);
+    const subject = parsedEmail.subject || rawBody.subject || "No Subject";
+    const bodyText = parsedEmail.text || rawBody.text || "";
+    const messageId = normalizeId(parsedEmail.messageId || rawBody.messageId);
+    
+    if (!fromEmail || !toEmail) {
+      return Response.json({ error: "Missing email info" }, { status: 400 });
+    }
+
+    // 2. Threading Logic: Existing Ticket Check
+    const threadIds = [messageId, normalizeId(parsedEmail.inReplyTo), ...(parsedEmail.references || [])].filter(Boolean);
+    
     let ticket = await Ticket.findOne({
       $or: [
         { emailThreadId: { $in: threadIds } },
@@ -97,44 +88,59 @@ export async function POST(req) {
       ]
     });
 
+    // 3. Handle Attachments
     let uploadedFiles = [];
-    if (attachments.length) {
-      uploadedFiles = await uploadAttachmentsToCloudinary(attachments, ticket?._id || "new");
+    const attachments = parsedEmail.attachments || [];
+    
+    for (const file of attachments) {
+      try {
+        const result = await uploadToCloudinary(
+          file.content, // Yeh buffer hota hai simpleParser mein
+          file.filename || "attachment",
+          `helpdesk/tickets/${ticket?._id || "inbound"}`
+        );
+        uploadedFiles.push({
+          filename: file.filename,
+          url: result.secure_url,
+          contentType: file.contentType,
+          size: file.size,
+        });
+      } catch (err) {
+        console.error("Cloudinary Individual Upload Error:", err);
+      }
     }
 
-    const sentiment = await analyzeSentimentAI(body);
+    const sentiment = await analyzeSentimentAI(bodyText);
 
     if (ticket) {
-      // 2. APPEND REPLY
+      // Logic: Duplicate Message Check
       const isDuplicate = ticket.messages.some(m => m.messageId === messageId);
       if (isDuplicate) return Response.json({ success: true, msg: "Duplicate" });
 
-      if (ticket.status === "closed") {
-        ticket.status = "open";
-        ticket.autoClosed = false;
-      }
+      // Re-open if closed
+      if (ticket.status === "closed") ticket.status = "open";
 
       ticket.messages.push({
         senderType: "customer",
         externalEmail: fromEmail,
-        message: body,
+        message: bodyText,
         messageId,
         sentiment,
         attachments: uploadedFiles,
-        createdAt: new Date(),
+        createdAt: new Date()
       });
+      
       ticket.lastReplyAt = new Date();
-      ticket.sentiment = sentiment;
       await ticket.save();
       return Response.json({ success: true, ticketId: ticket._id });
     }
 
-    // 3. CREATE NEW TICKET
+    // 4. New Ticket Logic
     const company = await Company.findOne({ supportEmails: toEmail });
-    if (!company) return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+    if (!company) return Response.json({ error: "Company not found" }, { status: 404 });
 
     const customer = await Customer.findOne({ emailId: fromEmail, companyId: company._id });
-    if (!customer) return Response.json({ error: "Unknown customer" }, { status: 403 });
+    if (!customer) return Response.json({ error: "Customer not registered" }, { status: 403 });
 
     const agentId = await getNextAvailableAgent(customer);
     const newTicket = await Ticket.create({
@@ -150,18 +156,19 @@ export async function POST(req) {
       messages: [{
         senderType: "customer",
         externalEmail: fromEmail,
-        message: body,
+        message: bodyText,
         messageId,
         sentiment,
         attachments: uploadedFiles,
-        createdAt: new Date(),
+        createdAt: new Date()
       }],
       lastCustomerReplyAt: new Date(),
     });
 
     return Response.json({ success: true, ticketId: newTicket._id });
+
   } catch (err) {
-    console.error("Inbound Error:", err);
+    console.error("Critical Inbound Error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
