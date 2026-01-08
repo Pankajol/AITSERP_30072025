@@ -21,7 +21,7 @@ async function sendOutlookMail({
 }) {
   const params = new URLSearchParams({
     client_id: outlookConfig.clientId,
-    client_secret: outlookConfig.appPassword, // 🔥 direct
+    client_secret: outlookConfig.appPassword, // direct (no decrypt)
     grant_type: "client_credentials",
     scope: "https://graph.microsoft.com/.default",
   });
@@ -35,15 +35,17 @@ async function sendOutlookMail({
     }
   );
 
-  const { access_token } = await tokenRes.json();
-  if (!access_token) throw new Error("Outlook auth failed");
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) {
+    throw new Error("Outlook authentication failed");
+  }
 
-  await fetch(
+  const sendRes = await fetch(
     `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${access_token}`,
+        Authorization: `Bearer ${tokenData.access_token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -60,60 +62,109 @@ async function sendOutlookMail({
       }),
     }
   );
+
+  if (!sendRes.ok) {
+    const txt = await sendRes.text();
+    throw new Error("Outlook sendMail failed: " + txt);
+  }
 }
 
 /* ================= MAIN ================= */
 
-export async function POST(req, { params }) {
+export async function POST(req, context) {
   try {
     await connectDB();
 
+    /* ✅ FIX: params async */
+    const { id: ticketId } = await context.params;
+
+    /* ================= AUTH ================= */
     const token = getTokenFromHeader(req);
     const userPayload = verifyJWT(token);
-    if (!userPayload)
+    if (!userPayload) {
       return Response.json(
         { success: false, msg: "Unauthorized" },
         { status: 401 }
       );
+    }
 
-    const ticketId = params.id;
+    /* ================= FORM DATA ================= */
     const formData = await req.formData();
-    const messageText = formData.get("message")?.toString().trim();
-    const files = formData.getAll("attachments");
+    const messageText = formData.get("message")?.toString().trim() || "";
+    const files = formData.getAll("attachments") || [];
 
+    if (!messageText && files.length === 0) {
+      return Response.json(
+        { success: false, msg: "Message or attachment required" },
+        { status: 400 }
+      );
+    }
+
+    /* ================= TICKET ================= */
     const ticket = await Ticket.findById(ticketId);
-    if (!ticket)
+    if (!ticket) {
       return Response.json(
         { success: false, msg: "Ticket not found" },
         { status: 404 }
       );
+    }
 
+    /* ================= COMPANY ================= */
     const company = await Company.findById(ticket.companyId).select(
       "+supportEmails.appPassword"
     );
-    if (!company)
+    if (!company) {
       return Response.json(
         { success: false, msg: "Company not found" },
         { status: 404 }
       );
+    }
 
-    /* ================= SUPPORT EMAIL ================= */
+    /* ================= SUPPORT EMAIL (ROBUST + FALLBACK) ================= */
 
-    const supportEmail = company.supportEmails.find(
-      (e) => e.email === ticket.emailAlias
-    );
+    let emailAlias = ticket.emailAlias?.trim().toLowerCase();
 
-    if (!supportEmail)
+    // 🔁 Fallback for old/manual tickets
+    if (!emailAlias) {
+      const fallback = company.supportEmails.find(
+        (e) => e.inboundEnabled
+      );
+      emailAlias = fallback?.email?.toLowerCase();
+    }
+
+    if (!emailAlias) {
       return Response.json(
-        { success: false, msg: "Support email config not found" },
+        {
+          success: false,
+          msg: "No support email configured for this company",
+        },
         { status: 400 }
       );
+    }
+
+    const supportEmail = company.supportEmails.find(
+      (e) => e.email?.trim().toLowerCase() === emailAlias
+    );
+
+    if (!supportEmail) {
+      return Response.json(
+        {
+          success: false,
+          msg: `Support email config not found for ${emailAlias}`,
+        },
+        { status: 400 }
+      );
+    }
 
     /* ================= ATTACHMENTS ================= */
 
     const uploadedAttachments = [];
+
     for (const file of files) {
+      if (!file || !file.arrayBuffer) continue;
+
       const buffer = Buffer.from(await file.arrayBuffer());
+
       const res = await cloudinary.uploader.upload(
         `data:${file.type};base64,${buffer.toString("base64")}`,
         {
@@ -135,9 +186,12 @@ export async function POST(req, { params }) {
 
     const currentMessageId = `<${Date.now()}.${ticketId}@aitsind.com>`;
     const originalThreadId = ticket.emailThreadId;
-    const htmlBody = `<p>${messageText.replace(/\n/g, "<br>")}</p>`;
 
-    /* ================= SEND ================= */
+    const htmlBody = messageText
+      ? `<p>${messageText.replace(/\n/g, "<br>")}</p>`
+      : "<p>(Attachment)</p>";
+
+    /* ================= SEND EMAIL ================= */
 
     if (supportEmail.type === "outlook") {
       await sendOutlookMail({
@@ -156,7 +210,7 @@ export async function POST(req, { params }) {
         host: supportEmail.type === "smtp" ? "smtp.yourhost.com" : undefined,
         auth: {
           user: supportEmail.email,
-          pass: supportEmail.appPassword, // 🔥 direct
+          pass: supportEmail.appPassword,
         },
       });
 
