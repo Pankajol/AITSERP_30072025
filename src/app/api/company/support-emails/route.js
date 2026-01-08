@@ -1,131 +1,299 @@
+export const runtime = "nodejs";
+
 import dbConnect from "@/lib/db";
 import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
-/** ================= HELPERS ================= **/
-function bad(status, msg) {
+/* ================= HELPERS ================= */
+function errorRes(status, msg) {
   return Response.json({ success: false, msg }, { status });
 }
 
-/** ================= POST (ADD SUPPORT MAIL) ================= **/
-export async function POST(req) {
-  try {
-    await dbConnect();
+async function getCompany(req, withSecrets = false) {
+  const token = getTokenFromHeader(req);
+  if (!token) return { error: errorRes(401, "Unauthorized") };
 
-    // 1: Read token
-    const token = getTokenFromHeader(req);
-    if (!token) return bad(401, "Unauthorized");
+  const decoded = verifyJWT(token);
+  if (!decoded?.companyId)
+    return { error: errorRes(401, "Invalid token") };
 
-    // 2: Decode JWT
-    let decoded;
-    try {
-      decoded = verifyJWT(token);
-    } catch {
-      return bad(403, "Invalid token");
-    }
+  await dbConnect();
 
-    const companyId = decoded.companyId;
-    if (!companyId) return bad(400, "Company ID missing in token");
+  let query = Company.findById(decoded.companyId);
 
-    // 3: Read email field
-    const body = await req.json();
-    const email = body?.email?.trim()?.toLowerCase();
-    if (!email) return bad(400, "Email required");
-    if (!email.includes("@")) return bad(400, "Invalid email format");
-
-    // 4: Find company
-    const company = await Company.findById(companyId);
-    if (!company) return bad(404, "Company not found");
-
-    // 5: Push unique email
-    company.supportEmails.push(email);
-    company.supportEmails = [...new Set(company.supportEmails)];
-    await company.save();
-
-    return Response.json({
-      success: true,
-      supportEmails: company.supportEmails,
-      msg: "Support email added"
-    });
-
-  } catch (err) {
-    console.error("POST error:", err);
-    return bad(500, err.message);
+  // 🔐 only when needed (PUT/POST internal use)
+  if (withSecrets) {
+    query = query.select("+supportEmails.appPassword");
   }
+
+  const company = await query;
+  if (!company) return { error: errorRes(404, "Company not found") };
+
+  return { company };
 }
 
-
-/** ================= GET (LIST SUPPORT MAILS) ================= **/
+/* ================= GET ================= */
 export async function GET(req) {
-  try {
-    await dbConnect();
+  const { company, error } = await getCompany(req);
+  if (error) return error;
 
-    const token = getTokenFromHeader(req);
-    if (!token) return bad(401, "Unauthorized");
+  return Response.json({
+    success: true,
+    supportEmails: company.supportEmails.map((e) => ({
+      email: e.email,
+      type: e.type,
 
-    let decoded;
-    try {
-      decoded = verifyJWT(token);
-    } catch {
-      return bad(403, "Invalid token");
-    }
+      // 🟦 Outlook identifiers (safe to expose)
+      tenantId: e.tenantId || "",
+      clientId: e.clientId || "",
+      webhookSecret: e.webhookSecret || "",
 
-    const companyId = decoded.companyId;
-    if (!companyId) return bad(400, "Company ID missing in token");
-
-    const company = await Company.findById(companyId).select("supportEmails");
-    if (!company) return bad(404, "Company not found");
-
-    return Response.json({
-      success: true,
-      supportEmails: company.supportEmails || [],
-    });
-
-  } catch (err) {
-    console.error("GET error:", err);
-    return bad(500, err.message);
-  }
+      inboundEnabled: e.inboundEnabled,
+      outboundEnabled: e.outboundEnabled,
+      createdAt: e.createdAt,
+    })),
+  });
 }
 
+/* ================= POST (ADD) ================= */
+export async function POST(req) {
+  const { company, error } = await getCompany(req, true);
+  if (error) return error;
 
-/** ================= DELETE (REMOVE SUPPORT MAIL) ================= **/
+  const body = await req.json();
+  const {
+    email,
+    type = "gmail",
+    appPassword,
+    inboundEnabled = true,
+    outboundEnabled = true,
+    tenantId,
+    clientId,
+    webhookSecret,
+  } = body;
+
+  if (!email || !appPassword) {
+    return errorRes(400, "Email & password/secret required");
+  }
+
+  // 🟦 Outlook validation
+  if (type === "outlook") {
+    if (!tenantId || !clientId || !webhookSecret) {
+      return errorRes(
+        400,
+        "Tenant ID, Client ID & Webhook Secret required for Outlook"
+      );
+    }
+  }
+
+  const exists = company.supportEmails.some(
+    (e) => e.email === email.toLowerCase()
+  );
+  if (exists) return errorRes(409, "Support email already exists");
+
+  company.supportEmails.push({
+    email,
+    type,
+    appPassword,
+    inboundEnabled,
+    outboundEnabled,
+
+    // Outlook only
+    tenantId: type === "outlook" ? tenantId : undefined,
+    clientId: type === "outlook" ? clientId : undefined,
+    webhookSecret: type === "outlook" ? webhookSecret : undefined,
+  });
+
+  await company.save();
+  return Response.json({ success: true, msg: "Support email added" });
+}
+
+/* ================= PUT (UPDATE) ================= */
+export async function PUT(req) {
+  const { company, error } = await getCompany(req, true);
+  if (error) return error;
+
+  const { index, data } = await req.json();
+  if (index === undefined) return errorRes(400, "Index is required");
+
+  const emailObj = company.supportEmails[index];
+  if (!emailObj) return errorRes(404, "Support email not found");
+
+  emailObj.email = data.email ?? emailObj.email;
+  emailObj.type = data.type ?? emailObj.type;
+  emailObj.inboundEnabled =
+    data.inboundEnabled ?? emailObj.inboundEnabled;
+  emailObj.outboundEnabled =
+    data.outboundEnabled ?? emailObj.outboundEnabled;
+
+  // 🔐 Update secret only if provided
+  if (data.appPassword && data.appPassword.trim()) {
+    emailObj.appPassword = data.appPassword;
+  }
+
+  // 🟦 Outlook specific update
+  if (emailObj.type === "outlook") {
+    if (!data.tenantId || !data.clientId || !data.webhookSecret) {
+      return errorRes(
+        400,
+        "Tenant ID, Client ID & Webhook Secret required for Outlook"
+      );
+    }
+
+    emailObj.tenantId = data.tenantId;
+    emailObj.clientId = data.clientId;
+    emailObj.webhookSecret = data.webhookSecret;
+  } else {
+    // cleanup if switched away from outlook
+    emailObj.tenantId = undefined;
+    emailObj.clientId = undefined;
+    emailObj.webhookSecret = undefined;
+  }
+
+  await company.save();
+  return Response.json({ success: true, msg: "Support email updated" });
+}
+
+/* ================= DELETE ================= */
 export async function DELETE(req) {
-  try {
-    await dbConnect();
+  const { company, error } = await getCompany(req);
+  if (error) return error;
 
-    const token = getTokenFromHeader(req);
-    if (!token) return bad(401, "Unauthorized");
+  const { searchParams } = new URL(req.url);
+  const index = searchParams.get("index");
 
-    let decoded;
-    try {
-      decoded = verifyJWT(token);
-    } catch {
-      return bad(403, "Invalid token");
-    }
+  if (index === null) return errorRes(400, "Index is required");
+  if (!company.supportEmails[index])
+    return errorRes(404, "Support email not found");
 
-    const companyId = decoded.companyId;
-    if (!companyId) return bad(400, "Company ID missing in token");
+  company.supportEmails.splice(index, 1);
+  await company.save();
 
-    const body = await req.json();
-    const email = body?.email?.trim()?.toLowerCase();
-    if (!email) return bad(400, "Email required");
-
-    const company = await Company.findById(companyId);
-    if (!company) return bad(404, "Company not found");
-
-    company.supportEmails = company.supportEmails.filter(
-      (e) => e.toLowerCase() !== email
-    );
-    await company.save();
-
-    return Response.json({
-      success: true,
-      supportEmails: company.supportEmails,
-      msg: "Support email removed",
-    });
-
-  } catch (err) {
-    console.error("DELETE error:", err);
-    return bad(500, err.message);
-  }
+  return Response.json({ success: true, msg: "Support email deleted" });
 }
+
+
+
+
+// export const runtime = "nodejs";
+
+// import dbConnect from "@/lib/db";
+// import Company from "@/models/Company";
+// import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+
+// /** ================= HELPERS ================= */
+// function errorRes(status, msg) {
+//   return Response.json({ success: false, msg }, { status });
+// }
+
+// async function getCompany(req) {
+//   const token = getTokenFromHeader(req);
+//   if (!token) return { error: errorRes(401, "Unauthorized") };
+
+//   const decoded = verifyJWT(token);
+//   if (!decoded?.companyId)
+//     return { error: errorRes(401, "Invalid token") };
+
+//   await dbConnect();
+//   const company = await Company.findById(decoded.companyId);
+//   if (!company) return { error: errorRes(404, "Company not found") };
+
+//   return { company };
+// }
+
+// /** ================= GET ================= */
+// export async function GET(req) {
+//   const { company, error } = await getCompany(req);
+//   if (error) return error;
+
+//   return Response.json({
+//     success: true,
+//     supportEmails: company.supportEmails.map((e) => ({
+//       email: e.email,
+//       type: e.type,
+//       inboundEnabled: e.inboundEnabled,
+//       outboundEnabled: e.outboundEnabled,
+//       createdAt: e.createdAt,
+//     })),
+//   });
+// }
+
+// /** ================= POST (ADD) ================= */
+// export async function POST(req) {
+//   const { company, error } = await getCompany(req);
+//   if (error) return error;
+
+//   const body = await req.json();
+//   const { email, type, appPassword, inboundEnabled, outboundEnabled } = body;
+
+//   if (!email || !appPassword)
+//     return errorRes(400, "Email & app password required");
+
+//   const alreadyExists = company.supportEmails.some(
+//     (e) => e.email === email.toLowerCase()
+//   );
+
+//   if (alreadyExists)
+//     return errorRes(409, "Support email already exists");
+
+//   company.supportEmails.push({
+//     email,
+//     type,
+//     appPassword,
+//     inboundEnabled,
+//     outboundEnabled,
+//   });
+
+//   await company.save();
+
+//   return Response.json({ success: true, msg: "Support email added" });
+// }
+
+// /** ================= PUT (UPDATE) ================= */
+// export async function PUT(req) {
+//   const { company, error } = await getCompany(req);
+//   if (error) return error;
+
+//   const { index, data } = await req.json();
+//   if (index === undefined)
+//     return errorRes(400, "Index is required");
+
+//   const emailObj = company.supportEmails[index];
+//   if (!emailObj) return errorRes(404, "Support email not found");
+
+//   emailObj.email = data.email ?? emailObj.email;
+//   emailObj.type = data.type ?? emailObj.type;
+//   emailObj.inboundEnabled =
+//     data.inboundEnabled ?? emailObj.inboundEnabled;
+//   emailObj.outboundEnabled =
+//     data.outboundEnabled ?? emailObj.outboundEnabled;
+
+//   // Password only update if provided
+//   if (data.appPassword && data.appPassword.trim() !== "") {
+//     emailObj.appPassword = data.appPassword;
+//   }
+
+//   await company.save();
+
+//   return Response.json({ success: true, msg: "Support email updated" });
+// }
+
+// /** ================= DELETE ================= */
+// export async function DELETE(req) {
+//   const { company, error } = await getCompany(req);
+//   if (error) return error;
+
+//   const { searchParams } = new URL(req.url);
+//   const index = searchParams.get("index");
+
+//   if (index === null)
+//     return errorRes(400, "Index is required");
+
+//   if (!company.supportEmails[index])
+//     return errorRes(404, "Support email not found");
+
+//   company.supportEmails.splice(index, 1);
+//   await company.save();
+
+//   return Response.json({ success: true, msg: "Support email deleted" });
+// }

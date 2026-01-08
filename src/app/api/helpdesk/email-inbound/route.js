@@ -162,54 +162,83 @@ export async function POST(req) {
     }
 
     /* ================= CASE: NEW TICKET ================= */
-    const company = await Company.findOne({ supportEmails: toEmail });
-    if (!company) return Response.json({ error: "Invalid mailbox" }, { status: 403 });
+/* ================= CASE: NEW TICKET ================= */
 
-    const customer = await Customer.findOne({ emailId: new RegExp(`^${fromEmail}$`, "i") });
-    if (!customer) return Response.json({ error: "Unknown customer" }, { status: 403 });
+const normalizedToEmail = toEmail.trim().toLowerCase();
+const normalizedFromEmail = fromEmail.trim().toLowerCase();
 
-    const sentiment = await analyzeSentimentAI(body);
-    const agentId = await getNextAvailableAgent(customer);
+/** ✅ FIX 1: Correct company lookup */
+const company = await Company.findOne({
+  "supportEmails.email": normalizedToEmail,
+  "supportEmails.inboundEnabled": true,
+});
 
-    // Pehle Ticket create karein taaki ID mil jaye
-    ticket = await Ticket.create({
-      companyId: company._id,
-      customerId: customer._id,
-      customerEmail: fromEmail,
-      subject,
-      source: "email",
-      status: "open",
-      agentId,
-      sentiment,
-      priority: sentiment === "negative" ? "high" : "normal",
-      emailThreadId: messageId || `mail-${Date.now()}`,
-      emailAlias: toEmail,
-      messages: [],
-      lastCustomerReplyAt: new Date(),
-    });
+if (!company) {
+  return Response.json(
+    { error: "Invalid or disabled mailbox" },
+    { status: 403 }
+  );
+}
 
-    // Upload files
-    const uploaded = await uploadAttachments(attachments, ticket._id);
+/** ✅ Customer lookup (correct already) */
+const customer = await Customer.findOne({
+  emailId: new RegExp(`^${normalizedFromEmail}$`, "i"),
+});
 
-    // Message push karein
-    ticket.messages.push({
-      senderType: "customer",
-      externalEmail: fromEmail,
-      message: body,
-      messageId,
-      sentiment,
-      attachments: uploaded,
-      createdAt: new Date(),
-    });
+if (!customer) {
+  return Response.json(
+    { error: "Unknown customer" },
+    { status: 403 }
+  );
+}
 
-    await ticket.save();
-    return Response.json({ success: true, ticketId: ticket._id });
+const sentiment = await analyzeSentimentAI(body);
+const agentId = await getNextAvailableAgent(customer);
 
+/** ✅ Create ticket first */
+ticket = await Ticket.create({
+  companyId: company._id,
+  customerId: customer._id,
+  customerEmail: normalizedFromEmail,
+  subject,
+  source: "email",
+  status: "open",
+  agentId,
+  sentiment,
+  priority: sentiment === "negative" ? "high" : "normal",
+  emailThreadId: messageId || `mail-${Date.now()}`,
+  emailAlias: normalizedToEmail,
+  messages: [],
+  lastCustomerReplyAt: new Date(),
+});
+
+/** ✅ Upload attachments */
+const uploaded = await uploadAttachments(attachments, ticket._id);
+
+/** ✅ Push message */
+ticket.messages.push({
+  senderType: "customer",
+  externalEmail: normalizedFromEmail,
+  message: body,
+  messageId,
+  sentiment,
+  attachments: uploaded,
+  createdAt: new Date(),
+});
+
+await ticket.save();
+
+return Response.json({
+  success: true,
+  ticketId: ticket._id,
+});
   } catch (err) {
     console.error("❌ Inbound error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
+
+
 
 
 
