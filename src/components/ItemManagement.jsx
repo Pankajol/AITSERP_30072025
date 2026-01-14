@@ -56,6 +56,16 @@ function ItemManagement() {
     igstRate: "",
     status: "active",
     active: true,
+    // ✅ POS fields
+  posEnabled: false,
+  posConfig: {
+    barcode: "",
+    posPrice: "",
+    allowDiscount: true,
+    maxDiscountPercent: 100,
+    taxableInPOS: true,
+    showInPOS: true,
+  },
   };
 
   const [itemDetails, setItemDetails] = useState(initialItemState);
@@ -130,27 +140,47 @@ const generateItemCode = async () => {
 
 
   // Handle form field changes
-  const handleItemDetailsChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    
-    if (type === "checkbox") {
-      setItemDetails(prev => ({ ...prev, [name]: checked }));
-      return;
-    }
-    
-    if (name === "gstRate") {
-      const rate = parseFloat(value) || 0;
-      const halfRate = rate / 2;
-      setItemDetails(prev => ({
-        ...prev,
-        gstRate: value,
-        cgstRate: halfRate,
-        sgstRate: halfRate,
-      }));
-    } else {
-      setItemDetails(prev => ({ ...prev, [name]: value }));
-    }
-  };
+ const handleItemDetailsChange = (e) => {
+  const { name, value, type, checked } = e.target;
+
+  // ✅ 1) POS nested fields support (posConfig.xxx)
+  if (name.startsWith("posConfig.")) {
+    const key = name.split(".")[1];
+
+    setItemDetails((prev) => ({
+      ...prev,
+      posConfig: {
+        ...(prev.posConfig || {}),
+        [key]: type === "checkbox" ? checked : value,
+      },
+    }));
+    return;
+  }
+
+  // ✅ 2) Checkbox for normal fields
+  if (type === "checkbox") {
+    setItemDetails((prev) => ({ ...prev, [name]: checked }));
+    return;
+  }
+
+  // ✅ 3) GST rate logic
+  if (name === "gstRate") {
+    const rate = parseFloat(value) || 0;
+    const halfRate = rate / 2;
+
+    setItemDetails((prev) => ({
+      ...prev,
+      gstRate: value,
+      cgstRate: halfRate,
+      sgstRate: halfRate,
+    }));
+    return;
+  }
+
+  // ✅ 4) Default field update
+  setItemDetails((prev) => ({ ...prev, [name]: value }));
+};
+
 
   // Quality Check detail handler
   const handleQualityCheckDetailChange = (index, e) => {
@@ -205,6 +235,54 @@ const validate = () => {
   // Form submission
 
 
+// const handleSubmit = async (e) => {
+//   e.preventDefault();
+//   if (!validate()) return;
+
+//   try {
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("Authentication required. Please log in.");
+//       return;
+//     }
+
+//     let response;
+//     if (itemDetails._id) {
+//       // ✅ Update existing item
+//       response = await axios.put(`/api/items/${itemDetails._id}`, itemDetails, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+
+//       if (response.data.success) {
+//         setItem((prev) =>
+//           prev.map((it) => (it._id === itemDetails._id ? response.data.data : it))
+//         );
+//         toast.success("✅ Item updated successfully!");
+//       } else {
+//         toast.error(response.data.message || "Update failed");
+//       }
+//     } else {
+//       // ✅ Create new item
+//       response = await axios.post(`/api/items`, itemDetails, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+
+//       if (response.data.success) {
+//         setItem((prev) => [...prev, response.data.data]);
+//         toast.success("✅ Item created successfully!");
+//       } else {
+//         toast.error(response.data.message || "Create failed");
+//       }
+//     }
+
+//     setView("list");
+//   } catch (error) {
+//     console.error("Submission error:", error);
+//     toast.error(error.response?.data?.message || "Something went wrong");
+//   }
+// };
+
+
 const handleSubmit = async (e) => {
   e.preventDefault();
   if (!validate()) return;
@@ -216,10 +294,88 @@ const handleSubmit = async (e) => {
       return;
     }
 
+    // ✅ Prepare payload (important for POS + numeric fields)
+    const payload = {
+      ...itemDetails,
+
+      unitPrice: Number(itemDetails.unitPrice || 0),
+      quantity: Number(itemDetails.quantity || 0),
+      reorderLevel:
+        itemDetails.reorderLevel === "" || itemDetails.reorderLevel == null
+          ? undefined
+          : Number(itemDetails.reorderLevel),
+
+      leadTime:
+        itemDetails.leadTime === "" || itemDetails.leadTime == null
+          ? undefined
+          : Number(itemDetails.leadTime),
+
+      length:
+        itemDetails.length === "" || itemDetails.length == null
+          ? undefined
+          : Number(itemDetails.length),
+      width:
+        itemDetails.width === "" || itemDetails.width == null
+          ? undefined
+          : Number(itemDetails.width),
+      height:
+        itemDetails.height === "" || itemDetails.height == null
+          ? undefined
+          : Number(itemDetails.height),
+      weight:
+        itemDetails.weight === "" || itemDetails.weight == null
+          ? undefined
+          : Number(itemDetails.weight),
+
+      gstRate:
+        itemDetails.gstRate === "" || itemDetails.gstRate == null
+          ? undefined
+          : Number(itemDetails.gstRate),
+      cgstRate:
+        itemDetails.cgstRate === "" || itemDetails.cgstRate == null
+          ? undefined
+          : Number(itemDetails.cgstRate),
+      sgstRate:
+        itemDetails.sgstRate === "" || itemDetails.sgstRate == null
+          ? undefined
+          : Number(itemDetails.sgstRate),
+
+      igstRate:
+        itemDetails.igstRate === "" || itemDetails.igstRate == null
+          ? undefined
+          : Number(itemDetails.igstRate),
+
+      // ✅ POS payload
+      posEnabled: !!itemDetails.posEnabled,
+      posConfig: {
+        ...(itemDetails.posConfig || {}),
+
+        barcode: itemDetails.posConfig?.barcode || "",
+
+        posPrice:
+          itemDetails.posConfig?.posPrice === "" ||
+          itemDetails.posConfig?.posPrice == null
+            ? undefined
+            : Number(itemDetails.posConfig.posPrice),
+
+        allowDiscount: itemDetails.posConfig?.allowDiscount ?? true,
+
+        maxDiscountPercent:
+          itemDetails.posConfig?.maxDiscountPercent === "" ||
+          itemDetails.posConfig?.maxDiscountPercent == null
+            ? 100
+            : Number(itemDetails.posConfig.maxDiscountPercent),
+
+        taxableInPOS: itemDetails.posConfig?.taxableInPOS ?? true,
+        showInPOS: itemDetails.posConfig?.showInPOS ?? true,
+      },
+    };
+
     let response;
+
     if (itemDetails._id) {
       // ✅ Update existing item
-      response = await axios.put(`/api/items/${itemDetails._id}`, itemDetails, {
+      response = await axios.put(`/api/items/${itemDetails._id}`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -233,7 +389,7 @@ const handleSubmit = async (e) => {
       }
     } else {
       // ✅ Create new item
-      response = await axios.post(`/api/items`, itemDetails, {
+      response = await axios.post(`/api/items`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -251,6 +407,7 @@ const handleSubmit = async (e) => {
     toast.error(error.response?.data?.message || "Something went wrong");
   }
 };
+
 
 
   // Reset form and switch to list view
@@ -519,6 +676,9 @@ const renderListView = () => (
       </h1>
       
       <form onSubmit={handleSubmit} className="space-y-6">
+
+        
+
         {/* Basic Information Section */}
         <div className="border-b pb-6">
           <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
@@ -772,6 +932,120 @@ const renderListView = () => (
             </div>
           )}
         </div>
+        {/* POS Section */}
+<div className="border-b pb-6">
+  <h2 className="text-xl font-semibold mb-4">POS Settings</h2>
+
+  <label className="inline-flex items-center mb-4">
+    <input
+      type="checkbox"
+      name="posEnabled"
+      checked={itemDetails.posEnabled}
+      onChange={handleItemDetailsChange}
+      className="h-4 w-4 text-blue-600"
+    />
+    <span className="ml-2 text-gray-700">
+      Enable this item for POS (Sellable)
+    </span>
+  </label>
+
+  {itemDetails.posEnabled && (
+    <div className="bg-gray-50 p-4 rounded-lg">
+      <h3 className="font-medium text-lg mb-3">POS Details</h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Barcode */}
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">Barcode</label>
+          <input
+            type="text"
+            name="posConfig.barcode"
+            value={itemDetails.posConfig?.barcode || ""}
+            onChange={handleItemDetailsChange}
+            placeholder="Scan / Enter barcode"
+            className="w-full p-2 border border-gray-300 rounded-md"
+          />
+        </div>
+
+        {/* POS Price */}
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">
+            POS Price (Optional override)
+          </label>
+          <input
+            type="number"
+            name="posConfig.posPrice"
+            value={itemDetails.posConfig?.posPrice ?? ""}
+            onChange={handleItemDetailsChange}
+            min="0"
+            step="0.01"
+            placeholder="Leave blank to use Unit Price"
+            className="w-full p-2 border border-gray-300 rounded-md"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            If empty → POS will use Unit Price: <b>{itemDetails.unitPrice || 0}</b>
+          </p>
+        </div>
+
+        {/* Allow Discount */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            name="posConfig.allowDiscount"
+            checked={itemDetails.posConfig?.allowDiscount ?? true}
+            onChange={handleItemDetailsChange}
+            className="h-4 w-4 text-blue-600"
+          />
+          <span className="text-gray-700 text-sm">Allow Discount in POS</span>
+        </div>
+
+        {/* Taxable in POS */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            name="posConfig.taxableInPOS"
+            checked={itemDetails.posConfig?.taxableInPOS ?? true}
+            onChange={handleItemDetailsChange}
+            className="h-4 w-4 text-blue-600"
+          />
+          <span className="text-gray-700 text-sm">Taxable in POS</span>
+        </div>
+
+        {/* Show in POS */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            name="posConfig.showInPOS"
+            checked={itemDetails.posConfig?.showInPOS ?? true}
+            onChange={handleItemDetailsChange}
+            className="h-4 w-4 text-blue-600"
+          />
+          <span className="text-gray-700 text-sm">Show in POS list</span>
+        </div>
+
+        {/* Max Discount % */}
+        <div>
+          <label className="block text-sm text-gray-700 mb-1">
+            Max Discount (%) 
+            <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            name="posConfig.maxDiscountPercent"
+            value={itemDetails.posConfig?.maxDiscountPercent ?? 100}
+            onChange={handleItemDetailsChange}
+            min="0"
+            max="100"
+            step="1"
+            className="w-full p-2 border border-gray-300 rounded-md"
+            disabled={!(itemDetails.posConfig?.allowDiscount ?? true)}
+          />
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
 
         {/* Quality Check Section */}
         <div className="border-b pb-6">

@@ -32,17 +32,38 @@ async function validateUser(req) {
 ======================================== */
 export async function GET(req) {
   await dbConnect();
+
   const { user, error, status } = await validateUser(req);
-  if (error) return NextResponse.json({ success: false, message: error }, { status });
+  if (error)
+    return NextResponse.json({ success: false, message: error }, { status });
 
   try {
-    const items = await Item.find({ companyId: user.companyId }).sort({ createdAt: -1 });
+    const { searchParams } = new URL(req.url);
+    const posOnly = searchParams.get("posOnly") === "true";
+
+    // ✅ Old logic as it is
+    const query = { companyId: user.companyId };
+
+    // ✅ Only when posOnly=true (POS items only)
+    if (posOnly) {
+      query.posEnabled = true;
+      query.active = true;
+      query.status = "active";
+      query["posConfig.showInPOS"] = { $ne: false };
+    }
+
+    const items = await Item.find(query).sort({ createdAt: -1 });
+
     return NextResponse.json({ success: true, data: items }, { status: 200 });
   } catch (err) {
     console.error("GET /item error:", err);
-    return NextResponse.json({ success: false, message: "Failed to fetch items" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch items" },
+      { status: 500 }
+    );
   }
 }
+
 
 /* ========================================
    ✏️ POST /api/item

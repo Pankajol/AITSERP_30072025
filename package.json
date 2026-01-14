@@ -25,6 +25,7 @@
     "@tiptap/extension-underline": "^3.10.7",
     "@tiptap/react": "^3.10.7",
     "@tiptap/starter-kit": "^3.10.7",
+    "@twilio/voice-sdk": "^2.18.0",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "chart.js": "^4.5.1",
@@ -73,6 +74,7 @@
     "sass": "^1.92.1",
     "tailwindcss-animate": "^1.0.7",
     "tesseract.js": "^6.0.1",
+    "twilio": "^5.11.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
