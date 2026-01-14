@@ -1,0 +1,31 @@
+name: Renew Microsoft Graph Subscriptions
+
+on:
+  schedule:
+    # every 1 hours
+    - cron: '*/1 * * * *'
+  workflow_dispatch:
+
+jobs:
+  renew-subscription:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Graph Subscription Script
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          INBOUND_EMAIL_SECRET: ${{ secrets.INBOUND_EMAIL_SECRET }}
+        run: |
+          curl -X GET https://aitserp-30072025.vercel.app/api/cron/process-campaigns"

@@ -23,7 +23,6 @@ async function getGraphToken(supportEmail) {
 
   const data = await res.json();
   if (!data.access_token) throw new Error("Microsoft Graph token failed");
-
   return data.access_token;
 }
 
@@ -54,17 +53,13 @@ async function markEmailRead({ token, userEmail, messageId }) {
 function mapGraphPayload(msg, userEmail) {
   return {
     from: msg.from?.emailAddress?.address || "",
-    fromEmail: msg.from?.emailAddress?.address || "",
     to: userEmail,
     subject: msg.subject || "No Subject",
-
     text: msg.body?.contentType === "text" ? msg.body.content : "",
     html: msg.body?.contentType === "html" ? msg.body.content : "",
-
     messageId: msg.internetMessageId,
     inReplyTo: msg.inReplyTo || "",
     references: msg.internetMessageHeaders?.find(h => h.name === "References")?.value || "",
-
     attachments: (msg.attachments || [])
       .filter(a => a["@odata.type"] === "#microsoft.graph.fileAttachment")
       .map(a => ({
@@ -81,6 +76,13 @@ function mapGraphPayload(msg, userEmail) {
 /* ================= MAIN WEBHOOK ================= */
 export async function POST(req) {
   try {
+    // ✅ Handle validation GET (Graph sends validation token when creating subscription)
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      const validationToken = url.searchParams.get("validationToken");
+      if (validationToken) return new Response(validationToken, { status: 200 });
+    }
+
     const events = await req.json();
     if (!Array.isArray(events)) return new Response("OK");
 
@@ -108,14 +110,13 @@ export async function POST(req) {
       const supportEmail = company.supportEmails.find(e => e.email === userEmail && e.type === "outlook");
       if (!supportEmail) continue;
 
+      // ✅ Fetch full message from Graph
       const { token, message } = await fetchOutlookMessage({ messageId, userEmail, supportEmail });
-
-      // 🛑 Duplicate protection
-      if (!message.internetMessageId) continue;
+      if (!message?.internetMessageId) continue; // duplicate check
 
       const inboundPayload = mapGraphPayload(message, userEmail);
 
-      // 🚀 Forward to internal inbound endpoint
+      // 🚀 Forward to your internal inbound endpoint
       await fetch(
         `${process.env.NEXT_PUBLIC_APP_URL}/api/helpdesk/email-inbound?secret=${process.env.INBOUND_EMAIL_SECRET}`,
         {
@@ -125,7 +126,7 @@ export async function POST(req) {
         }
       );
 
-      // ✅ Mark email as read
+      // ✅ Mark as read
       await markEmailRead({ token, userEmail, messageId });
     }
 
