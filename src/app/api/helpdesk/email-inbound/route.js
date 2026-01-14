@@ -12,7 +12,9 @@ import { simpleParser } from "mailparser";
 
 /* ================= HELPERS ================= */
 function extractEmail(v) {
-  const m = String(v || "").match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  const m = String(v || "").match(
+    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
+  );
   return m ? m[1].toLowerCase() : "";
 }
 
@@ -26,7 +28,7 @@ function normalizeId(id) {
 /* ================= UNIVERSAL ATTACHMENT UPLOADER ================= */
 async function uploadAttachments(rawAttachments, ticketId) {
   const uploaded = [];
-  
+
   for (const a of rawAttachments || []) {
     try {
       const fileData = a.content || a.buffer;
@@ -54,6 +56,7 @@ async function uploadAttachments(rawAttachments, ticketId) {
       console.error("❌ Cloudinary Error:", err.message);
     }
   }
+
   return uploaded;
 }
 
@@ -74,17 +77,20 @@ export async function POST(req) {
       rawData = await req.json();
     } else {
       const text = await req.text();
-      try { rawData = JSON.parse(text); } catch { rawData = {}; }
+      try {
+        rawData = JSON.parse(text);
+      } catch {
+        rawData = {};
+      }
     }
 
     // --- OUTLOOK NORMALIZATION ---
     if (!rawData.from && rawData.sender?.emailAddress?.address) {
       rawData.from = rawData.sender.emailAddress.address;
     }
-
     if (!rawData.to && Array.isArray(rawData.toRecipients)) {
       rawData.to = rawData.toRecipients
-        .map(r => r.emailAddress?.address)
+        .map((r) => r.emailAddress?.address)
         .join(", ");
     }
 
@@ -94,15 +100,10 @@ export async function POST(req) {
     const subject = rawData.subject || rawData.Subject || "No Subject";
     const body = rawData.text || rawData.html || rawData.body?.content || "";
 
-    console.log("📨 Parsed Email:", { fromEmail, toEmail, subject });
-
     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
 
     const messageId = normalizeId(
-      rawData.messageId ||
-      rawData["Message-ID"] ||
-      rawData.internetMessageId ||
-      `outlook-${Date.now()}`
+      rawData.messageId || rawData["Message-ID"] || rawData.internetMessageId || `outlook-${Date.now()}`
     );
     const inReplyTo = normalizeId(rawData.inReplyTo || rawData["In-Reply-To"]);
     const references = (rawData.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
@@ -115,11 +116,11 @@ export async function POST(req) {
     const mimeSource = rawData.raw || rawData.mime || rawData["body-mime"];
     if (mimeSource && attachments.length === 0) {
       const parsed = await simpleParser(mimeSource);
-      attachments = parsed.attachments.map(a => ({
+      attachments = parsed.attachments.map((a) => ({
         filename: a.filename,
         contentType: a.contentType,
         buffer: a.content,
-        size: a.size
+        size: a.size,
       }));
     }
 
@@ -175,18 +176,12 @@ export async function POST(req) {
       "supportEmails.email": normalizedToEmail,
       "supportEmails.inboundEnabled": true,
     });
-
-    if (!company) {
-      return Response.json({ error: "Invalid or disabled mailbox" }, { status: 403 });
-    }
+    if (!company) return Response.json({ error: "Invalid or disabled mailbox" }, { status: 403 });
 
     const customer = await Customer.findOne({
       emailId: new RegExp(`^${normalizedFromEmail}$`, "i"),
     });
-
-    if (!customer) {
-      return Response.json({ error: "Unknown customer" }, { status: 403 });
-    }
+    if (!customer) return Response.json({ error: "Unknown customer" }, { status: 403 });
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
@@ -222,13 +217,11 @@ export async function POST(req) {
     await ticket.save();
 
     return Response.json({ success: true, ticketId: ticket._id });
-
   } catch (err) {
     console.error("❌ Inbound error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
-
 
 // export const runtime = "nodejs";
 
