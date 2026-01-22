@@ -1,0 +1,15 @@
+name: Outlook Subscription Auto Renew
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+  workflow_dispatch:         # manual run button
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call renew endpoint
+        run: |
+          curl -X POST "${{ secrets.RENEW_URL }}"

@@ -192,43 +192,81 @@ export async function POST(req, context) {
       : "<p>(Attachment)</p>";
 
     /* ================= SEND EMAIL ================= */
+/* ================= SEND EMAIL ================= */
 
-    if (supportEmail.type === "outlook") {
-      await sendOutlookMail({
-        fromEmail: supportEmail.email,
-        to: ticket.customerEmail,
-        subject: `Re: ${ticket.subject}`,
-        html: htmlBody,
-        messageId: currentMessageId,
-        inReplyTo: originalThreadId,
-        references: originalThreadId,
-        outlookConfig: supportEmail,
-      });
-    } else {
-      const transporter = nodemailer.createTransport({
-        service: supportEmail.type === "gmail" ? "gmail" : undefined,
-        host: supportEmail.type === "smtp" ? "smtp.yourhost.com" : undefined,
-        auth: {
-          user: supportEmail.email,
-          pass: supportEmail.appPassword,
-        },
-      });
+if (supportEmail.type === "outlook") {
+  // ✅ Outlook => Graph send
+  await sendOutlookMail({
+    fromEmail: supportEmail.email,
+    to: ticket.customerEmail,
+    subject: `Re: ${ticket.subject}`,
+    html: htmlBody,
+    messageId: currentMessageId,
+    inReplyTo: originalThreadId,
+    references: originalThreadId,
+    outlookConfig: supportEmail,
+  });
 
-      await transporter.sendMail({
-        from: `${userPayload.name} <${supportEmail.email}>`,
-        to: ticket.customerEmail,
-        subject: `Re: ${ticket.subject}`,
-        messageId: currentMessageId,
-        inReplyTo: originalThreadId,
-        references: [originalThreadId],
-        html: htmlBody,
-        attachments: uploadedAttachments.map((a) => ({
-          filename: a.filename,
-          content: a.emailBuffer,
-          contentType: a.contentType,
-        })),
-      });
-    }
+} else if (supportEmail.type === "gmail") {
+  // ✅ Gmail => SMTP via Nodemailer
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: supportEmail.email,
+      pass: supportEmail.appPassword, // Gmail App Password (16 digit)
+    },
+  });
+
+  await transporter.sendMail({
+    from: `${userPayload.name} <${supportEmail.email}>`,
+    to: ticket.customerEmail,
+    subject: `Re: ${ticket.subject}`,
+    messageId: currentMessageId,
+    inReplyTo: originalThreadId,
+    references: [originalThreadId],
+    html: htmlBody,
+    attachments: uploadedAttachments.map((a) => ({
+      filename: a.filename,
+      content: a.emailBuffer,
+      contentType: a.contentType,
+    })),
+  });
+
+} else if (supportEmail.type === "smtp") {
+  // ✅ Custom SMTP => Nodemailer
+  // NOTE: your schema currently doesn't store SMTP host/port.
+  // So either hardcode OR store in schema.
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.yourhost.com",
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: false,
+    auth: {
+      user: supportEmail.email,
+      pass: supportEmail.appPassword,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `${userPayload.name} <${supportEmail.email}>`,
+    to: ticket.customerEmail,
+    subject: `Re: ${ticket.subject}`,
+    messageId: currentMessageId,
+    inReplyTo: originalThreadId,
+    references: [originalThreadId],
+    html: htmlBody,
+    attachments: uploadedAttachments.map((a) => ({
+      filename: a.filename,
+      content: a.emailBuffer,
+      contentType: a.contentType,
+    })),
+  });
+
+} else {
+  throw new Error("Invalid support email type");
+}
+
 
     /* ================= SAVE ================= */
 

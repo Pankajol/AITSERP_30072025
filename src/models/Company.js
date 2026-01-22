@@ -79,6 +79,9 @@
             type: Boolean,
             default: true,
           },
+          subscriptionId: { type: String },
+subscriptionExpiresAt: { type: Date },
+
           createdAt: {
             type: Date,
             default: Date.now,
