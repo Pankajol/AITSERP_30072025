@@ -1,29 +1,28 @@
 export const runtime = "nodejs";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const token = searchParams.get("validationToken");
-
-  console.log("GRAPH VALIDATION:", token);
-
+function validation(req) {
+  const token = new URL(req.url).searchParams.get("validationToken");
   if (token) {
     return new Response(token, {
       status: 200,
       headers: { "Content-Type": "text/plain" },
     });
   }
+  return null;
+}
 
+export async function GET(req) {
+  const v = validation(req);
+  if (v) return v;
   return new Response("OK", { status: 200 });
 }
 
 export async function POST(req) {
-  const body = await req.text();
-  console.log("GRAPH EVENT:", body);
-
+  const v = validation(req);
+  if (v) return v;
   return new Response("OK", { status: 200 });
 }
+
 
 
 // export const runtime = "nodejs";
