@@ -1,4 +1,6 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 import dbConnect from "@/lib/db";
 import Company from "@/models/Company";
