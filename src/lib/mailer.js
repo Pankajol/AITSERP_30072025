@@ -18,9 +18,9 @@ export const transporter = nodemailer.createTransport({
   tls: { rejectUnauthorized: false },
 });
 
-transporter.verify()
-  .then(() => console.log("mailer: SMTP verified OK"))
-  .catch((err) => console.error("mailer: SMTP verify failed:", err && (err.message || err)));
+// transporter.verify()
+//   .then(() => console.log("mailer: SMTP verified OK"))
+//   .catch((err) => console.error("mailer: SMTP verify failed:", err && (err.message || err)));
 
 export default transporter;
 

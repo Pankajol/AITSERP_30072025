@@ -25,7 +25,7 @@ jobs:
       - name: Run Graph Subscription Script
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
           INBOUND_EMAIL_SECRET: ${{ secrets.INBOUND_EMAIL_SECRET }}
         run: |
           curl -X GET https://aitserp-30072025.vercel.app/api/cron/process-campaigns"

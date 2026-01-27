@@ -61,7 +61,7 @@ export async function POST(req) {
     // expiration: max approx 3 days for messages (Microsoft limit)
     const expireAt = new Date(Date.now() + 2.5 * 24 * 60 * 60 * 1000).toISOString();
 
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/helpdesk/outlook-webhook`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/outlook-webhook`;
 
     const res = await fetch("https://graph.microsoft.com/v1.0/subscriptions", {
       method: "POST",

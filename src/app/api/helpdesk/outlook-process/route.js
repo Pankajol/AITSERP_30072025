@@ -143,7 +143,7 @@ export async function POST(req) {
       const inboundPayload = mapGraphPayload(message, userEmail);
 
       await fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL}/api/helpdesk/email-inbound?secret=${process.env.INBOUND_EMAIL_SECRET}`,
+        `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/email-inbound?secret=${process.env.INBOUND_EMAIL_SECRET}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

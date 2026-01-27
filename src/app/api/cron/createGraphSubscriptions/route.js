@@ -24,7 +24,7 @@ async function getGraphToken({ tenantId, clientId, appPassword }) {
 }
 
 async function createSubscription({ token, userEmail, webhookSecret }) {
-  const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/outlook`; // your webhook endpoint
+  const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhook/outlook`; // your webhook endpoint
 
   const res = await fetch("https://graph.microsoft.com/v1.0/subscriptions", {
     method: "POST",
