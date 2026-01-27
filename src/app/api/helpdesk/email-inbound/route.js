@@ -178,10 +178,18 @@ export async function POST(req) {
     });
     if (!company) return Response.json({ error: "Invalid or disabled mailbox" }, { status: 403 });
 
-    const customer = await Customer.findOne({
-      emailId: new RegExp(`^${normalizedFromEmail}$`, "i"),
-    });
-    if (!customer) return Response.json({ error: "Unknown customer" }, { status: 403 });
+   let customer = await Customer.findOne({
+  emailId: new RegExp(`^${normalizedFromEmail}$`, "i"),
+});
+
+if (!customer) {
+  customer = await Customer.create({
+    companyId: company._id,
+    emailId: normalizedFromEmail,
+    name: normalizedFromEmail.split("@")[0],
+    source: "email",
+  });
+}
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
