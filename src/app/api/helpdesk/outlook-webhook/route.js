@@ -48,17 +48,29 @@ async function resolveUserEmail(objectId, supportEmail) {
   const token = await getGraphToken(supportEmail);
 
   const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${objectId}`,
+    `https://graph.microsoft.com/v1.0/users/${objectId}?$select=mail,userPrincipalName`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ConsistencyLevel: "eventual",
+      },
     }
   );
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.log("❌ Resolve user failed:", await res.text());
+    return null;
+  }
 
   const data = await res.json();
-  return (data.mail || data.userPrincipalName || "").toLowerCase();
+
+  const email = (data.mail || data.userPrincipalName || "").toLowerCase();
+
+  console.log("✅ Resolved user email:", email);
+
+  return email || null;
 }
+
 
 
 /* ================= VALIDATION ================= */
