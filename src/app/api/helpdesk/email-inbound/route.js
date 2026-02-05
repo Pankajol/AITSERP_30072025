@@ -98,13 +98,23 @@ export async function POST(req) {
     const fromEmail = extractEmail(rawData.from || rawData.sender || rawData.From);
     const toEmail = extractEmail(rawData.to || rawData.recipient);
     const subject = rawData.subject || rawData.Subject || "No Subject";
-    const body = rawData.text || rawData.html || rawData.body?.content || "";
+    const body =
+  rawData.html ||
+  rawData.text ||
+  rawData.body?.content ||
+  "";
+
 
     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
 
-    const messageId = normalizeId(
-      rawData.messageId || rawData["Message-ID"] || rawData.internetMessageId || `outlook-${Date.now()}`
-    );
+ const messageId = normalizeId(
+  rawData.conversationId ||
+    rawData.messageId ||
+    rawData["Message-ID"] ||
+    rawData.internetMessageId ||
+    `outlook-${Date.now()}`
+);
+
     const inReplyTo = normalizeId(rawData.inReplyTo || rawData["In-Reply-To"]);
     const references = (rawData.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
 
@@ -178,18 +188,19 @@ export async function POST(req) {
     });
     if (!company) return Response.json({ error: "Invalid or disabled mailbox" }, { status: 403 });
 
-   let customer = await Customer.findOne({
-  emailId: new RegExp(`^${normalizedFromEmail}$`, "i"),
+   // ✅ ONLY EXISTING CUSTOMER CAN CREATE TICKET
+const customer = await Customer.findOne({
+  emailId: normalizedFromEmail,
 });
 
 if (!customer) {
-  customer = await Customer.create({
-    companyId: company._id,
-    emailId: normalizedFromEmail,
-    name: normalizedFromEmail.split("@")[0],
-    source: "email",
-  });
+  console.log("⛔ Unknown customer:", normalizedFromEmail);
+  return Response.json(
+    { success: false, msg: "Customer not registered" },
+    { status: 403 }
+  );
 }
+
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
@@ -223,6 +234,9 @@ if (!customer) {
     });
 
     await ticket.save();
+    console.log("FROM:", normalizedFromEmail);
+console.log("TO:", normalizedToEmail);
+console.log("BODY LENGTH:", body.length);
 
     return Response.json({ success: true, ticketId: ticket._id });
   } catch (err) {
