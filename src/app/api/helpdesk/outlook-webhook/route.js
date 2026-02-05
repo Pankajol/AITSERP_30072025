@@ -99,6 +99,10 @@ export async function POST(req) {
   if (v) return v;
 
   try {
+    console.log("🔥 WEBHOOK PAYLOAD:", JSON.stringify(payload));
+
+    console.log("STATE:", ev.clientState, "ENV:", process.env.OUTLOOK_WEBHOOK_SECRET);
+
     const payload = await req.json();
     const events = payload.value || [];
     if (!events.length) return new Response("OK");
