@@ -43,7 +43,7 @@ async function fetchMessage({ userEmail, messageId, supportEmail }) {
   return { token, message: await res.json() };
 }
 
-
+/* ================= RESOLVE USER EMAIL ================= */
 async function resolveUserEmail(objectId, supportEmail) {
   const token = await getGraphToken(supportEmail);
 
@@ -63,15 +63,12 @@ async function resolveUserEmail(objectId, supportEmail) {
   }
 
   const data = await res.json();
-
   const email = (data.mail || data.userPrincipalName || "").toLowerCase();
 
   console.log("✅ Resolved user email:", email);
 
   return email || null;
 }
-
-
 
 /* ================= VALIDATION ================= */
 function validation(req) {
@@ -95,14 +92,11 @@ export async function GET(req) {
 function mapGraphPayload(msg, userEmail) {
   return {
     from: msg.from?.emailAddress?.address || "",
-
-    // ✅ REAL mailbox from message
     to:
       msg.toRecipients?.[0]?.emailAddress?.address ||
       userEmail,
 
     subject: msg.subject || "No Subject",
-
     html: msg.body?.content || "",
 
     messageId: msg.internetMessageId,
@@ -121,7 +115,6 @@ function mapGraphPayload(msg, userEmail) {
       })),
   };
 }
-
 
 /* ================= POST ================= */
 export async function POST(req) {
@@ -145,28 +138,25 @@ export async function POST(req) {
       const messageId = ev.resourceData?.id;
       if (!messageId) continue;
 
-     const match = ev.resource.match(/users\/([^/]+)/);
-if (!match) continue;
+      // 🔥 Case-insensitive match (Users vs users)
+      const match = ev.resource.match(/users\/([^/]+)/i);
+      if (!match) continue;
 
-const userObjectId = decodeURIComponent(match[1]);
-
-// 🔥 resolve actual mailbox email
-const userEmail = await resolveUserEmail(userObjectId, se);
-if (!userEmail) continue;
-
+      const userObjectId = decodeURIComponent(match[1]);
 
       const company = await Company.findOne({
-        "supportEmails.email": userEmail,
         "supportEmails.type": "outlook",
         "supportEmails.inboundEnabled": true,
       }).select("+supportEmails.appPassword");
 
       if (!company) continue;
 
-      const se = company.supportEmails.find(
-        e => e.email === userEmail && e.type === "outlook"
-      );
+      const se = company.supportEmails.find(e => e.type === "outlook");
       if (!se) continue;
+
+      // 🔥 Resolve real mailbox email
+      const userEmail = await resolveUserEmail(userObjectId, se);
+      if (!userEmail) continue;
 
       const { token, message } = await fetchMessage({
         userEmail,
@@ -208,7 +198,6 @@ if (!userEmail) continue;
     return new Response("OK");
   }
 }
-
 
 
 
