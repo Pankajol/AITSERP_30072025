@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import connectDB from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Company from "@/models/Company";
+import CompanyUser from "@/models/CompanyUser";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import cloudinary from "@/lib/cloudinary";
 import nodemailer from "nodemailer";
