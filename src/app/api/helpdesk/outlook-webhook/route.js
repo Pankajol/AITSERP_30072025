@@ -99,17 +99,17 @@ export async function POST(req) {
   if (v) return v;
 
   try {
+    const payload = await req.json();
     console.log("🔥 WEBHOOK PAYLOAD:", JSON.stringify(payload));
 
-    console.log("STATE:", ev.clientState, "ENV:", process.env.OUTLOOK_WEBHOOK_SECRET);
-
-    const payload = await req.json();
     const events = payload.value || [];
     if (!events.length) return new Response("OK");
 
     await dbConnect();
 
     for (const ev of events) {
+      console.log("STATE:", ev.clientState, "ENV:", process.env.OUTLOOK_WEBHOOK_SECRET);
+
       if (ev.clientState !== process.env.OUTLOOK_WEBHOOK_SECRET) continue;
 
       const messageId = ev.resourceData?.id;
@@ -141,6 +141,8 @@ export async function POST(req) {
 
       const inboundPayload = mapGraphPayload(message, userEmail);
 
+      console.log("➡️ Calling inbound...");
+
       await fetch(
         `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/email-inbound?secret=${process.env.INBOUND_EMAIL_SECRET}`,
         {
@@ -149,6 +151,8 @@ export async function POST(req) {
           body: JSON.stringify(inboundPayload),
         }
       );
+
+      console.log("⬅️ Inbound called");
 
       await fetch(
         `https://graph.microsoft.com/v1.0/users/${userEmail}/messages/${messageId}`,
@@ -169,6 +173,7 @@ export async function POST(req) {
     return new Response("OK");
   }
 }
+
 
 
 
