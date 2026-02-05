@@ -45,9 +45,8 @@ export async function POST(req) {
       return Response.json({ success: false, msg: "supportEmail required" }, { status: 400 });
 
     // find company support email config
-    const company = await Company.findById(user.companyId).select(
-      "supportEmails +supportEmails.appPassword"
-    );
+  const company = await Company.findById(user.companyId).select("+supportEmails.appPassword");
+
     if (!company)
       return Response.json({ success: false, msg: "Company not found" }, { status: 404 });
 
