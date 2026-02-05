@@ -43,6 +43,24 @@ async function fetchMessage({ userEmail, messageId, supportEmail }) {
   return { token, message: await res.json() };
 }
 
+
+async function resolveUserEmail(objectId, supportEmail) {
+  const token = await getGraphToken(supportEmail);
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${objectId}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  return (data.mail || data.userPrincipalName || "").toLowerCase();
+}
+
+
 /* ================= VALIDATION ================= */
 function validation(req) {
   const token = new URL(req.url).searchParams.get("validationToken");
@@ -115,10 +133,15 @@ export async function POST(req) {
       const messageId = ev.resourceData?.id;
       if (!messageId) continue;
 
-      const match = ev.resource.match(/users\/([^/]+)/);
-      if (!match) continue;
+     const match = ev.resource.match(/users\/([^/]+)/);
+if (!match) continue;
 
-      const userEmail = decodeURIComponent(match[1]).toLowerCase();
+const userObjectId = decodeURIComponent(match[1]);
+
+// 🔥 resolve actual mailbox email
+const userEmail = await resolveUserEmail(userObjectId, se);
+if (!userEmail) continue;
+
 
       const company = await Company.findOne({
         "supportEmails.email": userEmail,
