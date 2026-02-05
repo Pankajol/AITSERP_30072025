@@ -68,14 +68,18 @@ async function markRead(token, userEmail, messageId) {
 function mapGraphPayload(msg, userEmail) {
   return {
     from: msg.from?.emailAddress?.address || "",
-    fromEmail: msg.from?.emailAddress?.address || "",
-    to: userEmail,
+
+    // ✅ REAL mailbox from message
+    to:
+      msg.toRecipients?.[0]?.emailAddress?.address ||
+      userEmail,
+
     subject: msg.subject || "No Subject",
 
-    text: msg.body?.contentType === "text" ? msg.body.content : "",
-    html: msg.body?.contentType === "html" ? msg.body.content : "",
+    html: msg.body?.content || "",
 
     messageId: msg.internetMessageId,
+    conversationId: msg.conversationId,
     inReplyTo: msg.inReplyTo || "",
     references:
       msg.internetMessageHeaders?.find(h => h.name === "References")?.value || "",
@@ -86,12 +90,11 @@ function mapGraphPayload(msg, userEmail) {
         filename: a.name,
         contentType: a.contentType,
         size: a.size,
-        content: a.contentBytes, // base64
-        isInline: !!a.isInline,
-        contentId: a.contentId || "",
+        content: a.contentBytes,
       })),
   };
 }
+
 
 /* ================= PROCESS EVENTS ================= */
 

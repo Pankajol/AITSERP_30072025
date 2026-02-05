@@ -63,11 +63,14 @@ export async function GET(req) {
 
 /* ================= MAP PAYLOAD ================= */
 function mapGraphPayload(msg, userEmail) {
-  const bodyType = (msg.body?.contentType || "").toLowerCase();
-
   return {
     from: msg.from?.emailAddress?.address || "",
-    to: userEmail,
+
+    // ✅ REAL mailbox from message
+    to:
+      msg.toRecipients?.[0]?.emailAddress?.address ||
+      userEmail,
+
     subject: msg.subject || "No Subject",
 
     html: msg.body?.content || "",
@@ -88,6 +91,7 @@ function mapGraphPayload(msg, userEmail) {
       })),
   };
 }
+
 
 /* ================= POST ================= */
 export async function POST(req) {
