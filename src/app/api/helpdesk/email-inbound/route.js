@@ -98,11 +98,21 @@ export async function POST(req) {
     const fromEmail = extractEmail(rawData.from || rawData.sender || rawData.From);
     const toEmail = extractEmail(rawData.to || rawData.recipient);
     const subject = rawData.subject || rawData.Subject || "No Subject";
-    const body =
-  rawData.html ||
+    let body =
   rawData.text ||
   rawData.body?.content ||
+  rawData.html ||
   "";
+
+if (body && body.includes("<")) {
+  body = body
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<\/?[^>]+(>|$)/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
 
 
     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
