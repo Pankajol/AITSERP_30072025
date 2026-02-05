@@ -14,14 +14,11 @@ async function sendOutlookMail({
   to,
   subject,
   html,
-  messageId,
-  inReplyTo,
-  references,
   outlookConfig,
 }) {
   const params = new URLSearchParams({
     client_id: outlookConfig.clientId,
-    client_secret: outlookConfig.appPassword, // direct (no decrypt)
+    client_secret: outlookConfig.appPassword,
     grant_type: "client_credentials",
     scope: "https://graph.microsoft.com/.default",
   });
@@ -53,12 +50,8 @@ async function sendOutlookMail({
           subject,
           body: { contentType: "HTML", content: html },
           toRecipients: [{ emailAddress: { address: to } }],
-          internetMessageId: messageId,
-          internetMessageHeaders: [
-            { name: "In-Reply-To", value: inReplyTo },
-            { name: "References", value: references },
-          ],
         },
+        saveToSentItems: true,
       }),
     }
   );
@@ -68,6 +61,7 @@ async function sendOutlookMail({
     throw new Error("Outlook sendMail failed: " + txt);
   }
 }
+
 
 /* ================= MAIN ================= */
 
@@ -196,16 +190,14 @@ export async function POST(req, context) {
 
 if (supportEmail.type === "outlook") {
   // ✅ Outlook => Graph send
-  await sendOutlookMail({
-    fromEmail: supportEmail.email,
-    to: ticket.customerEmail,
-    subject: `Re: ${ticket.subject}`,
-    html: htmlBody,
-    messageId: currentMessageId,
-    inReplyTo: originalThreadId,
-    references: originalThreadId,
-    outlookConfig: supportEmail,
-  });
+ await sendOutlookMail({
+  fromEmail: supportEmail.email,
+  to: ticket.customerEmail,
+  subject: `Re: ${ticket.subject}`,
+  html: htmlBody,
+  outlookConfig: supportEmail,
+});
+
 
 } else if (supportEmail.type === "gmail") {
   // ✅ Gmail => SMTP via Nodemailer
