@@ -129,6 +129,11 @@ export async function POST(req) {
       ticket.lastCustomerReplyAt = new Date();
       ticket.lastReplyAt = new Date();
 
+        if (ticket.status === "closed") {
+    ticket.status = "open";
+    ticket.autoClosed = false;
+  }
+
       await ticket.save();
 
       return Response.json({ success: true });
