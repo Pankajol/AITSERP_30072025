@@ -60,6 +60,7 @@ const TicketMessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+     emailAlias: String,
 
     sentiment: {
       type: String,

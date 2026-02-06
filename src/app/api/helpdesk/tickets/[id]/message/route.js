@@ -34,9 +34,22 @@ export async function POST(req, { params }) {
     "+supportEmails.appPassword"
   );
 
-  const support = company.supportEmails.find(
-    (e) => e.email === ticket.emailAlias
+ const alias = (ticket.emailAlias || "").trim().toLowerCase();
+
+const support = company.supportEmails.find(
+  (e) => e.email?.trim().toLowerCase() === alias
+);
+
+if (!support) {
+  console.log("❌ Support mailbox not matched");
+  console.log("Ticket alias:", alias);
+  console.log(
+    "Company mailboxes:",
+    company.supportEmails.map((e) => e.email)
   );
+
+  throw new Error("Support mailbox missing");
+}
 
   const lastCustomer = [...ticket.messages]
     .reverse()
