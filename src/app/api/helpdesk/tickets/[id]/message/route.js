@@ -3,30 +3,21 @@ export const runtime = "nodejs";
 import connectDB from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Company from "@/models/Company";
-import CompanyUser from "@/models/CompanyUser";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import cloudinary from "@/lib/cloudinary";
 import nodemailer from "nodemailer";
 
-/* ================= OUTLOOK SEND ================= */
-
-async function sendOutlookMail({
-  fromEmail,
-  to,
-  subject,
-  html,
-  outlookConfig,
-  ticket,
-}) {
+/* ================= GRAPH TOKEN ================= */
+async function getGraphToken(se) {
   const params = new URLSearchParams({
-    client_id: outlookConfig.clientId,
-    client_secret: outlookConfig.appPassword,
+    client_id: se.clientId,
+    client_secret: se.appPassword,
     grant_type: "client_credentials",
     scope: "https://graph.microsoft.com/.default",
   });
 
-  const tokenRes = await fetch(
-    `https://login.microsoftonline.com/${outlookConfig.tenantId}/oauth2/v2.0/token`,
+  const res = await fetch(
+    `https://login.microsoftonline.com/${se.tenantId}/oauth2/v2.0/token`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -34,26 +25,32 @@ async function sendOutlookMail({
     }
   );
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) throw new Error("Outlook auth failed");
+  const data = await res.json();
+  if (!data.access_token) throw new Error("Graph auth failed");
+  return data.access_token;
+}
 
-  // 🔥 reply to ORIGINAL MESSAGE
-  const lastCustomerMsg = ticket.messages
-    .filter((m) => m.senderType === "customer")
-    .slice(-1)[0];
+/* ================= OUTLOOK REPLY ================= */
+async function sendOutlookReply({ supportEmail, ticket, html }) {
+  const token = await getGraphToken(supportEmail);
 
-  if (!lastCustomerMsg?.messageId) {
-    throw new Error("No customer messageId found for reply");
+  // 🔥 MUST use Graph message id (not internet id)
+  const lastCustomer = [...ticket.messages]
+    .reverse()
+    .find((m) => m.senderType === "customer" && m.graphMessageId);
+
+  if (!lastCustomer?.graphMessageId) {
+    throw new Error("No graphMessageId found for Outlook reply");
   }
 
-  const graphMessageId = lastCustomerMsg.messageId;
+  const graphId = lastCustomer.graphMessageId;
 
   const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${fromEmail}/messages/${graphMessageId}/reply`,
+    `https://graph.microsoft.com/v1.0/users/${supportEmail.email}/messages/${graphId}/reply`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -72,205 +69,88 @@ async function sendOutlookMail({
   }
 }
 
-
 /* ================= MAIN ================= */
-
 export async function POST(req, context) {
   try {
     await connectDB();
 
-    /* ✅ FIX: params async */
     const { id: ticketId } = await context.params;
 
-    /* ================= AUTH ================= */
     const token = getTokenFromHeader(req);
     const userPayload = verifyJWT(token);
     if (!userPayload) {
-      return Response.json(
-        { success: false, msg: "Unauthorized" },
-        { status: 401 }
-      );
+      return Response.json({ success: false }, { status: 401 });
     }
 
-    /* ================= FORM DATA ================= */
     const formData = await req.formData();
     const messageText = formData.get("message")?.toString().trim() || "";
     const files = formData.getAll("attachments") || [];
 
-    if (!messageText && files.length === 0) {
-      return Response.json(
-        { success: false, msg: "Message or attachment required" },
-        { status: 400 }
-      );
+    if (!messageText && !files.length) {
+      return Response.json({ success: false, msg: "Empty reply" }, { status: 400 });
     }
 
-    /* ================= TICKET ================= */
     const ticket = await Ticket.findById(ticketId);
     if (!ticket) {
-      return Response.json(
-        { success: false, msg: "Ticket not found" },
-        { status: 404 }
-      );
+      return Response.json({ success: false, msg: "Ticket not found" }, { status: 404 });
     }
 
-    /* ================= COMPANY ================= */
-    const company = await Company.findById(ticket.companyId).select(
-      "+supportEmails.appPassword"
-    );
-    if (!company) {
-      return Response.json(
-        { success: false, msg: "Company not found" },
-        { status: 404 }
-      );
-    }
-
-    /* ================= SUPPORT EMAIL (ROBUST + FALLBACK) ================= */
-
-    let emailAlias = ticket.emailAlias?.trim().toLowerCase();
-
-    // 🔁 Fallback for old/manual tickets
-    if (!emailAlias) {
-      const fallback = company.supportEmails.find(
-        (e) => e.inboundEnabled
-      );
-      emailAlias = fallback?.email?.toLowerCase();
-    }
-
-    if (!emailAlias) {
-      return Response.json(
-        {
-          success: false,
-          msg: "No support email configured for this company",
-        },
-        { status: 400 }
-      );
-    }
+    const company = await Company.findById(ticket.companyId).select("+supportEmails.appPassword");
 
     const supportEmail = company.supportEmails.find(
-      (e) => e.email?.trim().toLowerCase() === emailAlias
+      (e) => e.email?.toLowerCase() === ticket.emailAlias?.toLowerCase()
     );
 
     if (!supportEmail) {
-      return Response.json(
-        {
-          success: false,
-          msg: `Support email config not found for ${emailAlias}`,
-        },
-        { status: 400 }
-      );
+      return Response.json({ success: false, msg: "Support mailbox missing" }, { status: 400 });
     }
 
     /* ================= ATTACHMENTS ================= */
-
-    const uploadedAttachments = [];
+    const uploaded = [];
 
     for (const file of files) {
-      if (!file || !file.arrayBuffer) continue;
-
-      const buffer = Buffer.from(await file.arrayBuffer());
-
+      const buf = Buffer.from(await file.arrayBuffer());
       const res = await cloudinary.uploader.upload(
-        `data:${file.type};base64,${buffer.toString("base64")}`,
-        {
-          folder: `helpdesk/tickets/${ticketId}`,
-          resource_type: "auto",
-        }
+        `data:${file.type};base64,${buf.toString("base64")}`,
+        { folder: `helpdesk/${ticketId}` }
       );
 
-      uploadedAttachments.push({
+      uploaded.push({
         filename: file.name,
         url: res.secure_url,
         contentType: file.type,
-        size: buffer.length,
-        emailBuffer: buffer,
+        size: buf.length,
       });
     }
 
-    /* ================= THREAD ================= */
+    const html = `<p>${messageText.replace(/\n/g, "<br>")}</p>`;
 
-    const currentMessageId = `<${Date.now()}.${ticketId}@aitsind.com>`;
-    const originalThreadId = ticket.emailThreadId;
+    /* ================= SEND ================= */
 
-    const htmlBody = messageText
-      ? `<p>${messageText.replace(/\n/g, "<br>")}</p>`
-      : "<p>(Attachment)</p>";
+    if (supportEmail.type === "outlook") {
+      await sendOutlookReply({
+        supportEmail,
+        ticket,
+        html,
+      });
+    } else {
+      const transporter = nodemailer.createTransport({
+        host: supportEmail.type === "gmail" ? "smtp.gmail.com" : process.env.SMTP_HOST,
+        port: 587,
+        secure: false,
+        auth: {
+          user: supportEmail.email,
+          pass: supportEmail.appPassword,
+        },
+      });
 
-    /* ================= SEND EMAIL ================= */
-/* ================= SEND EMAIL ================= */
-
-if (supportEmail.type === "outlook") {
-  // ✅ Outlook => Graph send
- await sendOutlookMail({
-  fromEmail: supportEmail.email,
-  to: ticket.customerEmail,
-  subject: `Re: ${ticket.subject}`,
-  html: htmlBody,
-  outlookConfig: supportEmail,
-  ticket, // ✅ PASS ticket
-});
-
-
-
-} else if (supportEmail.type === "gmail") {
-  // ✅ Gmail => SMTP via Nodemailer
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: supportEmail.email,
-      pass: supportEmail.appPassword, // Gmail App Password (16 digit)
-    },
-  });
-
-  await transporter.sendMail({
-    from: `${userPayload.name} <${supportEmail.email}>`,
-    to: ticket.customerEmail,
-    subject: `Re: ${ticket.subject}`,
-    messageId: currentMessageId,
-    inReplyTo: originalThreadId,
-    references: [originalThreadId],
-    html: htmlBody,
-    attachments: uploadedAttachments.map((a) => ({
-      filename: a.filename,
-      content: a.emailBuffer,
-      contentType: a.contentType,
-    })),
-  });
-
-} else if (supportEmail.type === "smtp") {
-  // ✅ Custom SMTP => Nodemailer
-  // NOTE: your schema currently doesn't store SMTP host/port.
-  // So either hardcode OR store in schema.
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.yourhost.com",
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false,
-    auth: {
-      user: supportEmail.email,
-      pass: supportEmail.appPassword,
-    },
-  });
-
-  await transporter.sendMail({
-    from: `${userPayload.name} <${supportEmail.email}>`,
-    to: ticket.customerEmail,
-    subject: `Re: ${ticket.subject}`,
-    messageId: currentMessageId,
-    inReplyTo: originalThreadId,
-    references: [originalThreadId],
-    html: htmlBody,
-    attachments: uploadedAttachments.map((a) => ({
-      filename: a.filename,
-      content: a.emailBuffer,
-      contentType: a.contentType,
-    })),
-  });
-
-} else {
-  throw new Error("Invalid support email type");
-}
-
+      await transporter.sendMail({
+        from: supportEmail.email,
+        to: ticket.customerEmail,
+        subject: `Re: ${ticket.subject}`,
+        html,
+      });
+    }
 
     /* ================= SAVE ================= */
 
@@ -278,10 +158,7 @@ if (supportEmail.type === "outlook") {
       sender: userPayload.id,
       senderType: "agent",
       message: messageText,
-      messageId: currentMessageId,
-      attachments: uploadedAttachments.map(
-        ({ emailBuffer, ...rest }) => rest
-      ),
+      attachments: uploaded,
       createdAt: new Date(),
     });
 
@@ -289,20 +166,17 @@ if (supportEmail.type === "outlook") {
     ticket.lastAgentReplyAt = new Date();
     await ticket.save();
 
-    const updatedTicket = await Ticket.findById(ticketId)
+    const updated = await Ticket.findById(ticketId)
       .populate("messages.sender", "name email avatar")
-      .populate("agentId", "name email avatar")
       .lean();
 
-    return Response.json({ success: true, ticket: updatedTicket });
+    return Response.json({ success: true, ticket: updated });
   } catch (err) {
     console.error("Reply Error:", err);
-    return Response.json(
-      { success: false, msg: err.message },
-      { status: 500 }
-    );
+    return Response.json({ success: false, msg: err.message }, { status: 500 });
   }
 }
+
 
 
 

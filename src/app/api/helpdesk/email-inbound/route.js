@@ -4,29 +4,34 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
+import Notification from "@/models/helpdesk/Notification";
+import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
+import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import cloudinary from "@/lib/cloudinary";
 
 /* ================= HELPERS ================= */
+
 function extractEmail(v) {
-  const m = String(v || "").match(
-    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
-  );
+  const m = String(v || "").match(/([^\s<>]+@[^\s<>]+)/);
   return m ? m[1].toLowerCase() : "";
 }
 
-function normalizeId(id) {
+function clean(id) {
   if (!id) return "";
-  return String(id).replace(/[\r\n\s<>]+/g, "");
+  return String(id).replace(/[<>]/g, "").trim();
 }
 
 /* ================= ATTACHMENTS ================= */
-async function uploadAttachments(rawAttachments, ticketId) {
+async function uploadAttachments(list, ticketId) {
   const uploaded = [];
 
-  for (const a of rawAttachments || []) {
-    const uploadStr = `data:${a.contentType};base64,${a.content}`;
-    const res = await cloudinary.uploader.upload(uploadStr, {
-      folder: `helpdesk/tickets/${ticketId}`,
+  for (const a of list || []) {
+    if (!a.content) continue;
+
+    const str = `data:${a.contentType};base64,${a.content}`;
+
+    const res = await cloudinary.uploader.upload(str, {
+      folder: `helpdesk/${ticketId}`,
       resource_type: "auto",
     });
 
@@ -51,79 +56,111 @@ export async function POST(req) {
 
     await dbConnect();
 
-    const rawData = await req.json();
+    const raw = await req.json();
 
-    const fromEmail = extractEmail(rawData.from);
-    const toEmail = extractEmail(rawData.to);
-    const body = rawData.html || "";
+    const from = extractEmail(raw.from);
+    const to = extractEmail(raw.to);
+    const subject = raw.subject || "No Subject";
 
-    const conversationId = normalizeId(rawData.conversationId);
+    const body =
+      raw.html?.replace(/<[^>]+>/g, "").trim() ||
+      raw.text ||
+      "";
 
-    console.log("🧵 INBOUND conversationId:", conversationId);
+    const graphMessageId = raw.id || raw.graphMessageId;
+    const conversationId = clean(raw.conversationId);
+    const internetId = clean(raw.messageId);
 
-    if (!conversationId) {
-      return Response.json({ error: "conversationId missing" }, { status: 400 });
-    }
+    const refs = clean(raw.references || "").split(" ").filter(Boolean);
+
+    /* ================= FIND EXISTING ================= */
+
+    const searchIds = [
+      graphMessageId,
+      conversationId,
+      internetId,
+      ...refs,
+    ].filter(Boolean);
 
     let ticket = await Ticket.findOne({
-      emailThreadId: conversationId,
+      $or: [
+        { emailThreadId: { $in: searchIds } },
+        { "messages.graphMessageId": { $in: searchIds } },
+      ],
     });
 
+    /* ================= REPLY ================= */
+
     if (ticket) {
+      const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+      const sentiment = await analyzeSentimentAI(body);
+
       ticket.messages.push({
         senderType: "customer",
-        externalEmail: fromEmail,
-        message: body.replace(/<\/?[^>]+>/g, "").trim(),
-        messageId: rawData.messageId || "",
+        externalEmail: from,
+        message: body,
+        graphMessageId,
+        internetMessageId: internetId,
+        attachments: uploaded,
         createdAt: new Date(),
+        sentiment,
       });
 
       ticket.lastCustomerReplyAt = new Date();
+      ticket.lastReplyAt = new Date();
+
       await ticket.save();
-
-      console.log("✅ APPENDED TO EXISTING");
-
-      return Response.json({ success: true, ticketId: ticket._id });
+      return Response.json({ success: true });
     }
 
+    /* ================= NEW TICKET ================= */
+
     const company = await Company.findOne({
-      "supportEmails.email": toEmail,
+      "supportEmails.email": to,
       "supportEmails.inboundEnabled": true,
     });
 
     if (!company) return Response.json({ error: "Mailbox invalid" }, { status: 403 });
 
-    const customer = await Customer.findOne({ emailId: fromEmail });
-    if (!customer)
-      return Response.json({ error: "Customer not registered" }, { status: 403 });
+    const customer = await Customer.findOne({ emailId: from });
+    if (!customer) return Response.json({ error: "Customer missing" }, { status: 403 });
+
+    const agentId = await getNextAvailableAgent(customer);
+    const sentiment = await analyzeSentimentAI(body);
 
     ticket = await Ticket.create({
       companyId: company._id,
       customerId: customer._id,
-      customerEmail: fromEmail,
-      subject: rawData.subject || "No Subject",
-      status: "open",
+      customerEmail: from,
+      subject,
       source: "email",
-      emailThreadId: conversationId,
-      emailAlias: toEmail,
+      status: "open",
+      priority: sentiment === "negative" ? "high" : "normal",
+      sentiment,
+      agentId,
+      emailAlias: to,
+      emailThreadId: conversationId || graphMessageId,
       messages: [],
     });
 
+    const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+
     ticket.messages.push({
       senderType: "customer",
-      externalEmail: fromEmail,
-      message: body.replace(/<\/?[^>]+>/g, "").trim(),
-      messageId: rawData.messageId || "",
+      externalEmail: from,
+      message: body,
+      graphMessageId,
+      internetMessageId: internetId,
+      attachments: uploaded,
       createdAt: new Date(),
+      sentiment,
     });
 
     await ticket.save();
 
-    console.log("🆕 NEW TICKET CREATED");
-
-    return Response.json({ success: true, ticketId: ticket._id });
+    return Response.json({ success: true });
   } catch (err) {
-    console.error("❌ Inbound error:", err);
+    console.error("Inbound error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }

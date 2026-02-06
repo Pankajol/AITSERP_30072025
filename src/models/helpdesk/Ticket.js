@@ -27,7 +27,11 @@ const TicketMessageSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+        // 🔥 NEW (Graph ID – used for reply + threading)
+    graphMessageId: { type: String, index: true },
 
+    // optional – for reference only
+    internetMessageId:  { type: String},
     attachments: [
       {
         filename: String,
