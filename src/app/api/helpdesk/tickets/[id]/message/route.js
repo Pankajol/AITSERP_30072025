@@ -11,7 +11,7 @@ import nodemailer from "nodemailer";
 /* ================= OUTLOOK SEND ================= */
 
 async function sendOutlookMail({
- fromEmail,
+  fromEmail,
   to,
   subject,
   html,
@@ -35,46 +35,40 @@ async function sendOutlookMail({
   );
 
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
-    throw new Error("Outlook authentication failed");
+  if (!tokenData.access_token) throw new Error("Outlook auth failed");
+
+  // 🔥 reply to ORIGINAL MESSAGE
+  const lastCustomerMsg = ticket.messages
+    .filter((m) => m.senderType === "customer")
+    .slice(-1)[0];
+
+  if (!lastCustomerMsg?.messageId) {
+    throw new Error("No customer messageId found for reply");
   }
 
-const sendRes = await fetch(
-  `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
-  {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${tokenData.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: "HTML", content: html },
+  const graphMessageId = lastCustomerMsg.messageId;
 
-        toRecipients: [{ emailAddress: { address: to } }],
-
-        // ✅ THIS FIXES THREADING
-        internetMessageHeaders: [
-          {
-            name: "In-Reply-To",
-            value: ticket.emailThreadId,
-          },
-          {
-            name: "References",
-            value: ticket.emailThreadId,
-          },
-        ],
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${fromEmail}/messages/${graphMessageId}/reply`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        "Content-Type": "application/json",
       },
-      saveToSentItems: true,
-    }),
-  }
-);
+      body: JSON.stringify({
+        message: {
+          body: {
+            contentType: "HTML",
+            content: html,
+          },
+        },
+      }),
+    }
+  );
 
-
-  if (!sendRes.ok) {
-    const txt = await sendRes.text();
-    throw new Error("Outlook sendMail failed: " + txt);
+  if (!res.ok) {
+    throw new Error("Outlook reply failed: " + (await res.text()));
   }
 }
 
