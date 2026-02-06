@@ -97,9 +97,28 @@ export async function POST(req, context) {
 
     const company = await Company.findById(ticket.companyId).select("+supportEmails.appPassword");
 
-    const supportEmail = company.supportEmails.find(
-      (e) => e.email?.toLowerCase() === ticket.emailAlias?.toLowerCase()
-    );
+    let emailAlias = ticket.emailAlias?.trim().toLowerCase();
+
+// 🔁 fallback for older / inbound-created tickets
+if (!emailAlias) {
+  const fallback = company.supportEmails.find((e) => e.inboundEnabled);
+  emailAlias = fallback?.email?.toLowerCase();
+}
+
+const supportEmail = company.supportEmails.find(
+  (e) => e.email?.toLowerCase() === emailAlias
+);
+
+if (!supportEmail) {
+  console.log("❌ Alias:", emailAlias);
+  console.log("❌ Company support emails:", company.supportEmails);
+
+  return Response.json(
+    { success: false, msg: "Support mailbox missing" },
+    { status: 400 }
+  );
+}
+
 
     if (!supportEmail) {
       return Response.json({ success: false, msg: "Support mailbox missing" }, { status: 400 });
