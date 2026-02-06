@@ -8,6 +8,7 @@ import Notification from "@/models/helpdesk/Notification";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import cloudinary from "@/lib/cloudinary";
+import { simpleParser } from "mailparser";
 
 /* ================= HELPERS ================= */
 
@@ -20,9 +21,7 @@ function extractEmail(v) {
 
 function normalizeId(id) {
   if (!id) return "";
-  let s = String(id).trim();
-  if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1);
-  return s.replace(/[\r\n\s]+/g, "");
+  return String(id).replace(/[<>\r\n\s]+/g, "").trim();
 }
 
 /* ================= ATTACHMENTS ================= */
@@ -37,7 +36,7 @@ async function uploadAttachments(rawAttachments, ticketId) {
 
       const uploadStr = Buffer.isBuffer(fileData)
         ? `data:${a.contentType};base64,${fileData.toString("base64")}`
-        : fileData;
+        : `data:${a.contentType};base64,${fileData}`;
 
       const res = await cloudinary.uploader.upload(uploadStr, {
         folder: `helpdesk/tickets/${ticketId}`,
@@ -45,13 +44,13 @@ async function uploadAttachments(rawAttachments, ticketId) {
       });
 
       uploaded.push({
-        filename: a.name || a.filename || "file",
+        filename: a.filename || "file",
         url: res.secure_url,
-        contentType: a.contentType || "application/octet-stream",
+        contentType: a.contentType,
         size: a.size || 0,
       });
-    } catch (err) {
-      console.error("❌ Attachment upload error:", err.message);
+    } catch (e) {
+      console.error("❌ Attachment upload failed:", e.message);
     }
   }
 
@@ -71,44 +70,55 @@ export async function POST(req) {
 
     const rawData = await req.json();
 
-    /* ===== Outlook normalize ===== */
-
-    if (!rawData.from && rawData.sender?.emailAddress?.address) {
-      rawData.from = rawData.sender.emailAddress.address;
-    }
-
-    if (!rawData.to && Array.isArray(rawData.toRecipients)) {
-      rawData.to = rawData.toRecipients
-        .map((r) => r.emailAddress?.address)
-        .join(",");
-    }
+    /* ===== Extract ===== */
 
     const fromEmail = extractEmail(rawData.from);
     const toEmail = extractEmail(rawData.to);
     const subject = rawData.subject || "No Subject";
 
-    let body = rawData.body?.content || "";
+    let body = rawData.text || rawData.html || "";
 
-    body = body
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<\/?[^>]+(>|$)/g, "")
-      .replace(/&nbsp;/g, " ")
-      .trim();
+    if (body.includes("<")) {
+      body = body
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<\/?[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .trim();
+    }
 
-    if (!fromEmail) return Response.json({ error: "Missing sender" });
+    if (!fromEmail) {
+      return Response.json({ error: "Missing sender" }, { status: 400 });
+    }
 
-    /* ================= MASTER THREAD ================= */
+    /* ===== ONLY conversationId ===== */
 
-    const threadId = normalizeId(
-      rawData.resourceData?.id ||
-      rawData.internetMessageId ||
-      `outlook-${Date.now()}`
-    );
+    const threadId = normalizeId(rawData.conversationId);
 
-    const messageId = threadId;
+    if (!threadId) {
+      console.log("❌ conversationId missing");
+      return Response.json({ error: "conversationId missing" }, { status: 400 });
+    }
 
-    /* ================= FIND EXISTING ================= */
+    const messageId = normalizeId(rawData.messageId || `outlook-${Date.now()}`);
+
+    console.log("THREAD:", threadId);
+
+    /* ===== Attachments ===== */
+
+    let attachments = rawData.attachments || [];
+
+    if (!attachments.length && rawData.raw) {
+      const parsed = await simpleParser(rawData.raw);
+      attachments = parsed.attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        buffer: a.content,
+        size: a.size,
+      }));
+    }
+
+    /* ===== Try existing ticket ===== */
 
     let ticket = await Ticket.findOne({ emailThreadId: threadId });
 
@@ -116,7 +126,7 @@ export async function POST(req) {
 
     if (ticket) {
       const sentiment = await analyzeSentimentAI(body);
-      const uploaded = await uploadAttachments(rawData.attachments, ticket._id);
+      const uploaded = await uploadAttachments(attachments, ticket._id);
 
       ticket.messages.push({
         senderType: "customer",
@@ -134,13 +144,15 @@ export async function POST(req) {
         ticket.priority = "high";
         await Notification.create({
           userId: ticket.agentId,
-          ticketId: ticket._id,
           type: "NEGATIVE_SENTIMENT",
-          message: "Negative customer reply",
+          ticketId: ticket._id,
+          message: "Negative sentiment detected",
         });
       }
 
       await ticket.save();
+      console.log("✅ Reply appended");
+
       return Response.json({ success: true, ticketId: ticket._id });
     }
 
@@ -151,10 +163,15 @@ export async function POST(req) {
       "supportEmails.inboundEnabled": true,
     });
 
-    if (!company) return Response.json({ error: "Invalid mailbox" });
+    if (!company) {
+      return Response.json({ error: "Mailbox not found" }, { status: 403 });
+    }
 
     const customer = await Customer.findOne({ emailId: fromEmail });
-    if (!customer) return Response.json({ error: "Customer not registered" });
+
+    if (!customer) {
+      return Response.json({ error: "Customer not registered" }, { status: 403 });
+    }
 
     const sentiment = await analyzeSentimentAI(body);
     const agentId = await getNextAvailableAgent(customer);
@@ -175,7 +192,7 @@ export async function POST(req) {
       lastCustomerReplyAt: new Date(),
     });
 
-    const uploaded = await uploadAttachments(rawData.attachments, ticket._id);
+    const uploaded = await uploadAttachments(attachments, ticket._id);
 
     ticket.messages.push({
       senderType: "customer",
@@ -188,6 +205,8 @@ export async function POST(req) {
     });
 
     await ticket.save();
+
+    console.log("✅ New ticket created");
 
     return Response.json({ success: true, ticketId: ticket._id });
   } catch (err) {

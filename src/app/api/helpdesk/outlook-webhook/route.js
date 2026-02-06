@@ -92,18 +92,16 @@ export async function GET(req) {
 function mapGraphPayload(msg, userEmail) {
   return {
     from: msg.from?.emailAddress?.address || "",
-    to:
-      msg.toRecipients?.[0]?.emailAddress?.address ||
-      userEmail,
+    to: msg.toRecipients?.[0]?.emailAddress?.address || userEmail,
 
     subject: msg.subject || "No Subject",
     html: msg.body?.content || "",
 
-    messageId: msg.internetMessageId,
+    // ✅ ONLY conversationId for threading
     conversationId: msg.conversationId,
-    inReplyTo: msg.inReplyTo || "",
-    references:
-      msg.internetMessageHeaders?.find(h => h.name === "References")?.value || "",
+
+    // message id just for logging
+    messageId: msg.internetMessageId,
 
     attachments: (msg.attachments || [])
       .filter(a => a["@odata.type"] === "#microsoft.graph.fileAttachment")
@@ -115,6 +113,7 @@ function mapGraphPayload(msg, userEmail) {
       })),
   };
 }
+
 
 /* ================= POST ================= */
 export async function POST(req) {
