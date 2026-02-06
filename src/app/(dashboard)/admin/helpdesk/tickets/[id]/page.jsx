@@ -95,12 +95,13 @@ async function sendReply(e) {
       }
     );
 
-    if (res.data?.success && res.data.ticket) {
-      setReply("");
-      setFiles([]);
-      setTicket(res.data.ticket);
-      setMsg({ type: "success", text: "Reply sent successfully" });
-    } else {
+  if (res.data?.success) {
+  setReply("");
+  setFiles([]);
+  await loadTicket(); // ✅ reload full ticket with all messages
+  setMsg({ type: "success", text: "Reply sent successfully" });
+}
+ else {
       setMsg({
         type: "error",
         text: res.data?.msg || "Failed to send reply",
@@ -231,8 +232,11 @@ async function sendReply(e) {
 
       {/* MESSAGES */}
       <div className="space-y-3">
-        {ticket.messages?.length ? (
-          ticket.messages.map((m) => {
+       {ticket.messages?.length ? (
+  [...ticket.messages]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map((m) => {
+
             const senderName =
               m.sender?.name ||
               m.sender?.email ||
