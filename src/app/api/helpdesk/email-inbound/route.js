@@ -4,14 +4,9 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
-import Notification from "@/models/helpdesk/Notification";
-import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
-import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import cloudinary from "@/lib/cloudinary";
-import { simpleParser } from "mailparser";
 
 /* ================= HELPERS ================= */
-
 function extractEmail(v) {
   const m = String(v || "").match(
     /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
@@ -21,44 +16,32 @@ function extractEmail(v) {
 
 function normalizeId(id) {
   if (!id) return "";
-  return String(id).replace(/[<>\r\n\s]+/g, "").trim();
+  return String(id).replace(/[\r\n\s<>]+/g, "");
 }
 
 /* ================= ATTACHMENTS ================= */
-
 async function uploadAttachments(rawAttachments, ticketId) {
   const uploaded = [];
 
   for (const a of rawAttachments || []) {
-    try {
-      const fileData = a.content || a.buffer;
-      if (!fileData) continue;
+    const uploadStr = `data:${a.contentType};base64,${a.content}`;
+    const res = await cloudinary.uploader.upload(uploadStr, {
+      folder: `helpdesk/tickets/${ticketId}`,
+      resource_type: "auto",
+    });
 
-      const uploadStr = Buffer.isBuffer(fileData)
-        ? `data:${a.contentType};base64,${fileData.toString("base64")}`
-        : `data:${a.contentType};base64,${fileData}`;
-
-      const res = await cloudinary.uploader.upload(uploadStr, {
-        folder: `helpdesk/tickets/${ticketId}`,
-        resource_type: "auto",
-      });
-
-      uploaded.push({
-        filename: a.filename || "file",
-        url: res.secure_url,
-        contentType: a.contentType,
-        size: a.size || 0,
-      });
-    } catch (e) {
-      console.error("❌ Attachment upload failed:", e.message);
-    }
+    uploaded.push({
+      filename: a.filename,
+      url: res.secure_url,
+      contentType: a.contentType,
+      size: a.size,
+    });
   }
 
   return uploaded;
 }
 
 /* ================= MAIN ================= */
-
 export async function POST(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -70,143 +53,73 @@ export async function POST(req) {
 
     const rawData = await req.json();
 
-    /* ===== Extract ===== */
-
     const fromEmail = extractEmail(rawData.from);
     const toEmail = extractEmail(rawData.to);
-    const subject = rawData.subject || "No Subject";
+    const body = rawData.html || "";
 
-    let body = rawData.text || rawData.html || "";
+    const conversationId = normalizeId(rawData.conversationId);
 
-    if (body.includes("<")) {
-      body = body
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<\/?[^>]+>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .trim();
+    console.log("🧵 INBOUND conversationId:", conversationId);
+
+    if (!conversationId) {
+      return Response.json({ error: "conversationId missing" }, { status: 400 });
     }
 
-    if (!fromEmail) {
-      return Response.json({ error: "Missing sender" }, { status: 400 });
-    }
-
-    /* ===== ONLY conversationId ===== */
-const threadId = normalizeId(rawData.conversationId);
-
-if (!threadId) {
-  console.log("❌ Missing conversationId payload:", rawData);
-  return Response.json({ error: "conversationId missing" }, { status: 400 });
-}
-
-
-    const messageId = normalizeId(rawData.messageId || `outlook-${Date.now()}`);
-
-    console.log("THREAD:", threadId);
-
-    /* ===== Attachments ===== */
-
-    let attachments = rawData.attachments || [];
-
-    if (!attachments.length && rawData.raw) {
-      const parsed = await simpleParser(rawData.raw);
-      attachments = parsed.attachments.map((a) => ({
-        filename: a.filename,
-        contentType: a.contentType,
-        buffer: a.content,
-        size: a.size,
-      }));
-    }
-
-    /* ===== Try existing ticket ===== */
-
-    let ticket = await Ticket.findOne({ emailThreadId: threadId });
-
-    /* ================= REPLY ================= */
+    let ticket = await Ticket.findOne({
+      emailThreadId: conversationId,
+    });
 
     if (ticket) {
-      const sentiment = await analyzeSentimentAI(body);
-      const uploaded = await uploadAttachments(attachments, ticket._id);
-
       ticket.messages.push({
         senderType: "customer",
         externalEmail: fromEmail,
-        message: body,
-        messageId,
-        sentiment,
-        attachments: uploaded,
+        message: body.replace(/<\/?[^>]+>/g, "").trim(),
+        messageId: rawData.messageId || "",
         createdAt: new Date(),
       });
 
       ticket.lastCustomerReplyAt = new Date();
-
-      if (sentiment === "negative") {
-        ticket.priority = "high";
-        await Notification.create({
-          userId: ticket.agentId,
-          type: "NEGATIVE_SENTIMENT",
-          ticketId: ticket._id,
-          message: "Negative sentiment detected",
-        });
-      }
-
       await ticket.save();
-      console.log("✅ Reply appended");
+
+      console.log("✅ APPENDED TO EXISTING");
 
       return Response.json({ success: true, ticketId: ticket._id });
     }
-
-    /* ================= NEW TICKET ================= */
 
     const company = await Company.findOne({
       "supportEmails.email": toEmail,
       "supportEmails.inboundEnabled": true,
     });
 
-    if (!company) {
-      return Response.json({ error: "Mailbox not found" }, { status: 403 });
-    }
+    if (!company) return Response.json({ error: "Mailbox invalid" }, { status: 403 });
 
     const customer = await Customer.findOne({ emailId: fromEmail });
-
-    if (!customer) {
+    if (!customer)
       return Response.json({ error: "Customer not registered" }, { status: 403 });
-    }
-
-    const sentiment = await analyzeSentimentAI(body);
-    const agentId = await getNextAvailableAgent(customer);
 
     ticket = await Ticket.create({
       companyId: company._id,
       customerId: customer._id,
       customerEmail: fromEmail,
-      subject,
-      source: "email",
+      subject: rawData.subject || "No Subject",
       status: "open",
-      agentId,
-      sentiment,
-      priority: sentiment === "negative" ? "high" : "normal",
-      emailThreadId: threadId,
+      source: "email",
+      emailThreadId: conversationId,
       emailAlias: toEmail,
       messages: [],
-      lastCustomerReplyAt: new Date(),
     });
-
-    const uploaded = await uploadAttachments(attachments, ticket._id);
 
     ticket.messages.push({
       senderType: "customer",
       externalEmail: fromEmail,
-      message: body,
-      messageId,
-      sentiment,
-      attachments: uploaded,
+      message: body.replace(/<\/?[^>]+>/g, "").trim(),
+      messageId: rawData.messageId || "",
       createdAt: new Date(),
     });
 
     await ticket.save();
 
-    console.log("✅ New ticket created");
+    console.log("🆕 NEW TICKET CREATED");
 
     return Response.json({ success: true, ticketId: ticket._id });
   } catch (err) {
@@ -214,7 +127,6 @@ if (!threadId) {
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
-
 
 
 
@@ -232,6 +144,7 @@ if (!threadId) {
 // import { simpleParser } from "mailparser";
 
 // /* ================= HELPERS ================= */
+
 // function extractEmail(v) {
 //   const m = String(v || "").match(
 //     /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/
@@ -241,12 +154,11 @@ if (!threadId) {
 
 // function normalizeId(id) {
 //   if (!id) return "";
-//   let s = String(id).trim();
-//   if (s.startsWith("<") && s.endsWith(">")) s = s.slice(1, -1);
-//   return s.replace(/[\r\n\s]+/g, "");
+//   return String(id).replace(/[<>\r\n\s]+/g, "").trim();
 // }
 
-// /* ================= UNIVERSAL ATTACHMENT UPLOADER ================= */
+// /* ================= ATTACHMENTS ================= */
+
 // async function uploadAttachments(rawAttachments, ticketId) {
 //   const uploaded = [];
 
@@ -255,12 +167,9 @@ if (!threadId) {
 //       const fileData = a.content || a.buffer;
 //       if (!fileData) continue;
 
-//       let uploadStr;
-//       if (Buffer.isBuffer(fileData)) {
-//         uploadStr = `data:${a.contentType};base64,${fileData.toString("base64")}`;
-//       } else {
-//         uploadStr = fileData.startsWith("data:") ? fileData : `data:${a.contentType};base64,${fileData}`;
-//       }
+//       const uploadStr = Buffer.isBuffer(fileData)
+//         ? `data:${a.contentType};base64,${fileData.toString("base64")}`
+//         : `data:${a.contentType};base64,${fileData}`;
 
 //       const res = await cloudinary.uploader.upload(uploadStr, {
 //         folder: `helpdesk/tickets/${ticketId}`,
@@ -268,13 +177,13 @@ if (!threadId) {
 //       });
 
 //       uploaded.push({
-//         filename: a.filename || a.Name || "file",
+//         filename: a.filename || "file",
 //         url: res.secure_url,
-//         contentType: a.contentType || "application/octet-stream",
-//         size: a.size || a.ContentLength || 0,
+//         contentType: a.contentType,
+//         size: a.size || 0,
 //       });
-//     } catch (err) {
-//       console.error("❌ Cloudinary Error:", err.message);
+//     } catch (e) {
+//       console.error("❌ Attachment upload failed:", e.message);
 //     }
 //   }
 
@@ -282,6 +191,7 @@ if (!threadId) {
 // }
 
 // /* ================= MAIN ================= */
+
 // export async function POST(req) {
 //   try {
 //     const { searchParams } = new URL(req.url);
@@ -291,85 +201,48 @@ if (!threadId) {
 
 //     await dbConnect();
 
-//     // --- Parse rawData ---
-//     const contentType = req.headers.get("content-type") || "";
-//     let rawData;
-//     if (contentType.includes("application/json")) {
-//       rawData = await req.json();
-//     } else {
-//       const text = await req.text();
-//       try {
-//         rawData = JSON.parse(text);
-//       } catch {
-//         rawData = {};
-//       }
+//     const rawData = await req.json();
+
+//     /* ===== Extract ===== */
+
+//     const fromEmail = extractEmail(rawData.from);
+//     const toEmail = extractEmail(rawData.to);
+//     const subject = rawData.subject || "No Subject";
+
+//     let body = rawData.text || rawData.html || "";
+
+//     if (body.includes("<")) {
+//       body = body
+//         .replace(/<style[\s\S]*?<\/style>/gi, "")
+//         .replace(/<script[\s\S]*?<\/script>/gi, "")
+//         .replace(/<\/?[^>]+>/g, "")
+//         .replace(/&nbsp;/g, " ")
+//         .trim();
 //     }
 
-//     // --- OUTLOOK NORMALIZATION ---
-//     if (!rawData.from && rawData.sender?.emailAddress?.address) {
-//       rawData.from = rawData.sender.emailAddress.address;
-//     }
-//     if (!rawData.to && Array.isArray(rawData.toRecipients)) {
-//       rawData.to = rawData.toRecipients
-//         .map((r) => r.emailAddress?.address)
-//         .join(", ");
+//     if (!fromEmail) {
+//       return Response.json({ error: "Missing sender" }, { status: 400 });
 //     }
 
-//     // --- Extract basic info ---
-//     const fromEmail = extractEmail(rawData.from || rawData.sender || rawData.From);
-//     const toEmail = extractEmail(rawData.to || rawData.recipient);
-//     const subject = rawData.subject || rawData.Subject || "No Subject";
-//     let body =
-//   rawData.text ||
-//   rawData.body?.content ||
-//   rawData.html ||
-//   "";
+//     /* ===== ONLY conversationId ===== */
+// const threadId = normalizeId(rawData.conversationId);
 
-// if (body && body.includes("<")) {
-//   body = body
-//     .replace(/<style[\s\S]*?<\/style>/gi, "")
-//     .replace(/<script[\s\S]*?<\/script>/gi, "")
-//     .replace(/<\/?[^>]+(>|$)/g, "")
-//     .replace(/&nbsp;/g, " ")
-//     .trim();
+// if (!threadId) {
+//   console.log("❌ Missing conversationId payload:", rawData);
+//   return Response.json({ error: "conversationId missing" }, { status: 400 });
 // }
 
 
+//     const messageId = normalizeId(rawData.messageId || `outlook-${Date.now()}`);
 
-//     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
+//     console.log("THREAD:", threadId);
 
-// const conversationId =
-//   rawData.conversationId ||
-//   rawData.resourceData?.conversationId ||
-//   rawData.resourceData?.id ||
-//   "";
+//     /* ===== Attachments ===== */
 
-// const messageId = normalizeId(
-//   rawData.messageId ||
-//   rawData["Message-ID"] ||
-//   rawData.internetMessageId ||
-//   rawData.resourceData?.id ||
-//   `outlook-${Date.now()}`
-// );
+//     let attachments = rawData.attachments || [];
 
-
-
-//     const inReplyTo = normalizeId(
-//   rawData.inReplyTo ||
-//   rawData.conversationId ||
-//   rawData["In-Reply-To"]
-// );
-
-//     const references = (rawData.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
-
-//     // --- Parse attachments ---
-//     let attachments = [];
-//     if (rawData.attachments || rawData.Attachments) {
-//       attachments = rawData.attachments || rawData.Attachments;
-//     }
-//     const mimeSource = rawData.raw || rawData.mime || rawData["body-mime"];
-//     if (mimeSource && attachments.length === 0) {
-//       const parsed = await simpleParser(mimeSource);
+//     if (!attachments.length && rawData.raw) {
+//       const parsed = await simpleParser(rawData.raw);
 //       attachments = parsed.attachments.map((a) => ({
 //         filename: a.filename,
 //         contentType: a.contentType,
@@ -378,27 +251,12 @@ if (!threadId) {
 //       }));
 //     }
 
-//     // --- Find existing ticket (reply case) ---
-// const searchIds = [
-//   conversationId,
-//   inReplyTo,
-//   messageId,
-//   ...references,
-// ].filter(Boolean);
+//     /* ===== Try existing ticket ===== */
 
+//     let ticket = await Ticket.findOne({ emailThreadId: threadId });
 
+//     /* ================= REPLY ================= */
 
-//     let ticket = null;
-//     if (searchIds.length) {
-//       ticket = await Ticket.findOne({
-//         $or: [
-//           { emailThreadId: { $in: searchIds } },
-//           { "messages.messageId": { $in: searchIds } },
-//         ],
-//       });
-//     }
-
-//     // ================= CASE: REPLY =================
 //     if (ticket) {
 //       const sentiment = await analyzeSentimentAI(body);
 //       const uploaded = await uploadAttachments(attachments, ticket._id);
@@ -413,7 +271,6 @@ if (!threadId) {
 //         createdAt: new Date(),
 //       });
 
-//       ticket.lastReplyAt = new Date();
 //       ticket.lastCustomerReplyAt = new Date();
 
 //       if (sentiment === "negative") {
@@ -422,37 +279,32 @@ if (!threadId) {
 //           userId: ticket.agentId,
 //           type: "NEGATIVE_SENTIMENT",
 //           ticketId: ticket._id,
-//           message: "⚠️ Negative sentiment detected",
+//           message: "Negative sentiment detected",
 //         });
 //       }
 
 //       await ticket.save();
+//       console.log("✅ Reply appended");
+
 //       return Response.json({ success: true, ticketId: ticket._id });
 //     }
 
-//     // ================= CASE: NEW TICKET =================
-//     const normalizedToEmail = toEmail.trim().toLowerCase();
-//     const normalizedFromEmail = fromEmail.trim().toLowerCase();
+//     /* ================= NEW TICKET ================= */
 
 //     const company = await Company.findOne({
-//       "supportEmails.email": normalizedToEmail,
+//       "supportEmails.email": toEmail,
 //       "supportEmails.inboundEnabled": true,
 //     });
-//     if (!company) return Response.json({ error: "Invalid or disabled mailbox" }, { status: 403 });
 
-//    // ✅ ONLY EXISTING CUSTOMER CAN CREATE TICKET
-// const customer = await Customer.findOne({
-//   emailId: normalizedFromEmail,
-// });
+//     if (!company) {
+//       return Response.json({ error: "Mailbox not found" }, { status: 403 });
+//     }
 
-// if (!customer) {
-//   console.log("⛔ Unknown customer:", normalizedFromEmail);
-//   return Response.json(
-//     { success: false, msg: "Customer not registered" },
-//     { status: 403 }
-//   );
-// }
+//     const customer = await Customer.findOne({ emailId: fromEmail });
 
+//     if (!customer) {
+//       return Response.json({ error: "Customer not registered" }, { status: 403 });
+//     }
 
 //     const sentiment = await analyzeSentimentAI(body);
 //     const agentId = await getNextAvailableAgent(customer);
@@ -460,17 +312,15 @@ if (!threadId) {
 //     ticket = await Ticket.create({
 //       companyId: company._id,
 //       customerId: customer._id,
-//       customerEmail: normalizedFromEmail,
+//       customerEmail: fromEmail,
 //       subject,
 //       source: "email",
 //       status: "open",
 //       agentId,
 //       sentiment,
 //       priority: sentiment === "negative" ? "high" : "normal",
-//       emailThreadId: conversationId || messageId,
-
-
-//       emailAlias: normalizedToEmail,
+//       emailThreadId: threadId,
+//       emailAlias: toEmail,
 //       messages: [],
 //       lastCustomerReplyAt: new Date(),
 //     });
@@ -479,7 +329,7 @@ if (!threadId) {
 
 //     ticket.messages.push({
 //       senderType: "customer",
-//       externalEmail: normalizedFromEmail,
+//       externalEmail: fromEmail,
 //       message: body,
 //       messageId,
 //       sentiment,
@@ -488,9 +338,8 @@ if (!threadId) {
 //     });
 
 //     await ticket.save();
-//     console.log("FROM:", normalizedFromEmail);
-// console.log("TO:", normalizedToEmail);
-// console.log("BODY LENGTH:", body.length);
+
+//     console.log("✅ New ticket created");
 
 //     return Response.json({ success: true, ticketId: ticket._id });
 //   } catch (err) {
@@ -498,3 +347,6 @@ if (!threadId) {
 //     return Response.json({ error: err.message }, { status: 500 });
 //   }
 // }
+
+
+
