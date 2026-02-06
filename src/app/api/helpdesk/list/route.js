@@ -62,11 +62,12 @@ if (roles.includes("Agent")) {
 
     /* ================= FETCH ================= */
 
-    const tickets = await Ticket.find(query)
-      .sort({ createdAt: -1 })
-      .populate("agentId", "name email")
-      .populate("customerId", "customerName emailId")
-      .populate("companyId", "companyName");
+   const tickets = await Ticket.find(query)
+  .sort({ lastCustomerReplyAt: -1, updatedAt: -1 })
+  .populate("agentId", "name email")
+  .populate("customerId", "customerName emailId")
+  .populate("companyId", "companyName");
+
 
     console.log(`📦 Tickets found: ${tickets.length}`);
 
