@@ -152,12 +152,13 @@ const messageId = normalizeId(
     }
 
     // --- Find existing ticket (reply case) ---
-   const searchIds = [
+  const searchIds = [
   rawData.conversationId,
-  messageId,
   inReplyTo,
+  messageId,
   ...references,
 ].filter(Boolean);
+
 
     let ticket = null;
     if (searchIds.length) {
@@ -238,7 +239,8 @@ if (!customer) {
       agentId,
       sentiment,
       priority: sentiment === "negative" ? "high" : "normal",
-      emailThreadId: messageId,
+      emailThreadId: rawData.conversationId || messageId,
+
       emailAlias: normalizedToEmail,
       messages: [],
       lastCustomerReplyAt: new Date(),
