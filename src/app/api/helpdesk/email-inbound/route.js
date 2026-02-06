@@ -117,15 +117,22 @@ if (body && body.includes("<")) {
 
     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
 
- const messageId = normalizeId(
+const messageId = normalizeId(
   rawData.conversationId ||
-    rawData.messageId ||
-    rawData["Message-ID"] ||
-    rawData.internetMessageId ||
-    `outlook-${Date.now()}`
+  rawData.messageId ||
+  rawData["Message-ID"] ||
+  rawData.internetMessageId ||
+  `outlook-${Date.now()}`
 );
 
-    const inReplyTo = normalizeId(rawData.inReplyTo || rawData["In-Reply-To"]);
+
+
+    const inReplyTo = normalizeId(
+  rawData.inReplyTo ||
+  rawData.conversationId ||
+  rawData["In-Reply-To"]
+);
+
     const references = (rawData.references || "").split(/\s+/).map(normalizeId).filter(Boolean);
 
     // --- Parse attachments ---
@@ -145,7 +152,13 @@ if (body && body.includes("<")) {
     }
 
     // --- Find existing ticket (reply case) ---
-    const searchIds = [messageId, inReplyTo, ...references].filter(Boolean);
+   const searchIds = [
+  rawData.conversationId,
+  messageId,
+  inReplyTo,
+  ...references,
+].filter(Boolean);
+
     let ticket = null;
     if (searchIds.length) {
       ticket = await Ticket.findOne({
