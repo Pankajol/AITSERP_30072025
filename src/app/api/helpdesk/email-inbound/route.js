@@ -73,14 +73,20 @@ if (searchIds.length) {
 // }
 
 
-
+  const cleanBody = html
+  .replace(/<style[\s\S]*?<\/style>/gi, "")
+  .replace(/<script[\s\S]*?<\/script>/gi, "")
+  .replace(/<\/?[^>]+>/g, "")
+  .replace(/&nbsp;/g, " ")
+  .split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0]
+  .trim();
 
     /* ================= REPLY ================= */
     if (ticket) {
       ticket.messages.push({
         senderType: "customer",
         externalEmail: from,
-        message: html.replace(/<[^>]+>/g, ""),
+        message: cleanBody,
         graphMessageId,
         internetMessageId,
         messageId: internetMessageId,
@@ -115,13 +121,7 @@ if (searchIds.length) {
     });
 
 
-    const cleanBody = html
-  .replace(/<style[\s\S]*?<\/style>/gi, "")
-  .replace(/<script[\s\S]*?<\/script>/gi, "")
-  .replace(/<\/?[^>]+>/g, "")
-  .replace(/&nbsp;/g, " ")
-  .split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0]
-  .trim();
+  
 
     ticket.messages.push({
       senderType: "customer",
