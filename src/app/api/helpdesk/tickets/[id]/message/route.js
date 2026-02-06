@@ -11,11 +11,12 @@ import nodemailer from "nodemailer";
 /* ================= OUTLOOK SEND ================= */
 
 async function sendOutlookMail({
-  fromEmail,
+ fromEmail,
   to,
   subject,
   html,
   outlookConfig,
+  ticket,
 }) {
   const params = new URLSearchParams({
     client_id: outlookConfig.clientId,
@@ -38,24 +39,38 @@ async function sendOutlookMail({
     throw new Error("Outlook authentication failed");
   }
 
-  const sendRes = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        "Content-Type": "application/json",
+const sendRes = await fetch(
+  `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokenData.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: "HTML", content: html },
+
+        toRecipients: [{ emailAddress: { address: to } }],
+
+        // ✅ THIS FIXES THREADING
+        internetMessageHeaders: [
+          {
+            name: "In-Reply-To",
+            value: ticket.emailThreadId,
+          },
+          {
+            name: "References",
+            value: ticket.emailThreadId,
+          },
+        ],
       },
-      body: JSON.stringify({
-        message: {
-          subject,
-          body: { contentType: "HTML", content: html },
-          toRecipients: [{ emailAddress: { address: to } }],
-        },
-        saveToSentItems: true,
-      }),
-    }
-  );
+      saveToSentItems: true,
+    }),
+  }
+);
+
 
   if (!sendRes.ok) {
     const txt = await sendRes.text();
@@ -197,7 +212,9 @@ if (supportEmail.type === "outlook") {
   subject: `Re: ${ticket.subject}`,
   html: htmlBody,
   outlookConfig: supportEmail,
+  ticket, // ✅ PASS ticket
 });
+
 
 
 } else if (supportEmail.type === "gmail") {
