@@ -28,13 +28,52 @@ export async function POST(req) {
     const graphMessageId = raw.graphMessageId;
     const internetMessageId = raw.messageId;
 
+    const searchIds = [
+  conversationId,
+  graphMessageId,
+  internetMessageId,
+].filter(Boolean);
+
+// 🔐 DUPLICATE MESSAGE GUARD (Outlook double webhook)
+const alreadyExists = await Ticket.findOne({
+  "messages.internetMessageId": internetMessageId,
+});
+
+if (alreadyExists) {
+  console.log("⚠️ Duplicate email ignored:", internetMessageId);
+  return Response.json({ success: true, duplicate: true });
+}
+
+
     if (!conversationId) throw new Error("conversationId missing");
 
     /* ================= FIND EXISTING ================= */
 
-    let ticket = await Ticket.findOne({
-      emailThreadId: conversationId,
-    });
+    // let ticket = await Ticket.findOne({
+    //   emailThreadId: conversationId,
+    // });
+    let ticket = null;
+if (searchIds.length) {
+  ticket = await Ticket.findOne({
+    $or: [
+      { emailThreadId: { $in: searchIds } },
+      { "messages.messageId": { $in: searchIds } },
+    ],
+  });
+}
+
+// 🔐 DUPLICATE MESSAGE GUARD
+// const alreadyExists = await Ticket.findOne({
+//   "messages.internetMessageId": messageId,
+// });
+
+// if (alreadyExists) {
+//   console.log("⚠️ Duplicate email ignored:", messageId);
+//   return Response.json({ success: true, duplicate: true });
+// }
+
+
+
 
     /* ================= REPLY ================= */
     if (ticket) {
