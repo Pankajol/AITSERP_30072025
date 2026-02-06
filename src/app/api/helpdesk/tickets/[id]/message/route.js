@@ -1,13 +1,11 @@
 export const runtime = "nodejs";
 
-import connectDB from "@/lib/db";
+import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-import cloudinary from "@/lib/cloudinary";
-import nodemailer from "nodemailer";
 
-/* ================= GRAPH TOKEN ================= */
+/* GRAPH TOKEN */
 async function getGraphToken(se) {
   const params = new URLSearchParams({
     client_id: se.clientId,
@@ -16,184 +14,68 @@ async function getGraphToken(se) {
     scope: "https://graph.microsoft.com/.default",
   });
 
-  const res = await fetch(
+  const r = await fetch(
     `https://login.microsoftonline.com/${se.tenantId}/oauth2/v2.0/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    }
+    { method: "POST", body: params }
   );
 
-  const data = await res.json();
-  if (!data.access_token) throw new Error("Graph auth failed");
-  return data.access_token;
+  return (await r.json()).access_token;
 }
 
-/* ================= OUTLOOK REPLY ================= */
-async function sendOutlookReply({ supportEmail, ticket, html }) {
-  const token = await getGraphToken(supportEmail);
+export async function POST(req, { params }) {
+  await dbConnect();
 
-  // 🔥 MUST use Graph message id (not internet id)
+  const token = getTokenFromHeader(req);
+  const user = verifyJWT(token);
+
+  const { id } = params;
+  const ticket = await Ticket.findById(id);
+  const company = await Company.findById(ticket.companyId).select(
+    "+supportEmails.appPassword"
+  );
+
+  const support = company.supportEmails.find(
+    (e) => e.email === ticket.emailAlias
+  );
+
   const lastCustomer = [...ticket.messages]
     .reverse()
     .find((m) => m.senderType === "customer" && m.graphMessageId);
 
-  if (!lastCustomer?.graphMessageId) {
-    throw new Error("No graphMessageId found for Outlook reply");
-  }
+  if (!lastCustomer) throw new Error("graphMessageId missing");
 
-  const graphId = lastCustomer.graphMessageId;
+  const graphToken = await getGraphToken(support);
 
-  const res = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${supportEmail.email}/messages/${graphId}/reply`,
+  const body = await req.formData();
+  const text = body.get("message");
+
+  await fetch(
+    `https://graph.microsoft.com/v1.0/users/${support.email}/messages/${lastCustomer.graphMessageId}/reply`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${graphToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         message: {
-          body: {
-            contentType: "HTML",
-            content: html,
-          },
+          body: { contentType: "HTML", content: text },
         },
       }),
     }
   );
 
-  if (!res.ok) {
-    throw new Error("Outlook reply failed: " + (await res.text()));
-  }
-}
+  ticket.messages.push({
+    senderType: "agent",
+    sender: user.id,
+    message: text,
+  });
 
-/* ================= MAIN ================= */
-export async function POST(req, context) {
-  try {
-    await connectDB();
+  ticket.lastAgentReplyAt = new Date();
+  ticket.status = "in-progress";
+  await ticket.save();
 
-    const { id: ticketId } = await context.params;
-
-    const token = getTokenFromHeader(req);
-    const userPayload = verifyJWT(token);
-    if (!userPayload) {
-      return Response.json({ success: false }, { status: 401 });
-    }
-
-    const formData = await req.formData();
-    const messageText = formData.get("message")?.toString().trim() || "";
-    const files = formData.getAll("attachments") || [];
-
-    if (!messageText && !files.length) {
-      return Response.json({ success: false, msg: "Empty reply" }, { status: 400 });
-    }
-
-    const ticket = await Ticket.findById(ticketId);
-    if (!ticket) {
-      return Response.json({ success: false, msg: "Ticket not found" }, { status: 404 });
-    }
-
-    const company = await Company.findById(ticket.companyId).select("+supportEmails.appPassword");
-
-    let emailAlias = ticket.emailAlias?.trim().toLowerCase();
-
-// 🔁 fallback for older / inbound-created tickets
-if (!emailAlias) {
-  const fallback = company.supportEmails.find((e) => e.inboundEnabled);
-  emailAlias = fallback?.email?.toLowerCase();
-}
-
-const supportEmail = company.supportEmails.find(
-  (e) => e.email?.toLowerCase() === emailAlias
-);
-
-if (!supportEmail) {
-  console.log("❌ Alias:", emailAlias);
-  console.log("❌ Company support emails:", company.supportEmails);
-
-  return Response.json(
-    { success: false, msg: "Support mailbox missing" },
-    { status: 400 }
-  );
-}
-
-
-    if (!supportEmail) {
-      return Response.json({ success: false, msg: "Support mailbox missing" }, { status: 400 });
-    }
-
-    /* ================= ATTACHMENTS ================= */
-    const uploaded = [];
-
-    for (const file of files) {
-      const buf = Buffer.from(await file.arrayBuffer());
-      const res = await cloudinary.uploader.upload(
-        `data:${file.type};base64,${buf.toString("base64")}`,
-        { folder: `helpdesk/${ticketId}` }
-      );
-
-      uploaded.push({
-        filename: file.name,
-        url: res.secure_url,
-        contentType: file.type,
-        size: buf.length,
-      });
-    }
-
-    const html = `<p>${messageText.replace(/\n/g, "<br>")}</p>`;
-
-    /* ================= SEND ================= */
-
-    if (supportEmail.type === "outlook") {
-      await sendOutlookReply({
-        supportEmail,
-        ticket,
-        html,
-      });
-    } else {
-      const transporter = nodemailer.createTransport({
-        host: supportEmail.type === "gmail" ? "smtp.gmail.com" : process.env.SMTP_HOST,
-        port: 587,
-        secure: false,
-        auth: {
-          user: supportEmail.email,
-          pass: supportEmail.appPassword,
-        },
-      });
-
-      await transporter.sendMail({
-        from: supportEmail.email,
-        to: ticket.customerEmail,
-        subject: `Re: ${ticket.subject}`,
-        html,
-      });
-    }
-
-    /* ================= SAVE ================= */
-
-    ticket.messages.push({
-      sender: userPayload.id,
-      senderType: "agent",
-      message: messageText,
-      attachments: uploaded,
-      createdAt: new Date(),
-    });
-
-    ticket.status = "in-progress";
-    ticket.lastAgentReplyAt = new Date();
-    await ticket.save();
-
-    const updated = await Ticket.findById(ticketId)
-      .populate("messages.sender", "name email avatar")
-      .lean();
-
-    return Response.json({ success: true, ticket: updated });
-  } catch (err) {
-    console.error("Reply Error:", err);
-    return Response.json({ success: false, msg: err.message }, { status: 500 });
-  }
+  return Response.json({ success: true });
 }
 
 

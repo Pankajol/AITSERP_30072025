@@ -127,8 +127,12 @@ export async function POST(req) {
         subject: message.subject || "No Subject",
         html: message.body?.content || "",
 
-        conversationId: message.conversationId,
-        messageId: message.internetMessageId,
+        
+  // 🔥 BOTH IDS
+  graphMessageId: message.id,
+  messageId: message.internetMessageId,
+  conversationId: message.conversationId,
+       
 
         attachments: (message.attachments || [])
           .filter((a) => a["@odata.type"] === "#microsoft.graph.fileAttachment")

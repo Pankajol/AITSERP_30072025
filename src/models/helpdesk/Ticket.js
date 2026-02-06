@@ -23,15 +23,24 @@ const TicketMessageSchema = new mongoose.Schema(
       type: String,
     },
 
+
+    
     message: {
       type: String,
       required: true,
     },
         // 🔥 NEW (Graph ID – used for reply + threading)
+    // 🔥 Outlook Graph ID (REPLY uses this)
     graphMessageId: { type: String, index: true },
 
+    // 🔁 Internet RFC id (reference only)
+    internetMessageId: { type: String, index: true },
+
+    // legacy search
+    messageId: { type: String, index: true },
+
     // optional – for reference only
-    internetMessageId:  { type: String},
+ 
     attachments: [
       {
         filename: String,
@@ -149,6 +158,7 @@ const TicketSchema = new mongoose.Schema(
 
     emailThreadId: {
       type: String,
+      required: true,
       index: true,
     },
 
