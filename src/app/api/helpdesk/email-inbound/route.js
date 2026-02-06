@@ -92,13 +92,13 @@ export async function POST(req) {
     }
 
     /* ===== ONLY conversationId ===== */
+const threadId = normalizeId(rawData.conversationId);
 
-    const threadId = normalizeId(rawData.conversationId);
+if (!threadId) {
+  console.log("❌ Missing conversationId payload:", rawData);
+  return Response.json({ error: "conversationId missing" }, { status: 400 });
+}
 
-    if (!threadId) {
-      console.log("❌ conversationId missing");
-      return Response.json({ error: "conversationId missing" }, { status: 400 });
-    }
 
     const messageId = normalizeId(rawData.messageId || `outlook-${Date.now()}`);
 

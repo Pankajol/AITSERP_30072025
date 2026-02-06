@@ -163,7 +163,23 @@ export async function POST(req) {
         supportEmail: se,
       });
 
-      const inboundPayload = mapGraphPayload(message, userEmail);
+     const inboundPayload = {
+  from: message.from?.emailAddress?.address || "",
+  to: userEmail,
+  subject: message.subject || "No Subject",
+  html: message.body?.content || "",
+  conversationId: message.conversationId,
+  messageId: message.internetMessageId,
+  attachments: (message.attachments || [])
+    .filter(a => a["@odata.type"] === "#microsoft.graph.fileAttachment")
+    .map(a => ({
+      filename: a.name,
+      contentType: a.contentType,
+      size: a.size,
+      content: a.contentBytes,
+    })),
+};
+
 
       console.log("➡️ Calling inbound...");
 
