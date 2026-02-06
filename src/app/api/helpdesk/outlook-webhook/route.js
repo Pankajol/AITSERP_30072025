@@ -40,7 +40,7 @@ async function fetchMessage({ userEmail, messageId, supportEmail }) {
 
   if (!res.ok) throw new Error("Message fetch failed");
 
-  return { token, message: await res.json() };
+  return await res.json();
 }
 
 /* ================= VALIDATION ================= */
@@ -91,13 +91,14 @@ export async function POST(req) {
 
       if (!company) continue;
 
-      const se = company.supportEmails.find(e => e.type === "outlook");
+      const se = company.supportEmails.find((e) => e.type === "outlook");
       if (!se) continue;
 
       const token = await getGraphToken(se);
 
+      /* Resolve mailbox email */
       const userRes = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${userObjectId}`,
+        `https://graph.microsoft.com/v1.0/users/${userObjectId}?$select=mail,userPrincipalName`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -107,22 +108,31 @@ export async function POST(req) {
 
       if (!userEmail) continue;
 
-      const { message } = await fetchMessage({
+      const message = await fetchMessage({
         userEmail,
         messageId,
         supportEmail: se,
       });
 
+      /* 🔥 IMPORTANT FIX */
+      const toEmail =
+        message.toRecipients?.[0]?.emailAddress?.address ||
+        message.receivedRecipients?.[0]?.emailAddress?.address ||
+        userEmail;
+
       const inboundPayload = {
         from: message.from?.emailAddress?.address || "",
-        to: userEmail,
+        to: toEmail.toLowerCase(),
+
         subject: message.subject || "No Subject",
         html: message.body?.content || "",
+
         conversationId: message.conversationId,
         messageId: message.internetMessageId,
+
         attachments: (message.attachments || [])
-          .filter(a => a["@odata.type"] === "#microsoft.graph.fileAttachment")
-          .map(a => ({
+          .filter((a) => a["@odata.type"] === "#microsoft.graph.fileAttachment")
+          .map((a) => ({
             filename: a.name,
             contentType: a.contentType,
             size: a.size,
@@ -130,7 +140,8 @@ export async function POST(req) {
           })),
       };
 
-      console.log("🧵 SENDING conversationId:", inboundPayload.conversationId);
+      console.log("✅ INBOUND TO:", inboundPayload.to);
+      console.log("🧵 THREAD:", inboundPayload.conversationId);
 
       await fetch(
         `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/email-inbound?secret=${process.env.INBOUND_EMAIL_SECRET}`,
