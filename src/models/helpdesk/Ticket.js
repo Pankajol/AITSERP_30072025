@@ -60,7 +60,7 @@ const TicketMessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-     emailAlias: String,
+   
 
     sentiment: {
       type: String,
@@ -141,7 +141,7 @@ const TicketSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
-
+      emailAlias: {type: String},
     lastCustomerReplyAt: {
       type: Date,
       default: null,
