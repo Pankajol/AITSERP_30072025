@@ -117,11 +117,17 @@ if (body && body.includes("<")) {
 
     if (!fromEmail) return Response.json({ error: "Missing sender" }, { status: 400 });
 
-const messageId = normalizeId(
+const conversationId =
   rawData.conversationId ||
+  rawData.resourceData?.conversationId ||
+  rawData.resourceData?.id ||
+  "";
+
+const messageId = normalizeId(
   rawData.messageId ||
   rawData["Message-ID"] ||
   rawData.internetMessageId ||
+  rawData.resourceData?.id ||
   `outlook-${Date.now()}`
 );
 
@@ -152,12 +158,13 @@ const messageId = normalizeId(
     }
 
     // --- Find existing ticket (reply case) ---
-  const searchIds = [
-  rawData.conversationId,
+const searchIds = [
+  conversationId,
   inReplyTo,
   messageId,
   ...references,
 ].filter(Boolean);
+
 
 
     let ticket = null;
@@ -239,7 +246,8 @@ if (!customer) {
       agentId,
       sentiment,
       priority: sentiment === "negative" ? "high" : "normal",
-      emailThreadId: rawData.conversationId || messageId,
+      emailThreadId: conversationId || messageId,
+
 
       emailAlias: normalizedToEmail,
       messages: [],
