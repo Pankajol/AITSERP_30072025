@@ -12,4 +12,5 @@ jobs:
     steps:
       - name: Call Outlook Renew API
         run: |
-          curl -X GET "https://aitserp-30072025.vercel.app/api/helpdesk/outlook-renew?secret=${{ secrets.OUTLOOK_RENEW_SECRET }}"
+          curl -X POST \
+          "https://aitserp-30072025.vercel.app/api/helpdesk/outlook-renew?secret=${{ secrets.OUTLOOK_RENEW_SECRET }}"
