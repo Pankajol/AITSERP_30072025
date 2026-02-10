@@ -34,9 +34,9 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
 
-    if (searchParams.get("secret") !== process.env.CRON_SECRET) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
+ if (searchParams.get("secret") !== process.env.OUTLOOK_RENEW_SECRET) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
     await dbConnect();
 
