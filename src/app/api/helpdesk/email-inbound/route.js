@@ -4,6 +4,8 @@ import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
 import Customer from "@/models/CustomerModel";
 import Company from "@/models/Company";
+import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
+import { analyzeSentimentAI } from "@/utils/aiSentiment";
 import cloudinary from "@/lib/cloudinary";
 
 /* ================= HELPERS ================= */
@@ -129,10 +131,17 @@ export async function POST(req) {
       ticket.lastCustomerReplyAt = new Date();
       ticket.lastReplyAt = new Date();
 
-        if (ticket.status === "closed") {
-    ticket.status = "open";
-    ticket.autoClosed = false;
+       // reopen if closed
+   if (ticket.status === "closed") {
+  ticket.status = "open";
+  ticket.autoClosed = false;
+
+  // 🔥 AUTO ASSIGN AGAIN IF NO AGENT
+  if (!ticket.agentId) {
+    const agentId = await getNextAvailableAgent(ticket.customerId);
+    ticket.agentId = agentId || null;
   }
+}
 
       await ticket.save();
 
@@ -149,12 +158,16 @@ export async function POST(req) {
 
     const customer = await Customer.findOne({ emailId: from });
     if (!customer) throw new Error("Customer not registered");
+        const sentiment = await analyzeSentimentAI(body);
+     const agentId = await getNextAvailableAgent(customer);
 
     ticket = await Ticket.create({
       companyId: company._id,
       customerId: customer._id,
       customerEmail: from,
       subject,
+        agentId,
+        sentiment,
       emailAlias: to,
       emailThreadId: conversationId,
       source: "email",
@@ -169,6 +182,7 @@ export async function POST(req) {
       externalEmail: from,
       message: cleanBody,
       graphMessageId,
+      sentiment,
       internetMessageId,
       messageId: internetMessageId,
       attachments: uploaded,

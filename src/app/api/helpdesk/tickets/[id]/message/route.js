@@ -7,6 +7,7 @@ import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import cloudinary from "@/lib/cloudinary";
 
+
 /* ================= GRAPH TOKEN ================= */
 async function getGraphToken(se) {
   const params = new URLSearchParams({
@@ -202,6 +203,9 @@ export async function POST(req, { params }) {
 
     ticket.lastAgentReplyAt = new Date();
     ticket.status = "in-progress";
+   
+
+
     await ticket.save();
 
     return Response.json({ success: true });
