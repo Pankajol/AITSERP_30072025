@@ -21,40 +21,17 @@ async function getGraphToken(se) {
     }
   );
 
-
-  
-
   const data = await res.json();
   if (!data.access_token) throw new Error("Graph token failed");
   return data.access_token;
 }
 
-
-export async function GET(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-
- if (searchParams.get("secret") !== process.env.OUTLOOK_RENEW_SECRET) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-    await dbConnect();
-
-    // 🔁 renew logic yaha
-    await renewOutlookTokens();
-
-    return Response.json({ success: true });
-  } catch (err) {
-    console.error("Renew error:", err);
-    return Response.json({ error: err.message }, { status: 500 });
-  }
-}
-
-/* ================= POST ================= */
+/* ================= POST (CRON / MANUAL CALL) ================= */
 export async function POST(req) {
   try {
     const { searchParams } = new URL(req.url);
-    if (searchParams.get("secret") !== process.env.CRON_SECRET) {
+
+    if (searchParams.get("secret") !== process.env.OUTLOOK_RENEW_SECRET) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -71,7 +48,6 @@ export async function POST(req) {
 
       const token = await getGraphToken(se);
 
-      // 🔎 Existing subscriptions
       const subsRes = await fetch(
         "https://graph.microsoft.com/v1.0/subscriptions",
         { headers: { Authorization: `Bearer ${token}` } }
@@ -83,7 +59,7 @@ export async function POST(req) {
       );
 
       if (!sub) {
-        console.log("🆕 Creating new subscription for", se.email);
+        console.log("🆕 Creating subscription:", se.email);
 
         await fetch("https://graph.microsoft.com/v1.0/subscriptions", {
           method: "POST",
@@ -95,7 +71,9 @@ export async function POST(req) {
             changeType: "created",
             notificationUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/helpdesk/outlook-webhook`,
             resource: `/users/${se.email}/messages`,
-            expirationDateTime: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+            expirationDateTime: new Date(
+              Date.now() + 23 * 60 * 60 * 1000
+            ).toISOString(),
             clientState: process.env.OUTLOOK_WEBHOOK_SECRET,
           }),
         });
@@ -103,7 +81,6 @@ export async function POST(req) {
         continue;
       }
 
-      // 🔁 Renew subscription
       await fetch(
         `https://graph.microsoft.com/v1.0/subscriptions/${sub.id}`,
         {
@@ -113,12 +90,14 @@ export async function POST(req) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            expirationDateTime: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+            expirationDateTime: new Date(
+              Date.now() + 23 * 60 * 60 * 1000
+            ).toISOString(),
           }),
         }
       );
 
-      console.log("🔁 Renewed subscription:", se.email);
+      console.log("🔁 Renewed:", se.email);
     }
 
     return Response.json({ success: true });
