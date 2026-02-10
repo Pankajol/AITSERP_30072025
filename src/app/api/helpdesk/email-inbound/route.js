@@ -29,7 +29,7 @@ async function uploadAttachments(raw = [], ticketId) {
 
   for (const a of raw) {
     try {
-      if (!a?.content) continue;
+      if (!a?.content || !a?.contentType) continue;
 
       const buffer = Buffer.from(a.content, "base64");
 
@@ -42,7 +42,7 @@ async function uploadAttachments(raw = [], ticketId) {
       );
 
       uploaded.push({
-        filename: a.filename,
+        filename: a.filename || "attachment",
         url: res.secure_url,
         contentType: a.contentType,
         size: buffer.length,
@@ -90,13 +90,15 @@ export async function POST(req) {
 
     /* ================= DUPLICATE GUARD ================= */
 
-    const alreadyExists = await Ticket.findOne({
-      "messages.internetMessageId": internetMessageId,
-    });
+    if (internetMessageId) {
+      const alreadyExists = await Ticket.findOne({
+        "messages.internetMessageId": internetMessageId,
+      });
 
-    if (alreadyExists) {
-      console.log("⚠️ Duplicate ignored:", internetMessageId);
-      return Response.json({ success: true, duplicate: true });
+      if (alreadyExists) {
+        console.log("⚠️ Duplicate ignored:", internetMessageId);
+        return Response.json({ success: true, duplicate: true });
+      }
     }
 
     /* ================= FIND EXISTING ================= */
@@ -115,7 +117,10 @@ export async function POST(req) {
     /* ================= REPLY ================= */
 
     if (ticket) {
-      const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+      const uploaded = await uploadAttachments(
+        raw.attachments || [],
+        ticket._id
+      );
 
       ticket.messages.push({
         senderType: "customer",
@@ -131,20 +136,20 @@ export async function POST(req) {
       ticket.lastCustomerReplyAt = new Date();
       ticket.lastReplyAt = new Date();
 
-       // reopen if closed
-   if (ticket.status === "closed") {
-  ticket.status = "open";
-  ticket.autoClosed = false;
+      // 🔥 reopen closed ticket
+      if (ticket.status === "closed") {
+        ticket.status = "open";
+        ticket.autoClosed = false;
 
-  // 🔥 AUTO ASSIGN AGAIN IF NO AGENT
-  if (!ticket.agentId) {
-    const agentId = await getNextAvailableAgent(ticket.customerId);
-    ticket.agentId = agentId || null;
-  }
-}
+        if (!ticket.agentId) {
+          const customer = await Customer.findById(ticket.customerId);
+          if (customer) {
+            ticket.agentId = await getNextAvailableAgent(customer);
+          }
+        }
+      }
 
       await ticket.save();
-
       return Response.json({ success: true });
     }
 
@@ -158,16 +163,17 @@ export async function POST(req) {
 
     const customer = await Customer.findOne({ emailId: from });
     if (!customer) throw new Error("Customer not registered");
-        const sentiment = await analyzeSentimentAI(body);
-     const agentId = await getNextAvailableAgent(customer);
+
+    const sentiment = await analyzeSentimentAI(cleanBody);
+    const agentId = await getNextAvailableAgent(customer);
 
     ticket = await Ticket.create({
       companyId: company._id,
       customerId: customer._id,
       customerEmail: from,
       subject,
-        agentId,
-        sentiment,
+      agentId: agentId || null,
+      sentiment,
       emailAlias: to,
       emailThreadId: conversationId,
       source: "email",
@@ -175,16 +181,19 @@ export async function POST(req) {
       messages: [],
     });
 
-    const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
+    const uploaded = await uploadAttachments(
+      raw.attachments || [],
+      ticket._id
+    );
 
     ticket.messages.push({
       senderType: "customer",
       externalEmail: from,
       message: cleanBody,
       graphMessageId,
-      sentiment,
       internetMessageId,
       messageId: internetMessageId,
+      sentiment,
       attachments: uploaded,
       createdAt: new Date(),
     });
