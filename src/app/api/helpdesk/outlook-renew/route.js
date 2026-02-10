@@ -21,9 +21,33 @@ async function getGraphToken(se) {
     }
   );
 
+
+  
+
   const data = await res.json();
   if (!data.access_token) throw new Error("Graph token failed");
   return data.access_token;
+}
+
+
+export async function GET(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+
+    if (searchParams.get("secret") !== process.env.CRON_SECRET) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await dbConnect();
+
+    // 🔁 renew logic yaha
+    await renewOutlookTokens();
+
+    return Response.json({ success: true });
+  } catch (err) {
+    console.error("Renew error:", err);
+    return Response.json({ error: err.message }, { status: 500 });
+  }
 }
 
 /* ================= POST ================= */
