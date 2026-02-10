@@ -1,31 +1,15 @@
-name: Renew Microsoft Graph Subscriptions
+name: Outlook Token Renew Cron
 
 on:
   schedule:
-    # every 1 hours
-    - cron: '*/1 * * * *'
+    - cron: "0 */6 * * *"   # every 6 hours
   workflow_dispatch:
 
 jobs:
-  renew-subscription:
+  renew-outlook:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 20
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Run Graph Subscription Script
-        env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
-          NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
-          INBOUND_EMAIL_SECRET: ${{ secrets.INBOUND_EMAIL_SECRET }}
+      - name: Call Outlook Renew API
         run: |
-          curl -X GET https://aitserp-30072025.vercel.app/api/cron/process-campaigns"
+          curl -X GET "https://aitserp-30072025.vercel.app/api/helpdesk/outlook-renew?secret=${{ secrets.OUTLOOK_RENEW_SECRET }}"
