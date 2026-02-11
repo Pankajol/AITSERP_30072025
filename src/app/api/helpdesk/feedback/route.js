@@ -85,64 +85,64 @@ async function sendOutlookMail({ supportEmail, to, subject, html }) {
 
 /* ================= MAIN ================= */
 
-export async function GET(req) {
-  try {
-    await dbConnect();
+// export async function GET(req) {
+//   try {
+//     await dbConnect();
 
-    const { searchParams } = new URL(req.url);
-    const ticketId = searchParams.get("ticketId");
+//     const { searchParams } = new URL(req.url);
+//     const ticketId = searchParams.get("ticketId");
 
-    if (!ticketId) {
-      return Response.json({ error: "ticketId required" }, { status: 400 });
-    }
+//     if (!ticketId) {
+//       return Response.json({ error: "ticketId required" }, { status: 400 });
+//     }
 
-    const ticket = await Ticket.findById(ticketId);
-    if (!ticket) {
-      return Response.json({ error: "Ticket not found" }, { status: 404 });
-    }
+//     const ticket = await Ticket.findById(ticketId);
+//     if (!ticket) {
+//       return Response.json({ error: "Ticket not found" }, { status: 404 });
+//     }
 
-    const exists = await TicketFeedback.findOne({ ticketId });
-    if (exists) {
-      return Response.json({ error: "Feedback already submitted" }, { status: 409 });
-    }
+//     const exists = await TicketFeedback.findOne({ ticketId });
+//     if (exists) {
+//       return Response.json({ error: "Feedback already submitted" }, { status: 409 });
+//     }
 
-    const company = await Company.findById(ticket.companyId).select(
-      "+supportEmails.appPassword"
-    );
+//     const company = await Company.findById(ticket.companyId).select(
+//       "+supportEmails.appPassword"
+//     );
 
-    if (!company?.supportEmails?.length) {
-      throw new Error("No support mailbox configured");
-    }
+//     if (!company?.supportEmails?.length) {
+//       throw new Error("No support mailbox configured");
+//     }
 
-    // 🔥 use same alias as ticket
-    const alias = (ticket.emailAlias || "").toLowerCase();
+//     // 🔥 use same alias as ticket
+//     const alias = (ticket.emailAlias || "").toLowerCase();
 
-    const support = company.supportEmails.find(
-      (e) => e.type === "outlook" && e.email?.toLowerCase() === alias
-    );
+//     const support = company.supportEmails.find(
+//       (e) => e.type === "outlook" && e.email?.toLowerCase() === alias
+//     );
 
-    if (!support) throw new Error("Outlook support mailbox not found");
+//     if (!support) throw new Error("Outlook support mailbox not found");
 
-    const token = generateToken(ticket);
+//     const token = generateToken(ticket);
 
-    await sendOutlookMail({
-      supportEmail: support,
-      to: ticket.customerEmail,
-      subject: `How was our support? Ticket #${ticket._id}`,
-      html: feedbackEmail(ticket, token),
-    });
+//     await sendOutlookMail({
+//       supportEmail: support,
+//       to: ticket.customerEmail,
+//       subject: `How was our support? Ticket #${ticket._id}`,
+//       html: feedbackEmail(ticket, token),
+//     });
 
-    console.log("✅ Outlook feedback sent:", ticket.customerEmail);
+//     console.log("✅ Outlook feedback sent:", ticket.customerEmail);
 
-    return Response.json({
-      success: true,
-      message: "Feedback email sent",
-    });
-  } catch (err) {
-    console.error("❌ Feedback email error:", err);
-    return Response.json({ error: err.message }, { status: 500 });
-  }
-}
+//     return Response.json({
+//       success: true,
+//       message: "Feedback email sent",
+//     });
+//   } catch (err) {
+//     console.error("❌ Feedback email error:", err);
+//     return Response.json({ error: err.message }, { status: 500 });
+//   }
+// }
 
 
 
@@ -220,4 +220,48 @@ export async function GET(req) {
 //     );
 //   }
 // }
+
+
+export async function GET(req) {
+  try {
+    await dbConnect();
+
+    const { searchParams } = new URL(req.url);
+    const ticketId = searchParams.get("ticketId");
+
+    if (!ticketId) return Response.json({ error: "ticketId required" }, { status: 400 });
+
+    // populate('agentId') karke agent ki details le aayenge
+    const ticket = await Ticket.findById(ticketId).populate("agentId");
+    
+    if (!ticket) return Response.json({ error: "Ticket not found" }, { status: 404 });
+
+    // Ticket ko closed status mein update kar dein agar pehle se nahi hai
+    if (ticket.status !== "closed") {
+      ticket.status = "closed";
+      await ticket.save();
+    }
+
+    const company = await Company.findById(ticket.companyId).select("+supportEmails.appPassword");
+    const alias = (ticket.emailAlias || "").toLowerCase();
+    const support = company?.supportEmails?.find(e => e.email?.toLowerCase() === alias);
+
+    if (!support) throw new Error("Outlook support mailbox not found");
+
+    const token = generateToken(ticket);
+
+    // Subject ko informative banaya
+    await sendOutlookMail({
+      supportEmail: support,
+      to: ticket.customerEmail,
+      subject: `Ticket Closed: #${ticket.ticketNo || ticket._id.toString().slice(-6)} - ${ticket.subject}`,
+      html: feedbackEmail(ticket, token), 
+    });
+
+    return Response.json({ success: true, message: "Closure info & Feedback email sent" });
+  } catch (err) {
+    console.error("❌ Error:", err);
+    return Response.json({ error: err.message }, { status: 500 });
+  }
+}
 
