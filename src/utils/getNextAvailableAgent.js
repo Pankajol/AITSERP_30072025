@@ -1,71 +1,100 @@
 import CompanyUser from "@/models/CompanyUser";
 import Leave from "@/models/hr/Leave";
+import mongoose from "mongoose";
 
 export async function getNextAvailableAgent(customer) {
 
-  if (!customer?.assignedAgents?.length) {
-    console.log("❌ No assignedAgents");
+  if (!customer) {
+    console.log("❌ Customer missing");
     return null;
   }
+
+  if (!customer.companyId) {
+    console.log("❌ Customer companyId missing");
+    return null;
+  }
+
+  const companyId = new mongoose.Types.ObjectId(customer.companyId);
 
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  /* ================= FETCH AGENTS ================= */
+  /* ================= CUSTOMER ASSIGNED AGENTS ================= */
 
-  const agents = await CompanyUser.find({
-    _id: { $in: customer.assignedAgents },
-    companyId: customer.companyId,
+  if (customer.assignedAgents?.length) {
+
+    const agents = await CompanyUser.find({
+      _id: { $in: customer.assignedAgents },
+      companyId: companyId,   // ✅ HARD COMPANY FILTER
+      isActive: { $ne: false },
+    }).lean();
+
+    if (!agents.length) {
+      console.log("⚠️ Assigned agents exist but not from same company");
+    }
+
+    const leaves = await Leave.find({
+      agentId: { $in: agents.map(a => a._id) },
+      status: "Approved",
+      fromDate: { $lte: today },
+      toDate: { $gte: today },
+    }).select("agentId").lean();
+
+    const leaveSet = new Set(leaves.map(l => l.agentId.toString()));
+
+    const available = agents.filter(a => {
+
+      if (leaveSet.has(a._id.toString())) return false;
+
+      if (Array.isArray(a.holidays)) {
+        const isHoliday = a.holidays.some(d => {
+          const hd = new Date(d);
+          hd.setHours(0,0,0,0);
+          return hd.getTime() === today.getTime();
+        });
+        if (isHoliday) return false;
+      }
+
+      return true;
+    });
+
+    if (available.length) {
+
+      const nextIndex =
+        (customer.lastAssignedAgentIndex + 1) % available.length;
+
+      const selected = available[nextIndex];
+
+      await customer.constructor.updateOne(
+        { _id: customer._id },
+        { $set: { lastAssignedAgentIndex: nextIndex } }
+      );
+
+      console.log("🎯 Assigned from SAME company:", selected._id.toString());
+
+      return selected._id;
+    }
+  }
+
+  /* ================= FALLBACK AGENT (STRICT COMPANY) ================= */
+
+  const fallbackAgents = await CompanyUser.find({
+    companyId: companyId,   // ✅ STRICT COMPANY FILTER
+    roles: { $in: ["Agent","Support Executive"] },
     isActive: { $ne: false },
   }).lean();
 
-  if (!agents.length) return null;
+  if (!fallbackAgents.length) {
+    console.log("❌ No agents in this company");
+    return null;
+  }
 
-  /* ================= LEAVE CHECK (BATCH) ================= */
+  const random =
+    fallbackAgents[Math.floor(Math.random() * fallbackAgents.length)];
 
-  const leaves = await Leave.find({
-    agentId: { $in: agents.map(a => a._id) },
-    status: "Approved",
-    fromDate: { $lte: today },
-    toDate: { $gte: today },
-  }).select("agentId").lean();
+  console.log("⚡ Fallback SAME company agent:", random._id.toString());
 
-  const leaveSet = new Set(leaves.map(l => l.agentId.toString()));
-
-  /* ================= FILTER AVAILABLE ================= */
-
-  const available = agents.filter(a => {
-
-    if (leaveSet.has(a._id.toString())) return false;
-
-    if (Array.isArray(a.holidays)) {
-      const isHoliday = a.holidays.some(d => {
-        const hd = new Date(d);
-        hd.setHours(0,0,0,0);
-        return hd.getTime() === today.getTime();
-      });
-
-      if (isHoliday) return false;
-    }
-
-    return true;
-  });
-
-  if (!available.length) return null;
-
-  /* ================= ROUND ROBIN (INDEX BASED) ================= */
-
-  let nextIndex = (customer.lastAssignedAgentIndex + 1) % available.length;
-  const selected = available[nextIndex];
-
-  await customer.constructor.updateOne(
-    { _id: customer._id },
-    { $set: { lastAssignedAgentIndex: nextIndex } }
-  );
-
-  console.log("🎯 Assigned agent:", selected._id.toString());
-
-  return selected._id;
+  return random._id;
 }
 
 
