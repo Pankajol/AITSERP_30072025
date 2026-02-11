@@ -41,6 +41,7 @@ export default function CustomerManagement() {
     commissionRate: "",
     glAccount: null,
      assignedAgents: [],
+      contactEmails: [], 
   });
 
 
@@ -167,14 +168,14 @@ const handleAgentToggle = (userId) => {
   const validate = () => {
     const required = [
       "customerName",
-      "customerGroup",
-      "customerType",
-      "emailId",
-      "mobileNumber",
-      "gstNumber",
-      "gstCategory",
-      "pan",
-      "glAccount",
+      // "customerGroup",
+      // "customerType",
+      // "emailId",
+      // "mobileNumber",
+      // "gstNumber",
+      // "gstCategory",
+      // "pan",
+      // "glAccount",
     ];
 
     for (let field of required) {
@@ -187,6 +188,28 @@ const handleAgentToggle = (userId) => {
 
     return true;
   };
+
+
+  const addContactEmail = () => {
+  setCustomerDetails(prev => ({
+    ...prev,
+    contactEmails: [...(prev.contactEmails || []), { email: "", name: "" }]
+  }));
+};
+
+const removeContactEmail = (idx) => {
+  setCustomerDetails(prev => ({
+    ...prev,
+    contactEmails: prev.contactEmails.filter((_, i) => i !== idx)
+  }));
+};
+
+const handleContactEmailChange = (idx, field, value) => {
+  const arr = [...customerDetails.contactEmails];
+  arr[idx][field] = value;
+  setCustomerDetails(prev => ({ ...prev, contactEmails: arr }));
+};
+
 
   /* ✅ SUBMIT FORM */
   const handleSubmit = async (e) => {
@@ -242,6 +265,7 @@ const handleAgentToggle = (userId) => {
       commissionRate: "",
       glAccount: null,
       assignedAgents: [],
+       contactEmails: [], 
     });
 
     setView("list");
@@ -251,6 +275,7 @@ const handleAgentToggle = (userId) => {
  const handleEdit = (c) => {
   setCustomerDetails({
     ...c,
+    contactEmails: c.contactEmails || [],
     assignedAgents: (c.assignedAgents || []).map((a) =>
       typeof a === "string" ? a : a._id
     ),
@@ -488,7 +513,7 @@ const handleBulkUpload = async (e) => {
         <table className="min-w-full bg-white divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {["Code", "Name", "Email", "Group", "Type", "GL Account","Assigned Agents", "Actions"].map(
+              {["Code", "Name", "Email", "Group", "Type", "Contact Emails","GL Account","Assigned Agents", "Actions"].map(
                 (h) => (
                   <th key={h} className="px-4 py-2 text-left text-sm font-medium">
                     {h}
@@ -505,6 +530,9 @@ const handleBulkUpload = async (e) => {
                 <td className="px-4 py-2">{c.emailId}</td>
                 <td className="px-4 py-2">{c.customerGroup}</td>
                 <td className="px-4 py-2">{c.customerType}</td>
+                <td>
+  {c.contactEmails?.map(e => e.email).join(", ") || "-"}
+</td>
             
                 <td className="px-4 py-2">{c.glAccount?.accountName || "N/A"}</td>
               <td className="px-4 py-2 text-sm">
@@ -646,6 +674,53 @@ const renderFormView = () => (
           />
         </div>
       </div>
+
+
+      {/* 🔥 CONTACT EMAILS (MULTIPLE EMPLOYEES) */}
+<div className="border p-4 rounded bg-gray-50">
+  <h3 className="text-sm font-bold mb-3">
+    Company Contact Emails (Employees)
+  </h3>
+
+  {customerDetails.contactEmails?.map((c, i) => (
+    <div key={i} className="grid grid-cols-3 gap-3 mb-2">
+      <input
+        placeholder="Employee Name"
+        value={c.name || ""}
+        onChange={(e) =>
+          handleContactEmailChange(i, "name", e.target.value)
+        }
+        className="border p-2 rounded"
+      />
+
+      <input
+        placeholder="Employee Email"
+        value={c.email || ""}
+        onChange={(e) =>
+          handleContactEmailChange(i, "email", e.target.value)
+        }
+        className="border p-2 rounded"
+      />
+
+      <button
+        type="button"
+        onClick={() => removeContactEmail(i)}
+        className="text-red-600"
+      >
+        <FaMinus />
+      </button>
+    </div>
+  ))}
+
+  <button
+    type="button"
+    onClick={addContactEmail}
+    className="text-blue-600 flex items-center gap-2"
+  >
+    <FaPlus /> Add Employee Email
+  </button>
+</div>
+
 
       {/* Billing Addresses */}
       <h3 className="text-lg font-semibold">Billing Addresses</h3>

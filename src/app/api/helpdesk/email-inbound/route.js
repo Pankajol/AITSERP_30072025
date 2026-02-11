@@ -22,6 +22,125 @@ function cleanHtml(v) {
     .trim();
 }
 
+/* ================= GRAPH TOKEN ================= */
+
+async function getGraphToken(se) {
+  const params = new URLSearchParams({
+    client_id: se.clientId,
+    client_secret: se.appPassword,
+    grant_type: "client_credentials",
+    scope: "https://graph.microsoft.com/.default",
+  });
+
+  const res = await fetch(
+    `https://login.microsoftonline.com/${se.tenantId}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    }
+  );
+
+  const data = await res.json();
+  if (!data.access_token) throw new Error("Graph token failed");
+  return data.access_token;
+}
+
+/* ================= OUTLOOK AUTO MAIL ================= */
+
+async function sendOutlookAutoReply({ to, subject, html, companyEmail }) {
+  const company = await Company.findOne({
+    "supportEmails.email": companyEmail,
+  }).select("+supportEmails.appPassword");
+
+  if (!company) return;
+
+  const se = company.supportEmails.find(
+    (e) => e.email?.toLowerCase() === companyEmail.toLowerCase()
+  );
+  if (!se) return;
+
+  const token = await getGraphToken(se);
+
+  await fetch(
+    `https://graph.microsoft.com/v1.0/users/${se.email}/sendMail`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: "HTML", content: html },
+          toRecipients: [{ emailAddress: { address: to } }],
+        },
+        saveToSentItems: true,
+      }),
+    }
+  );
+}
+
+
+/* ================= SEND MAIL TO AGENT ================= */
+
+async function sendAgentAssignedMail({ agentEmail, ticket, companyEmail }) {
+  try {
+    const company = await Company.findOne({
+      "supportEmails.email": companyEmail,
+    }).select("+supportEmails.appPassword");
+
+    if (!company) return;
+
+    const se = company.supportEmails.find(
+      (e) => e.email?.toLowerCase() === companyEmail.toLowerCase()
+    );
+
+    if (!se) return;
+
+    const token = await getGraphToken(se);
+
+    await fetch(
+      `https://graph.microsoft.com/v1.0/users/${se.email}/sendMail`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: {
+            subject: `🎫 New Ticket Assigned #${ticket._id}`,
+            body: {
+              contentType: "HTML",
+              content: `
+                <p>Hello,</p>
+                <p>A new support ticket has been assigned to you.</p>
+
+                <p><b>Ticket ID:</b> ${ticket._id}</p>
+                <p><b>Customer:</b> ${ticket.customerEmail}</p>
+                <p><b>Subject:</b> ${ticket.subject}</p>
+
+                <p>Please login to helpdesk and respond.</p>
+              `,
+            },
+            toRecipients: [
+              {
+                emailAddress: { address: agentEmail },
+              },
+            ],
+          },
+          saveToSentItems: true,
+        }),
+      }
+    );
+  } catch (err) {
+    console.log("⚠️ Agent mail send failed:", err.message);
+  }
+}
+
+
 /* ================= ATTACHMENT UPLOADER ================= */
 
 async function uploadAttachments(raw = [], ticketId) {
@@ -60,7 +179,6 @@ async function uploadAttachments(raw = [], ticketId) {
 export async function POST(req) {
   try {
     const { searchParams } = new URL(req.url);
-
     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
@@ -71,7 +189,7 @@ export async function POST(req) {
 
     const from = clean(raw.from);
     const to = clean(raw.to);
-    const subject = raw.subject || "";
+    const subject = raw.subject || "No Subject";
     const html = raw.html || "";
 
     const conversationId = raw.conversationId;
@@ -80,31 +198,25 @@ export async function POST(req) {
 
     if (!conversationId) throw new Error("conversationId missing");
 
-    const cleanBody = cleanHtml(html);
+    const bodyText = cleanHtml(html);
 
-    const searchIds = [
-      conversationId,
-      graphMessageId,
-      internetMessageId,
-    ].filter(Boolean);
+    const searchIds = [conversationId, graphMessageId, internetMessageId].filter(Boolean);
 
     /* ================= DUPLICATE GUARD ================= */
 
     if (internetMessageId) {
-      const alreadyExists = await Ticket.findOne({
+      const exists = await Ticket.findOne({
         "messages.internetMessageId": internetMessageId,
       });
-
-      if (alreadyExists) {
+      if (exists) {
         console.log("⚠️ Duplicate ignored:", internetMessageId);
         return Response.json({ success: true, duplicate: true });
       }
     }
 
-    /* ================= FIND EXISTING ================= */
+    /* ================= FIND EXISTING TICKET ================= */
 
     let ticket = null;
-
     if (searchIds.length) {
       ticket = await Ticket.findOne({
         $or: [
@@ -117,15 +229,12 @@ export async function POST(req) {
     /* ================= REPLY ================= */
 
     if (ticket) {
-      const uploaded = await uploadAttachments(
-        raw.attachments || [],
-        ticket._id
-      );
+      const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
 
       ticket.messages.push({
         senderType: "customer",
         externalEmail: from,
-        message: cleanBody,
+        message: bodyText,
         graphMessageId,
         internetMessageId,
         messageId: internetMessageId,
@@ -141,7 +250,7 @@ export async function POST(req) {
         ticket.status = "open";
         ticket.autoClosed = false;
 
-        if (!ticket.agentId) {
+        if (!ticket.agentId && ticket.customerId) {
           const customer = await Customer.findById(ticket.customerId);
           if (customer) {
             ticket.agentId = await getNextAvailableAgent(customer);
@@ -158,13 +267,29 @@ export async function POST(req) {
     const company = await Company.findOne({
       "supportEmails.email": to,
     });
-
     if (!company) throw new Error("Mailbox not registered");
 
-    const customer = await Customer.findOne({ emailId: from });
-    if (!customer) throw new Error("Customer not registered");
+    const customer = await Customer.findOne({
+      $or: [{ emailId: from }, { "contactEmails.email": from }],
+    });
 
-    const sentiment = await analyzeSentimentAI(cleanBody);
+    /* UNKNOWN SENDER */
+    if (!customer) {
+      await sendOutlookAutoReply({
+        to: from,
+        subject,
+        html: `
+          <p>Hello,</p>
+          <p>Your email was received but you are not registered in our support system.</p>
+          <p>Please contact admin.</p>
+        `,
+        companyEmail: to,
+      });
+
+      return Response.json({ success: true, unknown: true });
+    }
+
+    const sentiment = await analyzeSentimentAI(bodyText);
     const agentId = await getNextAvailableAgent(customer);
 
     ticket = await Ticket.create({
@@ -181,15 +306,12 @@ export async function POST(req) {
       messages: [],
     });
 
-    const uploaded = await uploadAttachments(
-      raw.attachments || [],
-      ticket._id
-    );
+    const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
 
     ticket.messages.push({
       senderType: "customer",
       externalEmail: from,
-      message: cleanBody,
+      message: bodyText,
       graphMessageId,
       internetMessageId,
       messageId: internetMessageId,
@@ -203,6 +325,29 @@ export async function POST(req) {
 
     await ticket.save();
 
+    /* CUSTOMER CONFIRMATION MAIL */
+    await sendOutlookAutoReply({
+      to: from,
+      subject: `Ticket Created – ${subject}`,
+      html: `
+        <p>Your ticket has been created successfully.</p>
+        <p><b>Ticket ID:</b> ${ticket._id}</p>
+      `,
+      companyEmail: to,
+    });
+   /* ================= SEND MAIL TO AGENT ================= */
+    if (ticket.agentId) {
+  const agent = await CompanyUser.findById(ticket.agentId);
+
+  if (agent?.email) {
+    await sendAgentAssignedMail({
+      agentEmail: agent.email,
+      ticket,
+      companyEmail: to,
+    });
+  }
+}
+
     return Response.json({ success: true });
   } catch (e) {
     console.error("INBOUND:", e);
@@ -212,9 +357,7 @@ export async function POST(req) {
 
 
 
-
-
-
+// flow currect 
 
 // export const runtime = "nodejs";
 
@@ -222,19 +365,69 @@ export async function POST(req) {
 // import Ticket from "@/models/helpdesk/Ticket";
 // import Customer from "@/models/CustomerModel";
 // import Company from "@/models/Company";
+// import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
+// import { analyzeSentimentAI } from "@/utils/aiSentiment";
 // import cloudinary from "@/lib/cloudinary";
 
-// /* helpers */
+// /* ================= HELPERS ================= */
+
 // const clean = (v) => String(v || "").trim().toLowerCase();
+
+// function cleanHtml(v) {
+//   return String(v || "")
+//     .replace(/<style[\s\S]*?<\/style>/gi, "")
+//     .replace(/<script[\s\S]*?<\/script>/gi, "")
+//     .replace(/<\/?[^>]+>/g, "")
+//     .replace(/&nbsp;/g, " ")
+//     .split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0]
+//     .trim();
+// }
+
+// /* ================= ATTACHMENT UPLOADER ================= */
+
+// async function uploadAttachments(raw = [], ticketId) {
+//   const uploaded = [];
+
+//   for (const a of raw) {
+//     try {
+//       if (!a?.content || !a?.contentType) continue;
+
+//       const buffer = Buffer.from(a.content, "base64");
+
+//       const res = await cloudinary.uploader.upload(
+//         `data:${a.contentType};base64,${buffer.toString("base64")}`,
+//         {
+//           folder: `helpdesk/tickets/${ticketId}`,
+//           resource_type: "auto",
+//         }
+//       );
+
+//       uploaded.push({
+//         filename: a.filename || "attachment",
+//         url: res.secure_url,
+//         contentType: a.contentType,
+//         size: buffer.length,
+//       });
+//     } catch (err) {
+//       console.error("Attachment upload failed:", err.message);
+//     }
+//   }
+
+//   return uploaded;
+// }
+
+// /* ================= MAIN ================= */
 
 // export async function POST(req) {
 //   try {
 //     const { searchParams } = new URL(req.url);
+
 //     if (searchParams.get("secret") !== process.env.INBOUND_EMAIL_SECRET) {
 //       return Response.json({ error: "unauthorized" }, { status: 401 });
 //     }
 
 //     await dbConnect();
+
 //     const raw = await req.json();
 
 //     const from = clean(raw.from);
@@ -246,61 +439,50 @@ export async function POST(req) {
 //     const graphMessageId = raw.graphMessageId;
 //     const internetMessageId = raw.messageId;
 
-//     const searchIds = [
-//   conversationId,
-//   graphMessageId,
-//   internetMessageId,
-// ].filter(Boolean);
-
-// // 🔐 DUPLICATE MESSAGE GUARD (Outlook double webhook)
-// const alreadyExists = await Ticket.findOne({
-//   "messages.internetMessageId": internetMessageId,
-// });
-
-// if (alreadyExists) {
-//   console.log("⚠️ Duplicate email ignored:", internetMessageId);
-//   return Response.json({ success: true, duplicate: true });
-// }
-
-
 //     if (!conversationId) throw new Error("conversationId missing");
+
+//     const cleanBody = cleanHtml(html);
+
+//     const searchIds = [
+//       conversationId,
+//       graphMessageId,
+//       internetMessageId,
+//     ].filter(Boolean);
+
+//     /* ================= DUPLICATE GUARD ================= */
+
+//     if (internetMessageId) {
+//       const alreadyExists = await Ticket.findOne({
+//         "messages.internetMessageId": internetMessageId,
+//       });
+
+//       if (alreadyExists) {
+//         console.log("⚠️ Duplicate ignored:", internetMessageId);
+//         return Response.json({ success: true, duplicate: true });
+//       }
+//     }
 
 //     /* ================= FIND EXISTING ================= */
 
-//     // let ticket = await Ticket.findOne({
-//     //   emailThreadId: conversationId,
-//     // });
 //     let ticket = null;
-// if (searchIds.length) {
-//   ticket = await Ticket.findOne({
-//     $or: [
-//       { emailThreadId: { $in: searchIds } },
-//       { "messages.messageId": { $in: searchIds } },
-//     ],
-//   });
-// }
 
-// // 🔐 DUPLICATE MESSAGE GUARD
-// // const alreadyExists = await Ticket.findOne({
-// //   "messages.internetMessageId": messageId,
-// // });
-
-// // if (alreadyExists) {
-// //   console.log("⚠️ Duplicate email ignored:", messageId);
-// //   return Response.json({ success: true, duplicate: true });
-// // }
-
-
-//   const cleanBody = html
-//   .replace(/<style[\s\S]*?<\/style>/gi, "")
-//   .replace(/<script[\s\S]*?<\/script>/gi, "")
-//   .replace(/<\/?[^>]+>/g, "")
-//   .replace(/&nbsp;/g, " ")
-//   .split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0]
-//   .trim();
+//     if (searchIds.length) {
+//       ticket = await Ticket.findOne({
+//         $or: [
+//           { emailThreadId: { $in: searchIds } },
+//           { "messages.messageId": { $in: searchIds } },
+//         ],
+//       });
+//     }
 
 //     /* ================= REPLY ================= */
+
 //     if (ticket) {
+//       const uploaded = await uploadAttachments(
+//         raw.attachments || [],
+//         ticket._id
+//       );
+
 //       ticket.messages.push({
 //         senderType: "customer",
 //         externalEmail: from,
@@ -308,16 +490,31 @@ export async function POST(req) {
 //         graphMessageId,
 //         internetMessageId,
 //         messageId: internetMessageId,
+//         attachments: uploaded,
 //         createdAt: new Date(),
 //       });
 
 //       ticket.lastCustomerReplyAt = new Date();
-//       await ticket.save();
+//       ticket.lastReplyAt = new Date();
 
+//       // 🔥 reopen closed ticket
+//       if (ticket.status === "closed") {
+//         ticket.status = "open";
+//         ticket.autoClosed = false;
+
+//         if (!ticket.agentId) {
+//           const customer = await Customer.findById(ticket.customerId);
+//           if (customer) {
+//             ticket.agentId = await getNextAvailableAgent(customer);
+//           }
+//         }
+//       }
+
+//       await ticket.save();
 //       return Response.json({ success: true });
 //     }
 
-//     /* ================= NEW ================= */
+//     /* ================= NEW TICKET ================= */
 
 //     const company = await Company.findOne({
 //       "supportEmails.email": to,
@@ -328,18 +525,27 @@ export async function POST(req) {
 //     const customer = await Customer.findOne({ emailId: from });
 //     if (!customer) throw new Error("Customer not registered");
 
+//     const sentiment = await analyzeSentimentAI(cleanBody);
+//     const agentId = await getNextAvailableAgent(customer);
+
 //     ticket = await Ticket.create({
 //       companyId: company._id,
 //       customerId: customer._id,
 //       customerEmail: from,
 //       subject,
+//       agentId: agentId || null,
+//       sentiment,
 //       emailAlias: to,
 //       emailThreadId: conversationId,
+//       source: "email",
+//       status: "open",
 //       messages: [],
 //     });
 
-
-  
+//     const uploaded = await uploadAttachments(
+//       raw.attachments || [],
+//       ticket._id
+//     );
 
 //     ticket.messages.push({
 //       senderType: "customer",
@@ -348,7 +554,13 @@ export async function POST(req) {
 //       graphMessageId,
 //       internetMessageId,
 //       messageId: internetMessageId,
+//       sentiment,
+//       attachments: uploaded,
+//       createdAt: new Date(),
 //     });
+
+//     ticket.lastCustomerReplyAt = new Date();
+//     ticket.lastReplyAt = new Date();
 
 //     await ticket.save();
 
@@ -358,6 +570,8 @@ export async function POST(req) {
 //     return Response.json({ error: e.message }, { status: 500 });
 //   }
 // }
+
+
 
 
 

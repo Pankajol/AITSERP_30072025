@@ -216,6 +216,19 @@ lastAssignedAgentIndex: {
    
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
   },
+  emailId: {
+  type: String,
+  match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
+},
+
+// 🔥 ADD THIS
+contactEmails: [
+  {
+    email: { type: String, lowercase: true, trim: true },
+    name: String,
+    designation: String,
+  }
+],
   fromLead: { type: String, trim: true },
   mobileNumber: {
     type: String,
