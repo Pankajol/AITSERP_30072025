@@ -270,6 +270,7 @@ export async function POST(req) {
     if (!company) throw new Error("Mailbox not registered");
 
     const customer = await Customer.findOne({
+      companyId: company._id, 
       $or: [{ emailId: from }, { "contactEmails.email": from }],
     });
 
@@ -291,6 +292,18 @@ export async function POST(req) {
 
     const sentiment = await analyzeSentimentAI(bodyText);
     const agentId = await getNextAvailableAgent(customer);
+
+    if (agentId) {
+  const agent = await CompanyUser.findOne({
+    _id: agentId,
+    companyId: company._id,   // HARD VERIFY
+  });
+
+  if (!agent) {
+    console.log("🚫 Cross company agent blocked");
+    agentId = null;
+  }
+}
 
     ticket = await Ticket.create({
       companyId: company._id,
