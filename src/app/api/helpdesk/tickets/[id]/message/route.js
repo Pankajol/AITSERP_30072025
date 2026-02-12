@@ -33,15 +33,63 @@ async function getGraphToken(se) {
 }
 
 /* ================= CLEAN BODY ================= */
+const clean = (v) => String(v || "").trim().toLowerCase();
+
+/* ================= ULTRA MAIL BODY CLEANER ================= */
+
 function cleanHtml(v) {
-  return String(v || "")
+  if (!v) return "";
+
+  let text = String(v)
+
+    /* 🔥 remove style/script */
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
+
+    /* 🔥 convert breaks to newline */
+    .replace(/<br\s*\/?>/gi, "\n")
+
+    /* 🔥 remove html tags */
     .replace(/<\/?[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0]
+
+    /* 🔥 html entities */
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+
     .trim();
+
+  /* ================= CUT OUTLOOK / GMAIL REPLY HEADER ================= */
+  text = text.split(/From:\s|Sent:\s|To:\s|Subject:\s/i)[0];
+
+  /* ================= REMOVE SIGNATURE ================= */
+  const signaturePatterns = [
+    /thanks\s*&?\s*regards[\s\S]*/i,
+    /best\s*regards[\s\S]*/i,
+    /warm\s*regards[\s\S]*/i,
+    /kind\s*regards[\s\S]*/i,
+    /regards[\s\S]*/i,
+    /sent\s*from\s*my[\s\S]*/i,
+    /--\s*\n[\s\S]*/i,
+  ];
+
+  for (const pattern of signaturePatterns) {
+    if (pattern.test(text)) {
+      text = text.split(pattern)[0];
+      break;
+    }
+  }
+
+  /* ================= CLEAN EXTRA SPACES ================= */
+  text = text
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
 }
+
 
 /* ================= MAIN ================= */
 export async function POST(req, { params }) {
