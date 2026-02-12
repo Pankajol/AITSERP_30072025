@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Call Helpdesk Cron API
         run: |
-          curl -X GET https://aitserp-30072025.vercel.app/api/cron/run?secret=${{ secrets.CRON_SECRET }}"
+          curl -X POST https://aitserp-30072025.vercel.app/api/cron/run?secret=${{ secrets.CRON_SECRET }}"
