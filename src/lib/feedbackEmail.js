@@ -29,18 +29,22 @@ export default function feedbackEmail(ticket, token) {
 
           <tr>
             <td style="padding:35px 30px; color:#334155;">
-              <p style="margin:0 0 15px; font-size:16px;">Hello,</p>
-              <p style="margin:0 0 20px; font-size:15px; line-height:1.6;">
-                Aapka ticket successfully resolve kar diya gaya hai aur ab yeh <b>Closed</b> status mein hai.
-              </p>
+           <p style="margin:0 0 15px; font-size:16px;">Hello,</p>
 
-              
-              <div style="background:#fff7ed; border-left:4px solid #f97316; padding:16px; margin-bottom:25px; border-radius:4px;">
-                <p style="margin:0; font-size:14px; color:#9a3412; font-weight:700;">📩 Reopen Kaise Karein?</p>
-                <p style="margin:5px 0 0; font-size:13px; color:#c2410c; line-height:1.4;">
-                  Agar aap satisfy nahi hain ya issue abhi bhi baaki hai, toh naya ticket na banayein. Bas <b>isi email ka reply karein</b> aur yeh ticket apne aap reopen ho jayega.
-                </p>
-              </div>
+<p style="margin:0 0 20px; font-size:15px; line-height:1.6;">
+  Your support ticket has been successfully resolved and is now in <b>Closed</b> status.
+</p>
+
+<div style="background:#fff7ed; border-left:4px solid #f97316; padding:16px; margin-bottom:25px; border-radius:4px;">
+  <p style="margin:0; font-size:14px; color:#9a3412; font-weight:700;">
+    📩 How to Reopen?
+  </p>
+  <p style="margin:5px 0 0; font-size:13px; color:#c2410c; line-height:1.4;">
+    If you are not satisfied or the issue still persists, please do not create a new ticket.
+    Simply <b>reply to this email</b>, and this ticket will automatically reopen.
+  </p>
+</div>
+
 
               <table width="100%" cellpadding="12" cellspacing="0" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:25px; font-size:14px;">
                 <tr>
