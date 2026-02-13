@@ -73,7 +73,7 @@
 
 // components/CustomerSearch.js
 "use client";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import useSearch from "../hooks/useSearch";
 import api from "@/utils/api";
 
@@ -81,18 +81,40 @@ export default function CustomerSearch({ onSelectCustomer }) {
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [selected, setSelected] = useState(null);
+  const wrapperRef = useRef(null);
 
   const customerSearch = useSearch(async (q) => {
-    if (!q) return [];
-    const res = await api.get(`/customers?search=${encodeURIComponent(q)}`);
-    return res.data.success ? res.data.data : [];
+    // empty search = return first customers
+    const res = await api.get(`/customers?search=${encodeURIComponent(q || "")}`);
+    return res.data?.data || [];
   });
 
-  const handleChange = (e) => {
-    setQuery(e.target.value);
-    customerSearch.handleSearch(e.target.value);
+  /* close on outside click */
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleChange = async (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    setSelected(null);
     setShowDropdown(true);
-    if (selected) setSelected(null);
+    await customerSearch.handleSearch(val);
+  };
+
+  const handleFocus = async () => {
+    setShowDropdown(true);
+
+    // if nothing typed yet → load default customers
+    if (!customerSearch.results.length) {
+      await customerSearch.handleSearch("");
+    }
   };
 
   const handleSelect = (c) => {
@@ -103,38 +125,43 @@ export default function CustomerSearch({ onSelectCustomer }) {
       customerName: c.customerName,
       contactPersonName: c.contactPersonName,
     });
-    setShowDropdown(false);
     setQuery(c.customerName);
+    setShowDropdown(false);
   };
 
   return (
-    <div className="relative mb-4">
+    <div ref={wrapperRef} className="relative mb-4">
       <input
         type="text"
         placeholder="Search Customer"
-        value={selected ? selected.customerName : query}
+        value={query}
         onChange={handleChange}
-        onFocus={() => setShowDropdown(true)}
+        onFocus={handleFocus}
         className="border px-4 py-2 w-full rounded"
       />
+
       {showDropdown && (
-        <div className="absolute w-full bg-white border max-h-40 overflow-y-auto z-50">
-          {customerSearch.loading && <p className="p-2">Loading...</p>}
-          {customerSearch.results.length > 0 ? (
-            customerSearch.results.map((c) => (
-              <div
-                key={c._id}
-                onClick={() => handleSelect(c)}
-                className="p-2 hover:bg-gray-100 cursor-pointer"
-              >
-                {c.customerName} ({c.customerCode})
-              </div>
-            ))
-          ) : (
-            !customerSearch.loading && (
-              <p className="p-2 text-gray-500">No customers found.</p>
-            )
+        <div className="absolute w-full bg-white border max-h-56 overflow-y-auto z-50 shadow">
+          {customerSearch.loading && (
+            <p className="p-2 text-sm text-gray-500">Loading...</p>
           )}
+
+          {!customerSearch.loading &&
+            customerSearch.results.length === 0 && (
+              <p className="p-2 text-sm text-gray-500">
+                No customers found
+              </p>
+            )}
+
+          {customerSearch.results.map((c) => (
+            <div
+              key={c._id}
+              onClick={() => handleSelect(c)}
+              className="p-2 hover:bg-gray-100 cursor-pointer"
+            >
+              {c.customerName} ({c.customerCode})
+            </div>
+          ))}
         </div>
       )}
     </div>

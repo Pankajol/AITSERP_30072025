@@ -80,6 +80,11 @@ const TicketSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
     },
+    ticketNo: {
+      type: String,
+      required: true,
+      unique: true,
+    },
 
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -184,6 +189,46 @@ const TicketSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+TicketSchema.pre("save", async function (next) {
+  if (!this.isNew) return next();
+
+  try {
+    const date = new Date();
+    const currentYear = date.getFullYear();
+
+    // 1. Shortname Generator
+    // Agar Pankaj Law hai toh PKLW, Sandeep hai toh SANC
+    const rawName = this.customerId?.customerName || "SUPPORT";
+    
+    // Logic: Pehle 4 characters uthayega aur symbols/spaces ko remove karega
+    const shortName = rawName
+      .replace(/[^a-zA-Z]/g, "") // Sirf letters rakhega
+      .substring(0, 4)
+      .toUpperCase();
+
+    // 2. Iss specific shortname aur year ka latest ticket check karna
+    const lastTicket = await mongoose.model("Ticket").findOne({
+      ticketNo: new RegExp(`^${shortName}/${currentYear}/`)
+    }).sort({ createdAt: -1 });
+
+    let newSequence = "0001";
+
+    if (lastTicket && lastTicket.ticketNo) {
+      // Last part nikal kar increment karna
+      const parts = lastTicket.ticketNo.split("/");
+      const lastNum = parseInt(parts[parts.length - 1]);
+      newSequence = (lastNum + 1).toString().padStart(4, "0");
+    }
+
+    // 3. Final Format: PKLW/2026/0001
+    this.ticketNo = `${shortName}/${currentYear}/${newSequence}`;
+    
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default mongoose.models.Ticket ||
   mongoose.model("Ticket", TicketSchema);

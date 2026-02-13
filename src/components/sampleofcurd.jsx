@@ -72,6 +72,32 @@ export default function CustomerManagement() {
     loadUsers();
   }, []);
 
+
+
+
+  const fetchFromPincode = async (type, index, pin) => {
+    if (pin.length !== 6) return;
+  
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+      const data = await res.json();
+  
+      if (!Array.isArray(data)) return;
+  
+      if (data?.[0]?.Status === "Success") {
+        const post = data[0]?.PostOffice?.[0];
+        if (!post) return;
+  
+        handleAddressChange(type, index, "city", post.District || "");
+        handleAddressChange(type, index, "state", post.State || "");
+        handleAddressChange(type, index, "country", "India");
+      }
+    } catch (err) {
+      console.error("Pincode lookup failed", err);
+    }
+  };
+  
+
   // 2. Selection handle karne ka logic (Checkbox style)
 const handleAgentToggle = (userId) => {
   setCustomerDetails((prev) => {
@@ -722,7 +748,7 @@ const renderFormView = () => (
 </div>
 
 
-      {/* Billing Addresses */}
+         {/* Billing Addresses */}
       <h3 className="text-lg font-semibold">Billing Addresses</h3>
       {customerDetails.billingAddresses?.map((addr, i) => (
         <div key={i} className="border p-4 rounded mb-4">
@@ -760,7 +786,12 @@ const renderFormView = () => (
             <input
               value={addr.pin || ""}
                type="Number"
-              onChange={(e) => handleAddressChange("billing", i, "pin", e.target.value)}
+               onChange={(e) => {
+                const pin = e.target.value;
+                handleAddressChange("billing", i, "pin", pin);
+                fetchFromPincode("billing", i, pin);
+              }}
+              
               placeholder="PIN"
               className="border p-2 rounded"
             />
@@ -820,7 +851,12 @@ const renderFormView = () => (
             <input
               value={addr.pin || ""}
                type="Number"
-              onChange={(e) => handleAddressChange("shipping", i, "pin", e.target.value)}
+               onChange={(e) => {
+                const pin = e.target.value;
+                handleAddressChange("shipping", i, "pin", pin);
+                fetchFromPincode("shipping", i, pin);
+              }}
+              
               placeholder="PIN"
               className="border p-2 rounded"
             />

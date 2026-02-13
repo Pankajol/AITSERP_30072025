@@ -10,6 +10,16 @@ import AccountSearch from "@/components/AccountSearch";
 import { toast } from "react-toastify";
 
 export default function SupplierManagement() {
+
+  const emptyAddress = {
+    address1: "",
+    address2: "",
+    city: "",
+    pin: "",
+    country: "",
+    state: "",
+  };
+  
   const [view, setView] = useState("list");
   const [suppliers, setSuppliers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -34,12 +44,8 @@ export default function SupplierManagement() {
     incorporated: "",
     valid: false,
 
-    billingAddresses: [
-      { address1: "", address2: "", city: "", state: "", country: "", pin: "" },
-    ],
-    shippingAddresses: [
-      { address1: "", address2: "", city: "", state: "", country: "", pin: "" },
-    ],
+    billingAddresses: [{ ...emptyAddress }],
+  shippingAddresses: [{ ...emptyAddress }],
     paymentTerms: "",
     gstNumber: "",
     gstCategory: "",
@@ -52,7 +58,19 @@ export default function SupplierManagement() {
     qualityRating: "B",
     glAccount: null,
   });
-
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [viewSupplier, setViewSupplier] = useState(null);
+  
+  const openSupplierView = (supplier) => {
+    setViewSupplier(supplier);
+    setIsViewOpen(true);
+  };
+  
+  const closeSupplierView = () => {
+    setIsViewOpen(false);
+    setViewSupplier(null);
+  };
+  
   const fetchSuppliers = async () => {
     setLoading(true);
 
@@ -82,6 +100,28 @@ export default function SupplierManagement() {
   useEffect(() => {
     fetchSuppliers();
   }, []);
+
+
+  const fetchFromPincode = async (type, index, pin) => {
+    if (!pin || pin.length !== 6) return;
+  
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+      const data = await res.json();
+  
+      if (data?.[0]?.Status === "Success") {
+        const post = data[0]?.PostOffice?.[0];
+        if (!post) return;
+  
+        handleAddressChange(type, index, "city", post.District || "");
+        handleAddressChange(type, index, "state", post.State || "");
+        handleAddressChange(type, index, "country", "India");
+      }
+    } catch (err) {
+      console.error("PIN lookup failed", err);
+    }
+  };
+  
 
   
   const verifyUdyam = async (e) => {
@@ -190,44 +230,40 @@ export default function SupplierManagement() {
   };
 
   const addAddress = (type) => {
-    const key = type === "billing" ? "billingAddresses" : "shippingAddresses";
-    setSupplierDetails((prev) => ({
-      ...prev,
-      [key]: [
-        ...prev[key],
-        {
-          address1: "",
-          address2: "",
-          city: "",
-          state: "",
-          country: "",
-          pin: "",
-        },
-      ],
-    }));
+    setSupplierDetails((prev) => {
+      const key = type === "billing" ? "billingAddresses" : "shippingAddresses";
+      return {
+        ...prev,
+        [key]: [...(prev[key] || []), { ...emptyAddress }],
+      };
+    });
   };
+  
 
-  const removeAddress = (type, idx) => {
-    const key = type === "billing" ? "billingAddresses" : "shippingAddresses";
-    if (supplierDetails[key].length === 1) return;
-    setSupplierDetails((prev) => ({
-      ...prev,
-      [key]: prev[key].filter((_, i) => i !== idx),
-    }));
+  const removeAddress = (type, index) => {
+    setSupplierDetails((prev) => {
+      const key = type === "billing" ? "billingAddresses" : "shippingAddresses";
+      const updated = (prev[key] || []).filter((_, i) => i !== index);
+  
+      return {
+        ...prev,
+        [key]: updated.length ? updated : [{ ...emptyAddress }],
+      };
+    });
   };
+  
 
   const validate = () => {
     const errs = {};
     const {
       supplierName,
       supplierType,
-      supplierGroup,
-      pan,
-      gstCategory,
+    
+     
       emailId,
-      gstNumber,
+     
       mobileNumber,
-      glAccount,
+ 
     } = supplierDetails;
 
     if (!supplierName) {
@@ -511,8 +547,7 @@ const downloadSupplierTemplate = () => {
   link.click();
 };
 
-
-
+ 
   const renderListView = () => (
   <div className="p-6">
     {/* ✅ Header Section */}
@@ -560,42 +595,68 @@ const downloadSupplierTemplate = () => {
 
     {/* ✅ Table */}
     <div className="overflow-x-auto">
-      <table className="min-w-full bg-white divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            {["Code", "Name", "Email", "Type", "Group", "Actions"].map((h) => (
-              <th
-                key={h}
-                className="px-4 py-2 text-left text-sm font-medium text-gray-700"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200">
-          {filtered.map((s) => (
-            <tr key={s._id} className="hover:bg-gray-50">
-              <td className="px-4 py-2">{s.supplierCode}</td>
-              <td className="px-4 py-2">{s.supplierName}</td>
-              <td className="px-4 py-2">{s.emailId}</td>
-              <td className="px-4 py-2">{s.supplierType}</td>
-              <td className="px-4 py-2">{s.supplierGroup}</td>
-              <td className="px-4 py-2 flex space-x-3">
-                <button onClick={() => handleEdit(s)} className="text-blue-600">
-                  <FaEdit />
-                </button>
-                <button
-                  onClick={() => handleDelete(s._id)}
-                  className="text-red-600"
-                >
-                  <FaTrash />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    {/* ✅ Table */}
+<div className="overflow-x-auto">
+  <table className="min-w-full bg-white divide-y divide-gray-200">
+    <thead className="bg-gray-50">
+      <tr>
+        {["Code", "Name", "Email", "Type", "Group", "Actions"].map((h) => (
+          <th
+            key={h}
+            className="px-4 py-2 text-left text-sm font-medium text-gray-700"
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-gray-200">
+      {filtered.map((s) => (
+        <tr
+          key={s._id}
+          className="hover:bg-gray-50 cursor-pointer"
+          onClick={() => openSupplierView(s)}
+        >
+          <td className="px-4 py-2">{s.supplierCode}</td>
+          <td className="px-4 py-2">{s.supplierName}</td>
+          <td className="px-4 py-2">{s.emailId}</td>
+          <td className="px-4 py-2">{s.supplierType}</td>
+          <td className="px-4 py-2">{s.supplierGroup}</td>
+
+          <td className="px-4 py-2 flex space-x-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(s);
+              }}
+              className="text-blue-600"
+            >
+              <FaEdit />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(s._id);
+              }}
+              className="text-red-600"
+            >
+              <FaTrash />
+            </button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+{/* ✅ Modal */}
+<SupplierViewModal
+  open={isViewOpen}
+  onClose={closeSupplierView}
+  supplier={viewSupplier}
+/>
+
     </div>
   </div>
 );
@@ -820,66 +881,79 @@ const downloadSupplierTemplate = () => {
           </div>
 
         <h3 className="text-lg font-semibold">Billing Addresses</h3>
-        {supplierDetails.billingAddresses.map((addr, i) => (
-          <div key={i} className="border p-4 rounded mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-medium">Billing Address {i + 1}</span>
-              {i > 0 && (
-                <button
-                  type="button"
-                  onClick={() => removeAddress("billing", i)}
-                  className="text-red-600"
-                >
-                  <FaMinus />
-                </button>
-              )}
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <input
-                value={addr.address1}
-                onChange={(e) =>
-                  handleAddressChange("billing", i, "address1", e.target.value)
-                }
-                placeholder="Line 1"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.address2}
-                onChange={(e) =>
-                  handleAddressChange("billing", i, "address2", e.target.value)
-                }
-                placeholder="Line 2"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.city}
-                onChange={(e) =>
-                  handleAddressChange("billing", i, "city", e.target.value)
-                }
-                placeholder="City"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.pin}
-                onChange={(e) =>
-                  handleAddressChange("billing", i, "pin", e.target.value)
-                }
-                placeholder="PIN"
-                className="border p-2 rounded"
-              />
-              <CountryStateSearch
-                valueCountry={addr.country ? { name: addr.country } : null}
-                valueState={addr.state ? { name: addr.state } : null}
-                onSelectCountry={(c) =>
-                  handleAddressChange("billing", i, "country", c?.name || "")
-                }
-                onSelectState={(s) =>
-                  handleAddressChange("billing", i, "state", s?.name || "")
-                }
-              />
-            </div>
-          </div>
-        ))}
+        {(supplierDetails.billingAddresses || []).map((addr, i) => {
+  const safeAddr = addr || emptyAddress;
+
+  return (
+    <div key={i} className="border p-4 rounded mb-4">
+      <div className="flex justify-between items-center mb-2">
+        <span className="font-medium">Billing Address {i + 1}</span>
+        {i > 0 && (
+          <button
+            type="button"
+            onClick={() => removeAddress("billing", i)}
+            className="text-red-600"
+          >
+            <FaMinus />
+          </button>
+        )}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <input
+          value={safeAddr.address1 || ""}
+          onChange={(e) =>
+            handleAddressChange("billing", i, "address1", e.target.value)
+          }
+          placeholder="Line 1"
+          className="border p-2 rounded"
+        />
+
+        <input
+          value={safeAddr.address2 || ""}
+          onChange={(e) =>
+            handleAddressChange("billing", i, "address2", e.target.value)
+          }
+          placeholder="Line 2"
+          className="border p-2 rounded"
+        />
+
+        <input
+          value={safeAddr.city || ""}
+          onChange={(e) =>
+            handleAddressChange("billing", i, "city", e.target.value)
+          }
+          placeholder="City"
+          className="border p-2 rounded"
+        />
+
+<input
+  value={safeAddr.pin || ""}
+  onChange={(e) => {
+    const pin = e.target.value;
+    handleAddressChange("billing", i, "pin", pin);
+    fetchFromPincode("billing", i, pin);
+  }}
+  placeholder="PIN"
+  className="border p-2 rounded"
+/>
+
+
+        <CountryStateSearch
+          valueCountry={safeAddr.country ? { name: safeAddr.country } : null}
+          valueState={safeAddr.state ? { name: safeAddr.state } : null}
+          onSelectCountry={(c) =>
+            handleAddressChange("billing", i, "country", c?.name || "")
+          }
+          onSelectState={(s) =>
+            handleAddressChange("billing", i, "state", s?.name || "")
+          }
+        />
+      </div>
+    </div>
+  );
+})}
+
         <button
           type="button"
           onClick={() => addAddress("billing")}
@@ -889,66 +963,79 @@ const downloadSupplierTemplate = () => {
         </button>
 
         <h3 className="text-lg font-semibold">Shipping Addresses</h3>
-        {supplierDetails.shippingAddresses.map((addr, i) => (
-          <div key={i} className="border p-4 rounded mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-medium">Shipping Address {i + 1}</span>
-              {i > 0 && (
-                <button
-                  type="button"
-                  onClick={() => removeAddress("shipping", i)}
-                  className="text-red-600"
-                >
-                  <FaMinus />
-                </button>
-              )}
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <input
-                value={addr.address1}
-                onChange={(e) =>
-                  handleAddressChange("shipping", i, "address1", e.target.value)
-                }
-                placeholder="Line 1"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.address2}
-                onChange={(e) =>
-                  handleAddressChange("shipping", i, "address2", e.target.value)
-                }
-                placeholder="Line 2"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.city}
-                onChange={(e) =>
-                  handleAddressChange("shipping", i, "city", e.target.value)
-                }
-                placeholder="City"
-                className="border p-2 rounded"
-              />
-              <input
-                value={addr.pin}
-                onChange={(e) =>
-                  handleAddressChange("shipping", i, "pin", e.target.value)
-                }
-                placeholder="PIN"
-                className="border p-2 rounded"
-              />
-              <CountryStateSearch
-                valueCountry={addr.country ? { name: addr.country } : null}
-                valueState={addr.state ? { name: addr.state } : null}
-                onSelectCountry={(c) =>
-                  handleAddressChange("shipping", i, "country", c?.name || "")
-                }
-                onSelectState={(s) =>
-                  handleAddressChange("shipping", i, "state", s?.name || "")
-                }
-              />
-            </div>
-          </div>
-        ))}
+        {(supplierDetails.shippingAddresses || []).map((addr, i) => {
+  const safeAddr = addr || emptyAddress;
+
+  return (
+    <div key={i} className="border p-4 rounded mb-4">
+      <div className="flex justify-between items-center mb-2">
+        <span className="font-medium">Shipping Address {i + 1}</span>
+        {i > 0 && (
+          <button
+            type="button"
+            onClick={() => removeAddress("shipping", i)}
+            className="text-red-600"
+          >
+            <FaMinus />
+          </button>
+        )}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <input
+          value={safeAddr.address1 || ""}
+          onChange={(e) =>
+            handleAddressChange("shipping", i, "address1", e.target.value)
+          }
+          placeholder="Line 1"
+          className="border p-2 rounded"
+        />
+
+        <input
+          value={safeAddr.address2 || ""}
+          onChange={(e) =>
+            handleAddressChange("shipping", i, "address2", e.target.value)
+          }
+          placeholder="Line 2"
+          className="border p-2 rounded"
+        />
+
+        <input
+          value={safeAddr.city || ""}
+          onChange={(e) =>
+            handleAddressChange("shipping", i, "city", e.target.value)
+          }
+          placeholder="City"
+          className="border p-2 rounded"
+        />
+
+<input
+  value={safeAddr.pin || ""}
+  onChange={(e) => {
+    const pin = e.target.value;
+    handleAddressChange("shipping", i, "pin", pin);
+    fetchFromPincode("shipping", i, pin);
+  }}
+  placeholder="PIN"
+  className="border p-2 rounded"
+/>
+
+
+        <CountryStateSearch
+          valueCountry={safeAddr.country ? { name: safeAddr.country } : null}
+          valueState={safeAddr.state ? { name: safeAddr.state } : null}
+          onSelectCountry={(c) =>
+            handleAddressChange("shipping", i, "country", c?.name || "")
+          }
+          onSelectState={(s) =>
+            handleAddressChange("shipping", i, "state", s?.name || "")
+          }
+        />
+      </div>
+    </div>
+  );
+})}
+
         <button
           type="button"
           onClick={() => addAddress("shipping")}
@@ -1139,3 +1226,100 @@ const downloadSupplierTemplate = () => {
   );
   return view === "list" ? renderListView() : renderFormView();
 }
+
+
+
+const SupplierViewModal = ({ open, onClose, supplier }) => {
+  if (!open || !supplier) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* overlay */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+      />
+
+      {/* modal */}
+      <div className="relative z-50 w-[95%] max-w-2xl bg-white rounded-xl shadow-xl">
+        {/* header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h2 className="text-lg font-bold">Supplier Details</h2>
+            <p className="text-sm text-gray-500">
+              {supplier?.supplierName} ({supplier?.supplierCode})
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="text-gray-600 hover:text-black text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* body */}
+        <div className="p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Supplier Code</p>
+              <p className="font-semibold">{supplier?.supplierCode || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Supplier Name</p>
+              <p className="font-semibold">{supplier?.supplierName || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Email</p>
+              <p className="font-semibold">{supplier?.emailId || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Mobile</p>
+              <p className="font-semibold">{supplier?.mobileNo || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Supplier Type</p>
+              <p className="font-semibold">{supplier?.supplierType || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500">Supplier Group</p>
+              <p className="font-semibold">{supplier?.supplierGroup || "-"}</p>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-lg sm:col-span-2">
+              <p className="text-xs text-gray-500">Address</p>
+              <p className="font-semibold">{supplier?.address || "-"}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* footer */}
+        <div className="flex justify-end gap-3 px-5 py-4 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300"
+          >
+            Close
+          </button>
+
+          <button
+            onClick={() => {
+              // optional: edit open bhi kar sakte ho yaha se
+              // handleEdit(supplier)
+              onClose();
+            }}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Edit Supplier
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

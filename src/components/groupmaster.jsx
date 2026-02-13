@@ -9,36 +9,42 @@ const GroupSearch = ({ value, onSelectGroup }) => {
   const [error, setError] = useState(null);
   const dropdownRef = useRef(null);
 
-const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-const groupSearch = useSearch(async (query) => {
-  if (!query.trim()) return [];
-  try {
-    const res = await fetch(`/api/groupscreate?search=${query}`, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token ? `Bearer ${token}` : "", // ✅ Add token
-      },
-    });
-    if (!res.ok) {
-      if (res.status === 401) throw new Error("Unauthorized - Please log in");
-      throw new Error("Failed to fetch groups");
+  const groupSearch = useSearch(async (query) => {
+    try {
+      // empty query → return first groups
+      const res = await fetch(
+        `/api/groupscreate?search=${encodeURIComponent(query || "")}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+          },
+        }
+      );
+
+      if (!res.ok) {
+        if (res.status === 401) throw new Error("Unauthorized - Please log in");
+        throw new Error("Failed to fetch groups");
+      }
+
+      const data = await res.json();
+      return data?.data || [];
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+      return [];
     }
-    const data = await res.json();
-    return data?.data || [];
-  } catch (err) {
-    setError(err.message);
-    return [];
-  }
-});
+  });
 
-
-  // Sync when `value` prop changes (like on form edit)
+  /* sync value (edit mode) */
   useEffect(() => {
     setInputValue(value || "");
   }, [value]);
 
-  // Close dropdown on outside click
+  /* close on outside click */
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -49,9 +55,25 @@ const groupSearch = useSearch(async (query) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleChange = async (e) => {
+    const val = e.target.value;
+    setInputValue(val);
+    setShowDropdown(true);
+    await groupSearch.handleSearch(val);
+  };
+
+  const handleFocus = async () => {
+    setShowDropdown(true);
+
+    // load default groups on focus
+    if (!groupSearch.results.length) {
+      await groupSearch.handleSearch("");
+    }
+  };
+
   const handleGroupSelect = (group) => {
     setInputValue(group.name);
-    onSelectGroup(group.name); // only pass name
+    onSelectGroup(group.name);
     setShowDropdown(false);
   };
 
@@ -74,18 +96,11 @@ const groupSearch = useSearch(async (query) => {
           type="text"
           placeholder="Type or select group"
           value={inputValue}
-          onChange={(e) => {
-            const val = e.target.value;
-            setInputValue(val);
-            groupSearch.handleSearch(val);
-            setShowDropdown(true);
-          }}
-          onFocus={() => {
-            if (inputValue) groupSearch.handleSearch(inputValue);
-            setShowDropdown(true);
-          }}
+          onChange={handleChange}
+          onFocus={handleFocus}
           className="border px-4 py-2 w-full rounded-md focus:ring-2 focus:ring-blue-500"
         />
+
         {inputValue && (
           <button
             type="button"
@@ -99,16 +114,22 @@ const groupSearch = useSearch(async (query) => {
       </div>
 
       {showDropdown && (
-        <div className="absolute border bg-white w-full max-h-40 overflow-y-auto z-10 rounded-md shadow-md mt-1">
-          {groupSearch.loading && <p className="p-2">Loading...</p>}
-          {!groupSearch.loading && groupSearch.results.length === 0 && inputValue && (
-            <div
-              className="p-2 cursor-pointer text-blue-600 hover:bg-blue-50"
-              onClick={handleCustomInput}
-            >
-              ➕ Create "{inputValue}"
-            </div>
+        <div className="absolute border bg-white w-full max-h-48 overflow-y-auto z-50 rounded-md shadow mt-1">
+          {groupSearch.loading && (
+            <p className="p-2 text-sm text-gray-500">Loading...</p>
           )}
+
+          {!groupSearch.loading &&
+            groupSearch.results.length === 0 &&
+            inputValue && (
+              <div
+                className="p-2 cursor-pointer text-blue-600 hover:bg-blue-50"
+                onClick={handleCustomInput}
+              >
+                ➕ Create "{inputValue}"
+              </div>
+            )}
+
           {groupSearch.results.map((group) => (
             <div
               key={group._id}
@@ -129,7 +150,6 @@ const groupSearch = useSearch(async (query) => {
 };
 
 export default GroupSearch;
-
 
 
 

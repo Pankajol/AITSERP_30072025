@@ -1,108 +1,136 @@
-import React, { useState, useEffect } from "react";
+"use client";
+import React, { useState, useEffect, useRef } from "react";
 import useSearch from "../hooks/useSearch";
 
 const SupplierSearch = ({ onSelectSupplier, initialSupplier }) => {
+  const wrapperRef = useRef(null);
+
   const [query, setQuery] = useState(initialSupplier?.supplierName || "");
   const [showDropdown, setShowDropdown] = useState(false);
   const [selected, setSelected] = useState(initialSupplier || null);
 
-  // ✅ Search suppliers with token
-  const supplierSearch = useSearch(async (searchQuery) => {
-    if (!searchQuery) return [];
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.error("No token found. Please log in.");
-      return [];
+  /* sync initial supplier */
+  useEffect(() => {
+    if (initialSupplier) {
+      setSelected(initialSupplier);
+      setQuery(initialSupplier.supplierName || "");
     }
+  }, [initialSupplier]);
 
+  /* supplier search */
+  const supplierSearch = useSearch(async (searchQuery) => {
     try {
-      const res = await fetch(`/api/suppliers?search=${encodeURIComponent(searchQuery)}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const token = localStorage.getItem("token");
+      if (!token) return [];
 
-      if (!res.ok) throw new Error(`Failed to fetch suppliers: ${res.status}`);
+      // empty search → return first suppliers
+      const res = await fetch(
+        `/api/suppliers?search=${encodeURIComponent(searchQuery || "")}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!res.ok) throw new Error("Failed to fetch suppliers");
+
       const data = await res.json();
       return data?.data || [];
-    } catch (error) {
-      console.error("Error fetching suppliers:", error);
+    } catch (err) {
+      console.error("SupplierSearch:", err);
       return [];
     }
   });
 
-  const handleChange = (e) => {
+  /* outside click close */
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  const handleChange = async (e) => {
     const val = e.target.value;
     setQuery(val);
     setSelected(null);
-    supplierSearch.handleSearch(val);
     setShowDropdown(true);
+    await supplierSearch.handleSearch(val);
+  };
+
+  const handleFocus = async () => {
+    setShowDropdown(true);
+
+    // load default suppliers on focus
+    if (!supplierSearch.results.length) {
+      await supplierSearch.handleSearch("");
+    }
   };
 
   const handleSelect = (sup) => {
     setSelected(sup);
-    setQuery(sup.supplierName);
-    onSelectSupplier(sup);
+    setQuery(sup.supplierName || "");
+    onSelectSupplier?.(sup);
     setShowDropdown(false);
   };
 
-  useEffect(() => {
-    const onClick = (e) => {
-      if (!e.target.closest(".supplier-search-container")) setShowDropdown(false);
-    };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
-  }, []);
+  const handleClear = () => {
+    setSelected(null);
+    setQuery("");
+    onSelectSupplier?.(null);
+  };
 
   return (
-    <div className="relative supplier-search-container w-full">
-      {/* Input Field */}
+    <div ref={wrapperRef} className="relative w-full">
       <div className="relative">
         <input
           type="text"
-          className="border border-gray-300 rounded-md px-4 py-2 w-full focus:ring-2 focus:ring-blue-500 focus:outline-none"
           placeholder="Search Supplier"
           value={query}
           onChange={handleChange}
-          onFocus={() => setShowDropdown(true)}
+          onFocus={handleFocus}
+          className="border border-gray-300 rounded-md px-4 py-2 w-full focus:ring-2 focus:ring-blue-500 focus:outline-none"
         />
 
-        {/* Clear Button */}
         {selected && (
           <button
             type="button"
-            onClick={() => {
-              setSelected(null);
-              setQuery("");
-              onSelectSupplier(null);
-            }}
-            className="absolute top-1/2 right-3 transform -translate-y-1/2 text-gray-400 hover:text-gray-700"
+            onClick={handleClear}
+            className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-700"
             title="Clear"
           >
-            &times;
+            ✕
           </button>
         )}
       </div>
 
-      {/* Dropdown */}
-      {showDropdown && !selected && (
-        <div className="absolute left-0 right-0 mt-1 bg-white shadow-lg rounded-md border border-gray-200 max-h-56 overflow-y-auto z-50">
+      {showDropdown && (
+        <div className="absolute left-0 right-0 mt-1 bg-white shadow-lg rounded-md border max-h-56 overflow-y-auto z-50">
           {supplierSearch.loading && (
             <p className="p-3 text-gray-500 text-center">Loading...</p>
           )}
-          {!supplierSearch.loading && supplierSearch.results.length === 0 && (
-            <p className="p-3 text-gray-400 text-center">No suppliers found</p>
-          )}
+
+          {!supplierSearch.loading &&
+            supplierSearch.results.length === 0 && (
+              <p className="p-3 text-gray-400 text-center">
+                No suppliers found
+              </p>
+            )}
+
           {supplierSearch.results.map((sup) => (
             <div
               key={sup._id}
               onClick={() => handleSelect(sup)}
               className="p-3 cursor-pointer hover:bg-blue-100 transition"
             >
-              <p className="font-medium text-gray-700">{sup.supplierName}</p>
-              <p className="text-xs text-gray-500">{sup.supplierCode}</p>
+              <p className="font-medium text-gray-700">
+                {sup.supplierName}
+              </p>
+              <p className="text-xs text-gray-500">
+                {sup.supplierCode}
+              </p>
             </div>
           ))}
         </div>
@@ -112,6 +140,7 @@ const SupplierSearch = ({ onSelectSupplier, initialSupplier }) => {
 };
 
 export default SupplierSearch;
+
 
 
 
