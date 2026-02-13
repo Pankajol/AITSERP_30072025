@@ -36,7 +36,10 @@ export default function TicketCard({ ticket }) {
         <div className="flex-1 min-w-0 pr-4">
           <div className="flex items-center gap-3 mb-1.5">
             <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-              <Hash size={12} strokeWidth={3} /> {ticket.ticketNo || ticket._id?.slice(-5).toUpperCase()}
+              <Hash size={12} strokeWidth={3} />{ticket.ticketNo 
+    ? ticket.ticketNo 
+    : `TKT-${ticket._id?.toString().slice(-6).toUpperCase()}`
+  }
             </span>
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
               <User size={14} className="text-blue-500" />

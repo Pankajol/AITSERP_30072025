@@ -82,7 +82,7 @@ const TicketSchema = new mongoose.Schema(
     },
     ticketNo: {
       type: String,
-      required: true,
+     
       unique: true,
     },
 
