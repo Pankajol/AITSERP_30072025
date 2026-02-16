@@ -421,10 +421,10 @@ export default function DashboardLayout({ children }) {
 
           <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
             <Item href="/agent-dashboard/helpdesk/tickets" icon={<HiDocumentText />} label="Tickets" close={closeSidebar} />
-            <Item href="/agent-dashboard/helpdesk/agents" icon={<HiUsers />} label="Agents" close={closeSidebar} />
+            {/* <Item href="/agent-dashboard/helpdesk/agents" icon={<HiUsers />} label="Agents" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/categories" icon={<HiUserGroup />} label="Categories" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" close={closeSidebar} />
-            <Item href="/agent-dashboard/helpdesk/settings" icon={<HiCog />} label="Settings" close={closeSidebar} />
+            <Item href="/agent-dashboard/helpdesk/settings" icon={<HiCog />} label="Settings" close={closeSidebar} /> */}
           </Section> 
           
 

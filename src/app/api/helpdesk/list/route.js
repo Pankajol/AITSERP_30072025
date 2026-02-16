@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
-import Customer from "@/models/CustomerModel";
-import CompanyUser from "@/models/CompanyUser";
-import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import mongoose from "mongoose";
 
@@ -13,6 +10,7 @@ export async function GET(req) {
 
     /* ================= AUTH ================= */
     const token = getTokenFromHeader(req);
+
     if (!token) {
       return NextResponse.json(
         { success: false, msg: "Unauthorized" },
@@ -22,7 +20,7 @@ export async function GET(req) {
 
     let user;
     try {
-      user = verifyJWT(token);
+      user = await verifyJWT(token);
     } catch {
       return NextResponse.json(
         { success: false, msg: "Invalid token" },
@@ -32,42 +30,52 @@ export async function GET(req) {
 
     console.log("👤 Logged in user:", user);
 
-    /* ================= QUERY BUILD ================= */
-
-    const query = {};
-
-    // 🔒 company isolation (MANDATORY)
-    if (user.companyId && mongoose.Types.ObjectId.isValid(user.companyId)) {
-      query.companyId = new mongoose.Types.ObjectId(user.companyId);
-    } else {
-      console.log("⛔ companyId missing in token");
+    /* ================= COMPANY VALIDATION ================= */
+    if (!user.companyId || !mongoose.Types.ObjectId.isValid(user.companyId)) {
       return NextResponse.json(
         { success: false, msg: "Company context missing" },
         { status: 403 }
       );
     }
-   const roles = user.roles || [];
-    // 👤 role based restriction
-    if (user.role === "customer") {
-      query.customerId = new mongoose.Types.ObjectId(user.id);
+
+    const query = {
+      companyId: new mongoose.Types.ObjectId(user.companyId),
+    };
+
+    /* ================= ROLE DETECTION ================= */
+
+    const roles =
+      user.roles?.map((r) => r.toLowerCase()) || [];
+
+    const isCompany = user.type === "company";
+    const isCustomer = user.type === "customer";
+    const isAgent = roles.includes("agent");
+
+    // ================= CUSTOMER LOGIN =================
+    if (isCustomer) {
+      if (mongoose.Types.ObjectId.isValid(user.id)) {
+        query.customerId = new mongoose.Types.ObjectId(user.id);
+      }
     }
 
-   // AGENT
-if (roles.includes("Agent")) {
-  query.agentId = new mongoose.Types.ObjectId(user.id);
-}
+    // ================= AGENT LOGIN =================
+    if (isAgent) {
+      if (mongoose.Types.ObjectId.isValid(user.id)) {
+        query.agentId = new mongoose.Types.ObjectId(user.id);
+      }
+    }
 
+    // ================= COMPANY LOGIN =================
+    // no extra filter → show all company tickets
 
     console.log("🎯 Ticket list query:", query);
 
     /* ================= FETCH ================= */
-
-   const tickets = await Ticket.find(query)
-  .sort({ lastCustomerReplyAt: -1, updatedAt: -1 })
-  .populate("agentId", "name email")
-  .populate("customerId", "customerName emailId")
-  .populate("companyId", "companyName");
-
+    const tickets = await Ticket.find(query)
+      .sort({ lastCustomerReplyAt: -1, updatedAt: -1 })
+      .populate("agentId", "name email avatar")
+      .populate("customerId", "customerName emailId")
+      .populate("companyId", "companyName");
 
     console.log(`📦 Tickets found: ${tickets.length}`);
 
@@ -77,13 +85,13 @@ if (roles.includes("Agent")) {
     });
   } catch (err) {
     console.error("❌ List route error:", err);
+
     return NextResponse.json(
-      { success: false, msg: err.message },
+      { success: false, msg: "Server error", error: err.message },
       { status: 500 }
     );
   }
 }
-
 
 
 
@@ -94,71 +102,84 @@ if (roles.includes("Agent")) {
 // import CompanyUser from "@/models/CompanyUser";
 // import Company from "@/models/Company";
 // import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+// import mongoose from "mongoose";
 
 // export async function GET(req) {
 //   try {
 //     await dbConnect();
 
+//     /* ================= AUTH ================= */
 //     const token = getTokenFromHeader(req);
-//     if (!token)
-//       return NextResponse.json({ success:false, msg:"Unauthorized" }, { status:401 });
+//     if (!token) {
+//       return NextResponse.json(
+//         { success: false, msg: "Unauthorized" },
+//         { status: 401 }
+//       );
+//     }
 
 //     let user;
 //     try {
 //       user = verifyJWT(token);
 //     } catch {
-//       return NextResponse.json({ success:false, msg:"Invalid token" }, { status:403 });
+//       return NextResponse.json(
+//         { success: false, msg: "Invalid token" },
+//         { status: 403 }
+//       );
 //     }
 
-//     let query = { companyId: user.companyId };
+//     console.log("👤 Logged in user:", user);
 
-//     if (user.role === "customer") query.customerId = user.id;
-//     if (user.role === "agent") query.agentId = user.id;
+//     /* ================= QUERY BUILD ================= */
 
-//     const tickets = await Ticket.find(query)
-//       .sort({ createdAt: -1 })
-//       .populate("agentId", "name email")
-//       .populate("customerId", "name email")
-//       .populate("companyId", "name");
+//     const query = {};
 
-//     return NextResponse.json({ success: true, tickets });
+//     // 🔒 company isolation (MANDATORY)
+//     if (user.companyId && mongoose.Types.ObjectId.isValid(user.companyId)) {
+//       query.companyId = new mongoose.Types.ObjectId(user.companyId);
+//     } else {
+//       console.log("⛔ companyId missing in token");
+//       return NextResponse.json(
+//         { success: false, msg: "Company context missing" },
+//         { status: 403 }
+//       );
+//     }
+//    const roles = user.roles || [];
+//     // 👤 role based restriction
+//     if (user.role === "customer") {
+//       query.customerId = new mongoose.Types.ObjectId(user.id);
+//     }
+
+//    // AGENT
+// if (roles.includes("Agent")) {
+//   query.agentId = new mongoose.Types.ObjectId(user.id);
+// }
+
+
+//     console.log("🎯 Ticket list query:", query);
+
+//     /* ================= FETCH ================= */
+
+//    const tickets = await Ticket.find(query)
+//   .sort({ lastCustomerReplyAt: -1, updatedAt: -1 })
+//   .populate("agentId", "name email")
+//   .populate("customerId", "customerName emailId")
+//   .populate("companyId", "companyName");
+
+
+//     console.log(`📦 Tickets found: ${tickets.length}`);
+
+//     return NextResponse.json({
+//       success: true,
+//       tickets,
+//     });
 //   } catch (err) {
-//     console.error("List route error:", err);
-//     return NextResponse.json({ success:false, msg:err.message }, { status:500 });
+//     console.error("❌ List route error:", err);
+//     return NextResponse.json(
+//       { success: false, msg: err.message },
+//       { status: 500 }
+//     );
 //   }
 // }
 
 
 
-// import { NextResponse } from "next/server";
-// import dbConnect from "@/lib/db";
-// import Ticket from "@/models/helpdesk/Ticket";
-// import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-// export async function GET(req) {
-//   await dbConnect();
-
-//   const token = getTokenFromHeader(req);
-//   if (!token) return NextResponse.json({ success:false, msg:"Unauthorized" }, { status:401 });
-
-//   let user;
-//   try { user = verifyJWT(token); } 
-//   catch { return NextResponse.json({ success:false, msg:"Invalid token" }, { status:403 }); }
-
-//   let query = { companyId: user.companyId };
-
-//   if (user.roles?.includes("customer"))
-//     query.customerId = user.id;
-
-//   if (user.roles?.includes("agent"))
-//     query.agentId = user.id;
-
-//   const tickets = await Ticket.find(query)
-//     .sort({ createdAt: -1 })
-//           .sort({ createdAt: -1 })
-//       .populate("agentId", "name email")
-//       .populate("customerId", "name email")
-//       .populate("companyId", "name");
-
-
-//   return NextResponse.json({ success: true, tickets });
-// }

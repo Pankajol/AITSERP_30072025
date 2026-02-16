@@ -30,12 +30,19 @@ export default function AdminHelpdeskTicketsPage() {
     if (!token) router.push("/login");
   }, [token, router]);
 
-  const api = useMemo(() => {
-    return axios.create({
-      baseURL: "/api/helpdesk",
-      headers: token ? { Authorization: "Bearer " + token } : {},
-    });
-  }, [token]);
+const api = useMemo(() => {
+  const instance = axios.create({
+    baseURL: "/api/helpdesk",
+  });
+
+  instance.interceptors.request.use((config) => {
+    if (token) config.headers.Authorization = "Bearer " + token;
+    return config;
+  });
+
+  return instance;
+}, [token]);
+
 
   const toast = useCallback((type, text, timeout = 4000) => {
     setMsg({ type, text });
@@ -74,30 +81,69 @@ export default function AdminHelpdeskTicketsPage() {
     return tickets.filter((t) => {
       const matchesSearch = 
         t.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.customerId?.customerName?.toLowerCase().includes(searchTerm.toLowerCase());
+        t.customerId?.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.ticketNo?.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = filterStatus === "all" || t.status === filterStatus;
+
       
       return matchesSearch && matchesStatus;
     });
   }, [tickets, searchTerm, filterStatus]);
 
   /* ================= ACTIONS (Assign/Status/AI) ================= */
-  async function assignAgent(ticketId, agentId) {
-    if (!agentId) return toast("error", "Select an agent");
-    setMapFlag(setAiLoadingMap, ticketId, true);
-    try {
-      const resp = await api.post("/assign", { ticketId, agentId });
-      if (resp.data?.success) {
-        toast("success", "Assigned Successfully");
-        await loadTickets();
-      }
-    } catch {
-      toast("error", "Assign error");
-    } finally {
-      setMapFlag(setAiLoadingMap, ticketId, false);
-    }
+
+ async function assignAgent(ticketId, agentId) {
+  if (!agentId || !ticketId) {
+    return toast("error", "Ticket or Agent missing");
   }
+
+  console.log("Assign Payload:", { ticketId, agentId });
+
+  setMapFlag(setAiLoadingMap, ticketId, true);
+
+  try {
+    // ✅ baseURL = "/api/helpdesk" hai
+    const resp = await api.post("/assign", {
+      ticketId,
+      agentId,
+    });
+
+    if (resp?.data?.success) {
+      toast("success", resp.data?.msg || "Assigned Successfully");
+      await loadTickets();
+    } else {
+      toast("error", resp?.data?.msg || "Assign failed");
+    }
+  } catch (err) {
+    console.error("Assign API Error:", err?.response?.data || err.message);
+
+    toast(
+      "error",
+      err?.response?.data?.msg || "Assign error"
+    );
+  } finally {
+    setMapFlag(setAiLoadingMap, ticketId, false);
+  }
+}
+
+
+
+  // async function assignAgent(ticketId, agentId) {
+  //   if (!agentId) return toast("error", "Select an agent");
+  //   setMapFlag(setAiLoadingMap, ticketId, true);
+  //   try {
+  //     const resp = await api.post("/assign", { ticketId, agentId });
+  //     if (resp.data?.success) {
+  //       toast("success", "Assigned Successfully");
+  //       await loadTickets();
+  //     }
+  //   } catch {
+  //     toast("error", "Assign error");
+  //   } finally {
+  //     setMapFlag(setAiLoadingMap, ticketId, false);
+  //   }
+  // }
 
   async function updateStatus(ticketId, status) {
     setMapFlag(setAiLoadingMap, ticketId, true);
@@ -336,8 +382,8 @@ export default function AdminHelpdeskTicketsPage() {
                         <option value="closed">Closed</option>
                       </select>
 
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium uppercase tracking-wider px-1">
-                        <span>Agent: {agentLabel}</span>
+                      <div className="flex justify-between items-center text-[12px] text-slate-400 font-bold uppercase tracking-wider px-1">
+                        <span className="text-[15px]">Agent: {agentLabel}</span>
                         <span>{new Date(t.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>

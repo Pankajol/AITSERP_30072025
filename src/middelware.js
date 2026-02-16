@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
-// ✅ Role to allowed routes mapping
+// ✅ Role to allowed routes mapping (Company Users)
 const ROLE_ROUTES = {
   Admin: ["/", "/users", "/admin", "/admin/:path*"],
   Employee: ["/", "/tasks", "/customer-dashboard", "/customer-dashboard/:path*"],
@@ -15,6 +15,12 @@ const ROLE_ROUTES = {
   "Project Manager": ["/", "/project-dashboard", "/project-dashboard/:path*"],
 };
 
+// ✅ Customer routes (Portal)
+const CUSTOMER_ROUTES = [
+  "/customer-dashboard",
+  "/customer-dashboard/:path*",
+];
+
 export function middleware(request) {
   const token = request.cookies.get("token")?.value;
 
@@ -26,14 +32,31 @@ export function middleware(request) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // ✅ Roles is an array
-    const roles = decoded.roles || [];
-
     const { pathname } = request.nextUrl;
 
-    // ✅ If user has multiple roles → merge all allowed routes
-    const allowedRoutes = roles.flatMap((role) => ROLE_ROUTES[role] || []);
+    // =====================================
+    // 🧾 CUSTOMER PORTAL ACCESS
+    // =====================================
+    if (decoded.type === "customer") {
+      const allowed = CUSTOMER_ROUTES.some((route) =>
+        pathname.startsWith(route.replace(":path*", ""))
+      );
+
+      if (!allowed) {
+        return NextResponse.redirect(new URL("/unauthorized", request.url));
+      }
+
+      return NextResponse.next();
+    }
+
+    // =====================================
+    // 🧑‍💼 COMPANY USER ROLE ACCESS
+    // =====================================
+    const roles = decoded.roles || [];
+
+    const allowedRoutes = roles.flatMap(
+      (role) => ROLE_ROUTES[role] || []
+    );
 
     if (allowedRoutes.length === 0) {
       return NextResponse.redirect(new URL("/unauthorized", request.url));
@@ -76,20 +99,81 @@ export const config = {
 
 
 
-// import { NextResponse } from 'next/server';
+
+// import { NextResponse } from "next/server";
+// import jwt from "jsonwebtoken";
+
+// // ✅ Role to allowed routes mapping
+// const ROLE_ROUTES = {
+//   Admin: ["/", "/users", "/admin", "/admin/:path*"],
+//   Employee: ["/", "/tasks", "/customer-dashboard", "/customer-dashboard/:path*"],
+//   "Sales Manager": ["/", "/agent-dashboard", "/agent-dashboard/:path*"],
+//   "Purchase Manager": ["/", "/supplier-dashboard", "/supplier-dashboard/:path*"],
+//   "Inventory Manager": ["/", "/inventory-dashboard", "/inventory-dashboard/:path*"],
+//   "Accounts Manager": ["/", "/accounts-dashboard", "/accounts-dashboard/:path*"],
+//   "HR Manager": ["/", "/hr-dashboard", "/hr-dashboard/:path*"],
+//   "Support Executive": ["/", "/support-dashboard", "/support-dashboard/:path*"],
+//   "Production Head": ["/", "/production-dashboard", "/production-dashboard/:path*"],
+//   "Project Manager": ["/", "/project-dashboard", "/project-dashboard/:path*"],
+// };
 
 // export function middleware(request) {
-//   const token = request.cookies.get('token')?.value;
+//   const token = request.cookies.get("token")?.value;
 
 //   if (!token) {
 //     const url = request.nextUrl.clone();
-//     url.pathname = '/signin'; // Redirect to sign-in page if token is missing
+//     url.pathname = "/signin";
 //     return NextResponse.redirect(url);
 //   }
 
-//   return NextResponse.next();
+//   try {
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+//     // ✅ Roles is an array
+//     const roles = decoded.roles || [];
+
+//     const { pathname } = request.nextUrl;
+
+//     // ✅ If user has multiple roles → merge all allowed routes
+//     const allowedRoutes = roles.flatMap((role) => ROLE_ROUTES[role] || []);
+
+//     if (allowedRoutes.length === 0) {
+//       return NextResponse.redirect(new URL("/unauthorized", request.url));
+//     }
+
+//     const allowed = allowedRoutes.some((route) =>
+//       pathname.startsWith(route.replace(":path*", ""))
+//     );
+
+//     if (!allowed) {
+//       return NextResponse.redirect(new URL("/unauthorized", request.url));
+//     }
+
+//     return NextResponse.next();
+//   } catch (err) {
+//     console.error("JWT verification failed:", err);
+//     const url = request.nextUrl.clone();
+//     url.pathname = "/signin";
+//     return NextResponse.redirect(url);
+//   }
 // }
 
 // export const config = {
-//   matcher: ['/','/users/:path*','/admin/:path*', '/customer-dashboard/:path*', '/agent-dashboard/:path*', '/supplier-dashboard/:path*'],
+//   matcher: [
+//     "/",
+//     "/users/:path*",
+//     "/admin/:path*",
+//     "/tasks/:path*",
+//     "/customer-dashboard/:path*",
+//     "/agent-dashboard/:path*",
+//     "/supplier-dashboard/:path*",
+//     "/inventory-dashboard/:path*",
+//     "/accounts-dashboard/:path*",
+//     "/hr-dashboard/:path*",
+//     "/support-dashboard/:path*",
+//     "/production-dashboard/:path*",
+//     "/project-dashboard/:path*",
+//   ],
 // };
+
+

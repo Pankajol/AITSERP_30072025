@@ -220,7 +220,11 @@ lastAssignedAgentIndex: {
   type: String,
   match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
 },
-
+password: {
+  type: String,
+  select: false
+},
+portalAccess: { type: Boolean, default: true },
 // 🔥 ADD THIS
 contactEmails: [
   {
