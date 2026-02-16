@@ -243,6 +243,40 @@ export async function POST(req) {
     const graphMessageId = raw.graphMessageId;
     const internetMessageId = raw.messageId;
 
+
+//     const from = clean(raw.from);
+// const to = clean(raw.to);
+
+// 🚫 1. STOP SELF MAIL LOOP (support → support)
+if (from === to) {
+  console.log("⚠️ Ignored self email loop");
+  return Response.json({ ignored: true });
+}
+
+// 🚫 2. IGNORE AUTO GENERATED MAILS (Outlook auto reply)
+const headers = raw.headers || {};
+const autoSubmitted = headers["auto-submitted"] || "";
+
+if (String(autoSubmitted).toLowerCase().includes("auto")) {
+  console.log("⚠️ Auto generated mail ignored");
+  return Response.json({ ignored: true });
+}
+
+// 🚫 3. IGNORE SUPPORT EMAIL SENDER (VERY IMPORTANT)
+const companyCheck = await Company.findOne({
+  "supportEmails.email": to,
+});
+
+const isSupportSender = companyCheck?.supportEmails?.some(
+  (e) => clean(e.email) === clean(from)
+);
+
+if (isSupportSender) {
+  console.log("⚠️ Support email loop blocked");
+  return Response.json({ ignored: true });
+}
+
+
     if (!conversationId) throw new Error("conversationId missing");
 
     const bodyText = cleanHtml(html);
@@ -338,7 +372,7 @@ export async function POST(req) {
     }
 
     const sentiment = await analyzeSentimentAI(bodyText);
-    const agentId = await getNextAvailableAgent(customer);
+    let agentId = await getNextAvailableAgent(customer);
 
     if (agentId) {
   const agent = await CompanyUser.findOne({

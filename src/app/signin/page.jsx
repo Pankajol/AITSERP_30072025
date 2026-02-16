@@ -239,7 +239,7 @@ export default function LoginPage() {
         </div>
         
         <p className="text-slate-600 text-center mt-10 text-[10px] font-bold uppercase tracking-[0.3em]">
-          Protected by AES-256 Encryption
+          {/* Protected by AES-256 Encryption */}
         </p>
       </div>
     </main>
