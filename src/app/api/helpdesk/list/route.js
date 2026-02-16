@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Ticket from "@/models/helpdesk/Ticket";
+import Customer from "@/models/CustomerModel";
+import CompanyUser from "@/models/CompanyUser";
+import Company from "@/models/Company";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import mongoose from "mongoose";
 
