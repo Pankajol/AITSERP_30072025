@@ -57,41 +57,36 @@ export default function EmployeeSearchSelect({
         onFocus={() => query && setShow(true)}
       />
 
-      {show && (
-        <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-48 overflow-y-auto">
-          {loading && (
-            <div className="px-3 py-2 text-sm text-gray-400">
-              Searching...
-            </div>
-          )}
+   {show && (loading || list.length > 0) && (
+  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-48 overflow-y-auto">
+    {loading && (
+      <div className="px-3 py-2 text-sm text-gray-400">
+        Searching...
+      </div>
+    )}
 
-          {!loading && list.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-400">
-              No employee found
-            </div>
-          )}
+    {!loading &&
+      list.map((emp) => (
+        <button
+          key={emp._id}
+          type="button"
+          onClick={() => {
+            onSelect(emp);
+            setQuery(emp.fullName);
+            setShow(false);
+          }}
+          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+        >
+          <div className="font-medium">{emp.fullName}</div>
+          <div className="text-xs text-gray-500">
+            {emp.employeeCode}
+            {emp.email ? ` • ${emp.email}` : ""}
+          </div>
+        </button>
+      ))}
+  </div>
+)}
 
-          {!loading &&
-            list.map((emp) => (
-              <button
-                key={emp._id}
-                type="button"
-                onClick={() => {
-                  onSelect(emp);
-                  setQuery(emp.fullName);
-                  setShow(false);
-                }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-              >
-                <div className="font-medium">{emp.fullName}</div>
-                <div className="text-xs text-gray-500">
-                  {emp.employeeCode}
-                  {emp.email ? ` • ${emp.email}` : ""}
-                </div>
-              </button>
-            ))}
-        </div>
-      )}
     </div>
   );
 }

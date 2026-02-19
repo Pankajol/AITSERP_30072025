@@ -55,11 +55,20 @@ export async function GET(req) {
     const isAgent = roles.includes("agent");
 
     // ================= CUSTOMER LOGIN =================
-    if (isCustomer) {
-      if (mongoose.Types.ObjectId.isValid(user.id)) {
-        query.customerId = new mongoose.Types.ObjectId(user.id);
-      }
-    }
+if (isCustomer) {
+  const customer = await Customer.findOne({
+    emailId: user.email,        // JWT email
+    companyId: user.companyId,
+  }).select("_id");
+
+  console.log("🧾 Found customer:", customer?._id);
+
+  if (customer) {
+    query.customerId = customer._id;
+  }
+}
+
+
 
     // ================= AGENT LOGIN =================
     if (isAgent) {

@@ -76,6 +76,8 @@ export default function LoginPage() {
       }
       if (mode === "Customer") redirect = "/customer-dashboard";
 
+      // let redirect = "/admin";
+
       setTimeout(() => router.push(redirect), 800);
     } catch (error) {
       toast.error(error?.response?.data?.message || "Invalid Email or Password");
