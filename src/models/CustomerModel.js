@@ -216,10 +216,10 @@ lastAssignedAgentIndex: {
    
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
   },
-  emailId: {
-  type: String,
-  match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
-},
+//   emailId: {
+//   type: String,
+//   match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
+// },
 password: {
   type: String,
   select: false
@@ -231,6 +231,8 @@ contactEmails: [
     email: { type: String, lowercase: true, trim: true },
     name: String,
     designation: String,
+    password: { type: String, select: false }, // 🔥 Har contact ka apna password
+    isPrimary: { type: Boolean, default: false } // Kaun main contact hai
   }
 ],
   fromLead: { type: String, trim: true },

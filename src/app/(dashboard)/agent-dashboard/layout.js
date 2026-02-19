@@ -24,6 +24,7 @@ import {
   HiCube,
   HiShoppingCart,
   HiCog,
+  HiChartBar,
   
  
 
@@ -421,6 +422,7 @@ export default function DashboardLayout({ children }) {
 
           <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
             <Item href="/agent-dashboard/helpdesk/tickets" icon={<HiDocumentText />} label="Tickets" close={closeSidebar} />
+            <Item href="/agent-dashboard/helpdesk/report" icon={<HiChartBar />} label="Reports" close={closeSidebar} />
             {/* <Item href="/agent-dashboard/helpdesk/agents" icon={<HiUsers />} label="Agents" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/categories" icon={<HiUserGroup />} label="Categories" close={closeSidebar} />
             <Item href="/agent-dashboard/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" close={closeSidebar} />

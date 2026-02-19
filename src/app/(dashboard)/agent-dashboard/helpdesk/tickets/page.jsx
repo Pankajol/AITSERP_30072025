@@ -324,7 +324,7 @@ const api = useMemo(() => {
                     key={t._id}
                     className="group flex flex-col lg:flex-row gap-6 bg-white border border-slate-200 rounded-3xl p-5 hover:border-indigo-300 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300"
                   >
-                    <div className="flex-1 cursor-pointer" onClick={() => router.push(`/admin/helpdesk/tickets/${t._id}`)}>
+                    <div className="flex-1 cursor-pointer" onClick={() => router.push(`/agent-dashboard/helpdesk/tickets/${t._id}`)}>
                       <TicketCard ticket={t} />
                       <div className="mt-4 flex flex-wrap gap-4 items-center">
                         <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full text-xs font-semibold text-slate-600">
@@ -417,7 +417,7 @@ const api = useMemo(() => {
                     <div
                       key={t._id}
                       className="p-4 bg-white rounded-2xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-indigo-300 transition-all group"
-                      onClick={() => router.push(`/admin/helpdesk/tickets/${t._id}`)}
+                      onClick={() => router.push(`/agent-dashboard/helpdesk/tickets/${t._id}`)}
                     >
                       <div className="text-xs font-bold text-indigo-600 mb-1">#{t._id.slice(-4)}</div>
                       <div className="font-semibold text-slate-800 text-sm mb-3 line-clamp-2 group-hover:text-indigo-600">

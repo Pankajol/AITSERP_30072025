@@ -55,19 +55,37 @@ export async function GET(req) {
     const isAgent = roles.includes("agent");
 
     // ================= CUSTOMER LOGIN =================
+// ================= CUSTOMER LOGIN (PERSONAL FILTER) =================
 if (isCustomer) {
   const customer = await Customer.findOne({
-    emailId: user.email,        // JWT email
-    companyId: user.companyId,
-  }).select("_id");
-
-  console.log("🧾 Found customer:", customer?._id);
+    companyId: new mongoose.Types.ObjectId(user.companyId),
+    $or: [
+      { emailId: user.email.toLowerCase().trim() },
+      { "contactEmails.email": user.email.toLowerCase().trim() }
+    ]
+  });
 
   if (customer) {
-    query.customerId = customer._id;
+    // 1. Pehle parent company ke tickets ka filter lagao
+    query.customerId = customer._id; 
+
+    // 2. 🔥 100x FILTER: Check if user is Primary or Contact
+    const isPrimaryUser = customer.emailId.toLowerCase().trim() === user.email.toLowerCase().trim();
+
+    if (!isPrimaryUser) {
+      // Agar contact person hai, toh sirf wahi tickets dikhao jisme uska email save hai
+      // Aapke model mein 'customerEmail' field ye filter handle karegi
+      query.customerEmail = user.email.toLowerCase().trim(); 
+      
+      console.log(`🔐 Sub-Account View: Filtering by ${user.email}`);
+    } else {
+      // Primary user can see everything for this customerId
+      console.log(`🔓 Admin View: Showing all tickets for ${customer.customerName}`);
+    }
+  } else {
+    return NextResponse.json({ success: true, tickets: [] });
   }
 }
-
 
 
     // ================= AGENT LOGIN =================

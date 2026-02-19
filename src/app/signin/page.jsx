@@ -42,9 +42,56 @@ export default function LoginPage() {
   // ===============================
   // 🔐 MAIN LOGIN SUBMIT
   // ===============================
-  const submit = async (e) => {
+  // const submit = async (e) => {
+  //   e.preventDefault();
+  //   if (!form.email || !form.password) return toast.error("All fields are mandatory");
+    
+  //   setLoading(true);
+  //   try {
+  //     const urls = {
+  //       Company: "/api/company/login",
+  //       User: "/api/users/login",
+  //       Customer: "/api/customers/login"
+  //     };
+
+  //     const res = await axios.post(urls[mode], form);
+  //     const { token, company, user, customer } = res.data;
+  //     const finalUser = company || user || customer;
+
+  //     if (!token) throw new Error("Auth token missing");
+
+  //     // Store in storage
+  //     localStorage.setItem("token", token);
+  //     localStorage.setItem("user", JSON.stringify(finalUser));
+      
+  //     toast.success("Identity Verified. Redirecting...");
+
+  //     let redirect = "/";
+  //     if (mode === "Company") redirect = "/admin";
+  //     if (mode === "User") {
+  //       const roles = finalUser?.roles?.map(r => r.toLowerCase()) || [];
+  //       if (roles.includes("admin")) redirect = "/admin";
+  //       else if (roles.includes("agent")) redirect = "/agent-dashboard";
+  //       else if (roles.includes("employee")) redirect = "/employee-dashboard";
+  //     }
+  //     if (mode === "Customer") redirect = "/customer-dashboard";
+
+  //     // let redirect = "/admin";
+
+  //     setTimeout(() => router.push(redirect), 800);
+  //   } catch (error) {
+  //     toast.error(error?.response?.data?.message || "Invalid Email or Password");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
+
+
+const submit = async (e) => {
     e.preventDefault();
-    if (!form.email || !form.password) return toast.error("All fields are mandatory");
+    if (!form.email || !form.password) return toast.error("Credentials required");
     
     setLoading(true);
     try {
@@ -56,36 +103,35 @@ export default function LoginPage() {
 
       const res = await axios.post(urls[mode], form);
       const { token, company, user, customer } = res.data;
+      
       const finalUser = company || user || customer;
 
-      if (!token) throw new Error("Auth token missing");
+      if (!token) throw new Error("Auth Token Error");
 
-      // Store in storage
+      // Store identity
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(finalUser));
       
-      toast.success("Identity Verified. Redirecting...");
+      toast.success(`Access Granted: ${finalUser.name || 'User'}`);
 
+      // Smart Redirect
       let redirect = "/";
       if (mode === "Company") redirect = "/admin";
       if (mode === "User") {
         const roles = finalUser?.roles?.map(r => r.toLowerCase()) || [];
         if (roles.includes("admin")) redirect = "/admin";
         else if (roles.includes("agent")) redirect = "/agent-dashboard";
-        else if (roles.includes("employee")) redirect = "/employee-dashboard";
+        else redirect = "/employee-dashboard";
       }
       if (mode === "Customer") redirect = "/customer-dashboard";
 
-      // let redirect = "/admin";
-
       setTimeout(() => router.push(redirect), 800);
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Invalid Email or Password");
+      toast.error(error?.response?.data?.message || "Verification Failed");
     } finally {
       setLoading(false);
     }
   };
-
   // ===============================
   // 🆕 SET CUSTOMER PASSWORD
   // ===============================
