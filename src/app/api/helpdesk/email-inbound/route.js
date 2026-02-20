@@ -426,7 +426,9 @@ if (isSupportSender) {
       html: `
         <p>Your ticket has been created successfully.</p>
         <p><b>Ticket ID:</b> ${ticket.ticketNo}</p>
-        <p><b>Subject:</b> ${ticket.subject}</p
+        <p><b>Subject:</b> ${ticket.subject}</p>
+        <p>Our support team will get back to you shortly.</p>
+        
       `,
       companyEmail: to,
     });
