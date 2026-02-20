@@ -425,7 +425,8 @@ if (isSupportSender) {
       subject: `Ticket Created – ${subject}`,
       html: `
         <p>Your ticket has been created successfully.</p>
-        <p><b>Ticket ID:</b> ${ticket._id}</p>
+        <p><b>Ticket ID:</b> ${ticket.ticketNo}</p>
+        <p><b>Subject:</b> ${ticket.subject}</p
       `,
       companyEmail: to,
     });
