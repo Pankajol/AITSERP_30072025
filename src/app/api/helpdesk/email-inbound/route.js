@@ -423,11 +423,25 @@ if (isSupportSender) {
 
       return Response.json({ success: true, unknown: true });
     }
-    let slaPolicy=null;
+    let slaPolicy = null;
 
-if(customer?.slaPolicyId){
+/* ================= LOAD SLA POLICY ================= */
+
+// 1️⃣ Customer specific SLA
+if (customer?.slaPolicyId) {
   slaPolicy = await SlaPolicy.findById(customer.slaPolicyId);
 }
+
+// 2️⃣ 🔥 AUTO DEFAULT SLA (VERY IMPORTANT)
+if (!slaPolicy) {
+  slaPolicy = await SlaPolicy.findOne({
+    companyId: company._id,
+    isDefault: true, // recommend field
+  });
+}
+
+// DEBUG (remove later)
+console.log("Loaded SLA Policy:", slaPolicy?._id);
 
 
     const sentiment = await analyzeSentimentAI(bodyText);
@@ -470,14 +484,21 @@ const resolutionDue =
       source: "email",
       status: "open",
       messages: [],
-      sla: slaPolicy
-  ? {
+      ...(slaPolicy && {
+    sla: {
       policyId: slaPolicy._id,
+      firstResponseDueAt: firstResponseDue || null,
+      resolutionDueAt: resolutionDue || null,
+      firstResponseCompletedAt: null,
+      resolvedAt: null,
       priority: slaPolicy.priority || "normal",
-      ...(firstResponseDue && { firstResponseDueAt: firstResponseDue }),
-      ...(resolutionDue && { resolutionDueAt: resolutionDue }),
-    }
-  : undefined,
+      breached: {
+        firstResponse: false,
+        resolution: false,
+      },
+      risk: "safe",
+    },
+  }),
     });
 
     const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
