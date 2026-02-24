@@ -472,34 +472,29 @@ const resolutionDue =
     ? addWorkingMinutes(now, slaPolicy.resolutionMinutes, company)
     : null;
 
-    ticket = await Ticket.create({
-      companyId: company._id,
-      customerId: customer._id,
-      customerEmail: from,
-      subject,
-      agentId: agentId || null,
-      sentiment,
-      emailAlias: to,
-      emailThreadId: conversationId,
-      source: "email",
-      status: "open",
-      messages: [],
-      ...(slaPolicy && {
-    sla: {
+   const slaData = slaPolicy
+  ? {
       policyId: slaPolicy._id,
+      priority: slaPolicy.priority || "normal",
       firstResponseDueAt: firstResponseDue || null,
       resolutionDueAt: resolutionDue || null,
-      firstResponseCompletedAt: null,
-      resolvedAt: null,
-      priority: slaPolicy.priority || "normal",
-      breached: {
-        firstResponse: false,
-        resolution: false,
-      },
-      risk: "safe",
-    },
-  }),
-    });
+    }
+  : undefined;
+
+ticket = await Ticket.create({
+  companyId: company._id,
+  customerId: customer._id,
+  customerEmail: from,
+  subject,
+  agentId: agentId || null,
+  sentiment,
+  emailAlias: to,
+  emailThreadId: conversationId,
+  source: "email",
+  status: "open",
+  messages: [],
+  sla: slaData,
+});
 
     const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
 
