@@ -280,6 +280,10 @@ contactEmails: [
     ref: "BankHead",
   
   },
+  slaPolicyId:{
+  type: mongoose.Schema.Types.ObjectId,
+  ref:"SlaPolicy"
+},
 
 }, {
   timestamps: true,

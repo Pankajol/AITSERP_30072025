@@ -52,6 +52,29 @@ export default function TicketDetailPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [ticket?.messages]);
+  /* ================= PASTE SCREENSHOT ================= */
+function handlePaste(e) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  const newFiles = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    if (item.type.indexOf("image") !== -1) {
+      const file = item.getAsFile();
+      if (file) {
+        newFiles.push(file);
+      }
+    }
+  }
+
+  if (newFiles.length > 0) {
+    e.preventDefault(); // prevent text paste
+    setFiles((prev) => [...prev, ...newFiles]);
+  }
+}
 
   async function loadTicket() {
     setLoading(true);
@@ -212,28 +235,71 @@ export default function TicketDetailPage() {
                     onError={(e) => (e.currentTarget.src = DEFAULT_AVATAR)}
                     alt="" 
                   />
-                  <div className={`space-y-1 ${isAgent ? "items-end" : "items-start"}`}>
-                    <div className={`flex items-center gap-2 mb-1 ${isAgent ? "flex-row-reverse" : ""}`}>
-                      <span className="text-[11px] font-bold text-slate-600">{m.sender?.name || "User"}</span>
-                      <span className="text-[10px] text-slate-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
-                    </div>
-                    
-                    <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                      isAgent ? "bg-indigo-600 text-white rounded-tr-none" : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
-                    }`}>
-                      <div className="whitespace-pre-wrap">{m.message}</div>
-                      
-                      {m.attachments?.length > 0 && (
-                        <div className={`mt-3 pt-3 border-t space-y-2 ${isAgent ? "border-indigo-400" : "border-slate-100"}`}>
-                          {m.attachments.map((file, i) => (
-                            <a key={i} href={file.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs hover:underline">
-                              <FiPaperclip /> {file.filename || "Attachment"}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+             <div className={`space-y-1 ${isAgent ? "items-end" : "items-start"}`}>
+  <div className={`flex items-center gap-2 mb-1 ${isAgent ? "flex-row-reverse" : ""}`}>
+    <span className="text-[11px] font-bold text-slate-600">
+      {m.sender?.name || "User"}
+    </span>
+    <span className="text-[10px] text-slate-400">
+      {new Date(m.createdAt).toLocaleTimeString()}
+    </span>
+  </div>
+
+  <div
+    className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
+      isAgent
+        ? "bg-indigo-600 text-white rounded-tr-none"
+        : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+    }`}
+  >
+    {/* MESSAGE TEXT */}
+    {m.message && (
+      <div className="whitespace-pre-wrap">{m.message}</div>
+    )}
+
+    {/* ⭐ ATTACHMENTS PREVIEW */}
+    {m.attachments?.length > 0 && (
+      <div
+        className={`mt-3 pt-3 border-t grid grid-cols-2 gap-2 ${
+          isAgent ? "border-indigo-400" : "border-slate-100"
+        }`}
+      >
+        {m.attachments.map((file, i) => {
+          const isImage =
+            file?.url &&
+            /\.(jpg|jpeg|png|gif|webp)$/i.test(file.url);
+
+          return isImage ? (
+            <a
+              key={i}
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block overflow-hidden rounded-lg border hover:opacity-80 transition"
+            >
+              <img
+                src={file.url}
+                className="w-full h-28 object-cover"
+                alt=""
+              />
+            </a>
+          ) : (
+            <a
+              key={i}
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 text-xs hover:underline"
+            >
+              <FiPaperclip />
+              {file.filename || "Attachment"}
+            </a>
+          );
+        })}
+      </div>
+    )}
+  </div>
+</div>
                 </div>
               </div>
             );
@@ -242,53 +308,94 @@ export default function TicketDetailPage() {
       </main>
 
       {/* REPLY INPUT AREA */}
-      <footer className="bg-white border-t p-4 md:p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
-        <div className="max-w-4xl mx-auto">
-          {!isClosed ? (
-            <form onSubmit={sendReply} className="space-y-4">
-              {files.length > 0 && (
-                <div className="flex flex-wrap gap-2 pb-2">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-bold border border-indigo-100">
+     <footer className="bg-white border-t p-4 md:p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+  <div className="max-w-4xl mx-auto">
+    {!isClosed ? (
+      <form onSubmit={sendReply} className="space-y-4">
+
+        {/* ⭐ FILE PREVIEW AREA */}
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-3 pb-2">
+            {files.map((f, i) => {
+              const isImage = f.type?.startsWith("image/");
+              const preview = isImage ? URL.createObjectURL(f) : null;
+
+              return (
+                <div
+                  key={i}
+                  className="relative group border rounded-xl overflow-hidden bg-white shadow-sm"
+                >
+                  {isImage ? (
+                    <img
+                      src={preview}
+                      className="w-20 h-20 object-cover"
+                      alt=""
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs">
                       <FiFile /> {f.name}
-                      <button type="button" onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="hover:text-red-500">
-                        <FiX />
-                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-              
-              <div className="relative group">
-                <textarea
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                  placeholder="Share an update or solution..."
-                  rows={3}
-                  className="w-full bg-slate-50 border-none rounded-2xl p-4 pr-12 text-sm focus:ring-2 focus:ring-indigo-500 transition-all resize-none shadow-inner"
-                />
-                <div className="absolute right-4 bottom-4 flex items-center gap-2">
-                  <label className="p-2 text-slate-400 hover:text-indigo-600 cursor-pointer transition-colors">
-                    <FiPaperclip size={20} />
-                    <input type="file" multiple className="hidden" onChange={onFileChange} />
-                  </label>
+                  )}
+
+                  {/* REMOVE FILE BUTTON */}
                   <button
-                    type="submit"
-                    disabled={busy || !reply.trim()}
-                    className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition-all"
+                    type="button"
+                    onClick={() =>
+                      setFiles(files.filter((_, idx) => idx !== i))
+                    }
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
                   >
-                    {busy ? <FiRefreshCw className="animate-spin" /> : <FiSend size={18} />}
+                    <FiX size={12} />
                   </button>
                 </div>
-              </div>
-            </form>
-          ) : (
-            <div className="flex items-center justify-center gap-3 p-6 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-slate-500 font-medium">
-              <FiLock /> This ticket is closed. No further replies are permitted.
-            </div>
-          )}
+              );
+            })}
+          </div>
+        )}
+
+        {/* INPUT AREA */}
+        <div className="relative group">
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onPaste={handlePaste}   // ⭐ screenshot paste works here
+            placeholder="Share an update or solution..."
+            rows={3}
+            className="w-full bg-slate-50 border-none rounded-2xl p-4 pr-12 text-sm focus:ring-2 focus:ring-indigo-500 transition-all resize-none shadow-inner"
+          />
+
+          <div className="absolute right-4 bottom-4 flex items-center gap-2">
+            <label className="p-2 text-slate-400 hover:text-indigo-600 cursor-pointer transition-colors">
+              <FiPaperclip size={20} />
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={onFileChange}
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={busy || !reply.trim()}
+              className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition-all"
+            >
+              {busy ? (
+                <FiRefreshCw className="animate-spin" />
+              ) : (
+                <FiSend size={18} />
+              )}
+            </button>
+          </div>
         </div>
-      </footer>
+      </form>
+    ) : (
+      <div className="flex items-center justify-center gap-3 p-6 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-slate-500 font-medium">
+        <FiLock /> This ticket is closed. No further replies are permitted.
+      </div>
+    )}
+  </div>
+</footer>
     </div>
   );
 }

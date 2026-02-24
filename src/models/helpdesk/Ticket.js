@@ -133,6 +133,23 @@ const TicketSchema = new mongoose.Schema(
       enum: ["low", "normal", "high", "urgent"],
       default: "normal",
     },
+    sla:{
+  policyId:{ type: mongoose.Schema.Types.ObjectId, ref:"SlaPolicy" },
+
+  firstResponseDueAt:Date,
+  resolutionDueAt:Date,
+
+  firstResponseCompletedAt:Date,
+  resolvedAt:Date,
+
+  priority:String,
+
+  breached:{
+    firstResponse:{ type:Boolean, default:false },
+    resolution:{ type:Boolean, default:false }
+  },
+  risk:{ type:String, default:"safe" } 
+},
 
     messages: [TicketMessageSchema],
 

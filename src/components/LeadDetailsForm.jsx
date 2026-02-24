@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
+import DynamicCustomFields from "@/components/DynamicCustomFields";
 
 const LeadDetailsForm = ({ leadId, initialData = null }) => {
   const router = useRouter();
@@ -42,12 +43,23 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
 
   const [formData, setFormData] = useState(initialFormState);
   const [errors, setErrors] = useState({});
+  const [customFieldsConfig,setCustomFieldsConfig] = useState([]);
   const [confirmation, setConfirmation] = useState({
     isVisible: false,
     message: ""
   });
 
   const isEditMode = Boolean(leadId);
+  useEffect(()=>{
+
+ const token = localStorage.getItem("token");
+
+ axios.get("/api/custom-fields?module=lead",{
+   headers:{ Authorization:`Bearer ${token}` }
+ })
+ .then(res=>setCustomFieldsConfig(res.data.data));
+
+},[]);
 
   // Prefill if editing
   useEffect(() => {
@@ -73,6 +85,15 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+  const handleCustomChange = (e,name)=>{
+ setFormData(prev=>({
+   ...prev,
+   customFields:{
+     ...prev.customFields,
+     [name]: e.target.value
+   }
+ }))
+}
 
   const validateForm = () => {
     const newErrors = {};
@@ -271,6 +292,12 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
                   <option value="Other">Other</option>
                 </select>
               </div>
+              <DynamicCustomFields
+  fields={customFieldsConfig}
+  values={formData.customFields}
+  onChange={handleCustomChange}
+  formFieldClass={formFieldClass}
+/>
 
             </div>
 

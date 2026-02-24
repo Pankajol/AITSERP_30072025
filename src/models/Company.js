@@ -116,6 +116,11 @@ subscriptionExpiresAt: { type: Date },
           type: String,
           required: true,
         },
+        workingHours: {
+  startHour: { type:Number, default:10 },
+  endHour: { type:Number, default:18 },
+  workingDays: { type:[Number], default:[1,2,3,4,5] }
+},
         agreeToTerms: {
           type: Boolean,
           default: false,

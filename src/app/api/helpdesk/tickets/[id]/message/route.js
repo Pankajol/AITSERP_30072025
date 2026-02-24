@@ -91,6 +91,22 @@ function cleanHtml(v) {
 }
 
 
+/* ================= AGENT SIGNATURE ================= */
+
+function buildAgentSignature(user) {
+  const agentName = user?.name || user?.fullName || "Support Team";
+
+  return `
+    <br><br>
+    <p style="margin:0;color:#555;">
+      Regards,<br>
+      <b>${agentName}</b><br>
+      ${user?.role || "Support Agent"}
+    </p>
+  `;
+}
+
+
 /* ================= MAIN ================= */
 export async function POST(req, { params }) {
   try {
@@ -202,10 +218,13 @@ export async function POST(req, { params }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          body: {
-            contentType: "HTML",
-            content: `<p>${text.replace(/\n/g, "<br>")}</p>`,
-          },
+           body: {
+        contentType: "HTML",
+        content: `
+          <p>${text.replace(/\n/g, "<br>")}</p>
+          ${buildAgentSignature(user)}
+        `,
+      },
         }),
       }
     );

@@ -67,6 +67,11 @@ const leadSchema = new mongoose.Schema(
     },
     qualifiedBy: { type: String, trim: true },
     qualifiedOn: { type: Date },
+    customFields:{
+  type:Map,
+  of:mongoose.Schema.Types.Mixed,
+  default:{}
+}
   },
   { timestamps: true }
 );

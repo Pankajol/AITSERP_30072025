@@ -65,12 +65,12 @@ export default function CustomerTickets() {
           My Tickets
         </h1>
 
-        <button
+        {/* <button
           onClick={() => router.push("/customer-dashboard/helpdesk/new")}
           className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow"
         >
           + New Ticket
-        </button>
+        </button> */}
       </div>
 
       {/* LOADING */}

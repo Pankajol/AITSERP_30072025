@@ -47,6 +47,16 @@ export default function TicketCard({ ticket }) {
                 {ticket.customerId?.customerName || ticket.customerEmail?.split('@')[0]}
               </span>
             </div>
+
+             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <User size={14} className="text-blue-500" /> 
+               <span className="truncate max-w-[150px]">
+                Agents Name:
+              </span>
+              <span className="truncate max-w-[150px]">
+                {ticket.agentId?.name || ticket.agentEmail?.split('@')[0]}
+              </span>
+            </div>
             {ticket.priority?.toLowerCase() === 'high' && (
               <span className="flex items-center gap-1 text-[10px] font-black text-red-600 uppercase animate-pulse">
                 <AlertCircle size={10} /> Urgent

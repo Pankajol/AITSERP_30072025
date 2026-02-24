@@ -190,11 +190,60 @@ async function sendAgentAssignedMail({ agentEmail, ticket, companyEmail }) {
 
 /* ================= ATTACHMENT UPLOADER ================= */
 
+// async function uploadAttachments(raw = [], ticketId) {
+//   const uploaded = [];
+
+//   for (const a of raw) {
+//     try {
+//       if (!a?.content || !a?.contentType) continue;
+
+//       const buffer = Buffer.from(a.content, "base64");
+
+//       const res = await cloudinary.uploader.upload(
+//         `data:${a.contentType};base64,${buffer.toString("base64")}`,
+//         {
+//           folder: `helpdesk/tickets/${ticketId}`,
+//           resource_type: "auto",
+//         }
+//       );
+
+//       uploaded.push({
+//         filename: a.filename || "attachment",
+//         url: res.secure_url,
+//         contentType: a.contentType,
+//         size: buffer.length,
+//       });
+//     } catch (err) {
+//       console.error("Attachment upload failed:", err.message);
+//     }
+//   }
+
+//   return uploaded;
+// }
+
+
+
 async function uploadAttachments(raw = [], ticketId) {
   const uploaded = [];
 
   for (const a of raw) {
     try {
+      /* 🚫 SKIP SIGNATURE / INLINE IMAGES */
+      if (
+        a?.isInline === true ||
+        a?.contentDisposition === "inline" ||
+        a?.contentId
+      ) {
+        console.log("⚠️ Skipped inline signature image:", a.filename);
+        continue;
+      }
+
+      /* 🚫 SKIP SMALL LOGO FILES (EXTRA SAFETY) */
+      if (a?.size && a.size < 15000) {
+        console.log("⚠️ Skipped small signature asset:", a.filename);
+        continue;
+      }
+
       if (!a?.content || !a?.contentType) continue;
 
       const buffer = Buffer.from(a.content, "base64");
