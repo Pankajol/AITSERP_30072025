@@ -8,6 +8,15 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import cloudinary from "@/lib/cloudinary";
 
 
+
+const SIGNATURE_IMAGES = [
+  "https://res.cloudinary.com/dz1gfppll/image/upload/v1771918261/helpdesk/tickets/699d53b583896a82939423f3/ofbyl7veaxn9j8rcy96u.png",
+  "https://res.cloudinary.com/dz1gfppll/image/upload/v1771918262/helpdesk/tickets/699d53b583896a82939423f3/pwe7hwzvy6pn7z4fgsqm.png",
+  "https://res.cloudinary.com/dz1gfppll/image/upload/v1771918263/helpdesk/tickets/699d53b583896a82939423f3/krg9uscfhbxygpulxjiw.png",
+  "https://res.cloudinary.com/dz1gfppll/image/upload/v1771561379/helpdesk/tickets/6997e19f29c134d3ebd4dd3f/wfe91cegymhifcgvbr0w.png",
+  "https://res.cloudinary.com/dz1gfppll/image/upload/v1771561381/helpdesk/tickets/6997e19f29c134d3ebd4dd3f/gs5x2cjqykfqxohfqmj2.png"
+];
+
 /* ================= GRAPH TOKEN ================= */
 async function getGraphToken(se) {
   const params = new URLSearchParams({
@@ -93,19 +102,51 @@ function cleanHtml(v) {
 
 /* ================= AGENT SIGNATURE ================= */
 
+// function buildAgentSignature(user) {
+//   const agentName = user?.name || user?.fullName || "Support Team";
+
+//   return `
+//     <br><br>
+//     <p style="margin:0;color:#555;">
+//       Regards,<br>
+//       <b>${agentName}</b><br>
+//       ${user?.role || "Support Agent"}
+//     </p>
+//   `;
+// }
+
+
+
 function buildAgentSignature(user) {
+
   const agentName = user?.name || user?.fullName || "Support Team";
+
+  const imagesHtml = SIGNATURE_IMAGES.map(
+    (url) => `
+      <img 
+        src="${url}" 
+        width="420"
+        style="display:block;margin-top:6px;border-radius:6px;"
+      />
+    `
+  ).join("");
 
   return `
     <br><br>
-    <p style="margin:0;color:#555;">
-      Regards,<br>
-      <b>${agentName}</b><br>
-      ${user?.role || "Support Agent"}
-    </p>
+
+    <div style="font-family:Arial;font-size:14px;color:#444;">
+      <p style="margin:0;">
+        Regards,<br>
+        <b>${agentName}</b><br>
+        ${user?.role || "Support Agent"}
+      </p>
+
+      <div style="margin-top:10px;">
+        ${imagesHtml}
+      </div>
+    </div>
   `;
 }
-
 
 /* ================= MAIN ================= */
 export async function POST(req, { params }) {
@@ -221,9 +262,9 @@ export async function POST(req, { params }) {
            body: {
         contentType: "HTML",
         content: `
-          <p>${text.replace(/\n/g, "<br>")}</p>
-          ${buildAgentSignature(user)}
-        `,
+  <p>${text.replace(/\n/g, "<br>")}</p>
+  ${buildAgentSignature(user)}
+`,
       },
         }),
       }

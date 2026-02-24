@@ -228,19 +228,21 @@ async function uploadAttachments(raw = [], ticketId) {
 
   for (const a of raw) {
     try {
-      /* 🚫 SKIP SIGNATURE / INLINE IMAGES */
-      if (
+      const filename = String(a?.filename || a?.name || "").toLowerCase();
+      const type = String(a?.contentType || "").toLowerCase();
+
+      /* ================= 🔥 SIGNATURE IMAGE BLOCKER ================= */
+
+      const isSignature =
         a?.isInline === true ||
         a?.contentDisposition === "inline" ||
-        a?.contentId
-      ) {
-        console.log("⚠️ Skipped inline signature image:", a.filename);
-        continue;
-      }
+        !!a?.contentId ||                     // Outlook CID image
+        filename.startsWith("image00") ||    // Outlook signature pattern
+        filename.includes("logo") ||         // company logo
+        (type.startsWith("image/") && (a?.size || 0) < 25000); // tiny image
 
-      /* 🚫 SKIP SMALL LOGO FILES (EXTRA SAFETY) */
-      if (a?.size && a.size < 15000) {
-        console.log("⚠️ Skipped small signature asset:", a.filename);
+      if (isSignature) {
+        console.log("🚫 Signature image skipped:", filename);
         continue;
       }
 
