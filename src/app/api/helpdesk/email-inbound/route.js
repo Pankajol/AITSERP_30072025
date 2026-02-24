@@ -7,6 +7,8 @@ import Company from "@/models/Company";
 import CompanyUser from "@/models/CompanyUser";
 import { getNextAvailableAgent } from "@/utils/getNextAvailableAgent";
 import { analyzeSentimentAI } from "@/utils/aiSentiment";
+import SlaPolicy from "@/models/helpdesk/SlaPolicy";
+import { addWorkingMinutes } from "@/utils/calcWorkingSla";
 import cloudinary from "@/lib/cloudinary";
 
 /* ================= HELPERS ================= */
@@ -405,7 +407,7 @@ if (isSupportSender) {
       companyId: company._id, 
       $or: [{ emailId: from }, { "contactEmails.email": from }],
     });
-
+    
     /* UNKNOWN SENDER */
     if (!customer) {
       await sendOutlookAutoReply({
@@ -421,6 +423,12 @@ if (isSupportSender) {
 
       return Response.json({ success: true, unknown: true });
     }
+    let slaPolicy=null;
+
+if(customer?.slaPolicyId){
+  slaPolicy = await SlaPolicy.findById(customer.slaPolicyId);
+}
+
 
     const sentiment = await analyzeSentimentAI(bodyText);
     let agentId = await getNextAvailableAgent(customer);
@@ -437,6 +445,19 @@ if (isSupportSender) {
   }
 }
 
+
+const now = new Date();
+
+const firstResponseDue =
+  slaPolicy?.firstResponseMinutes
+    ? addWorkingMinutes(now, slaPolicy.firstResponseMinutes, company)
+    : null;
+
+const resolutionDue =
+  slaPolicy?.resolutionMinutes
+    ? addWorkingMinutes(now, slaPolicy.resolutionMinutes, company)
+    : null;
+
     ticket = await Ticket.create({
       companyId: company._id,
       customerId: customer._id,
@@ -449,6 +470,14 @@ if (isSupportSender) {
       source: "email",
       status: "open",
       messages: [],
+      sla: slaPolicy
+  ? {
+      policyId: slaPolicy._id,
+      priority: slaPolicy.priority || "normal",
+      ...(firstResponseDue && { firstResponseDueAt: firstResponseDue }),
+      ...(resolutionDue && { resolutionDueAt: resolutionDue }),
+    }
+  : undefined,
     });
 
     const uploaded = await uploadAttachments(raw.attachments || [], ticket._id);
