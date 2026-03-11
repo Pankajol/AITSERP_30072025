@@ -73,64 +73,85 @@
 
 // components/CustomerSearch.js
 "use client";
+
 import React, { useState, useRef, useEffect } from "react";
 import useSearch from "../hooks/useSearch";
 import api from "@/utils/api";
 
 export default function CustomerSearch({ onSelectCustomer }) {
+
   const [query, setQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [selected, setSelected] = useState(null);
+
   const wrapperRef = useRef(null);
 
   const customerSearch = useSearch(async (q) => {
-    // empty search = return first customers
-    const res = await api.get(`/customers?search=${encodeURIComponent(q || "")}`);
-    return res.data?.data || [];
+    try {
+      const res = await api.get(
+        `/customers?search=${encodeURIComponent(q || "")}`
+      );
+      return res?.data?.data || [];
+    } catch (err) {
+      console.error("Customer search error:", err);
+      return [];
+    }
   });
 
-  /* close on outside click */
+  /* Close dropdown on outside click */
   useEffect(() => {
     function handleClickOutside(event) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target)
+      ) {
         setShowDropdown(false);
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /* Handle typing */
   const handleChange = async (e) => {
     const val = e.target.value;
+
     setQuery(val);
-    setSelected(null);
     setShowDropdown(true);
+
     await customerSearch.handleSearch(val);
   };
 
+  /* Load default customers when focused */
   const handleFocus = async () => {
     setShowDropdown(true);
 
-    // if nothing typed yet → load default customers
-    if (!customerSearch.results.length) {
+    if (!customerSearch.results?.length) {
       await customerSearch.handleSearch("");
     }
   };
 
+  /* Select customer */
   const handleSelect = (c) => {
-    setSelected(c);
-    onSelectCustomer({
-      _id: c._id,
-      customerCode: c.customerCode,
-      customerName: c.customerName,
-      contactPersonName: c.contactPersonName,
-    });
+
     setQuery(c.customerName);
     setShowDropdown(false);
+
+    if (onSelectCustomer) {
+      onSelectCustomer({
+        _id: c._id,
+        customerCode: c.customerCode,
+        customerName: c.customerName,
+        contactPersonName: c.contactPersonName,
+      });
+    }
   };
 
   return (
     <div ref={wrapperRef} className="relative mb-4">
+
       <input
         type="text"
         placeholder="Search Customer"
@@ -141,19 +162,20 @@ export default function CustomerSearch({ onSelectCustomer }) {
       />
 
       {showDropdown && (
-        <div className="absolute w-full bg-white border max-h-56 overflow-y-auto z-50 shadow">
+        <div className="absolute w-full bg-white border max-h-56 overflow-y-auto z-50 shadow rounded">
+
           {customerSearch.loading && (
             <p className="p-2 text-sm text-gray-500">Loading...</p>
           )}
 
           {!customerSearch.loading &&
-            customerSearch.results.length === 0 && (
+            customerSearch.results?.length === 0 && (
               <p className="p-2 text-sm text-gray-500">
                 No customers found
               </p>
             )}
 
-          {customerSearch.results.map((c) => (
+          {customerSearch.results?.map((c) => (
             <div
               key={c._id}
               onClick={() => handleSelect(c)}
@@ -162,12 +184,12 @@ export default function CustomerSearch({ onSelectCustomer }) {
               {c.customerName} ({c.customerCode})
             </div>
           ))}
+
         </div>
       )}
     </div>
   );
 }
-
 
 
 

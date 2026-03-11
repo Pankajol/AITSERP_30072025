@@ -76,6 +76,7 @@
 
 import mongoose from 'mongoose';
 import Counter from "@/models/Counter";
+import Supplier from "@/models/SupplierModels";
 const { Schema } = mongoose;
 
 /* ----------- BATCH (all fields now optional) ----------- */

@@ -42,16 +42,14 @@ const WarehouseSchema = new mongoose.Schema(
     addressLine1: { type: String, required: true },
     addressLine2: { type: String },
     city: { type: String, required: true },
-    state: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "State", 
-      required: true 
+     state: { 
+      type: String,
+      trim: true
     },
     pin: { type: String, required: true },
     country: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: "Country", 
-      required: true 
+      type: String,
+      trim: true
     },
     warehouseType: { 
       type: String, 

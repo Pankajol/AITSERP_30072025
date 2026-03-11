@@ -94,8 +94,7 @@ const PurchaseInvoiceSchema = new mongoose.Schema(
   remainingAmount: { type: Number, default: 0 }, // grandTotal - paidAmount
  
     status: {
-      type: String,
-      enum: ["Pending", "Approved", "Received", "Rejected"],
+      type: String
     },
     paymentStatus: {
       type: String,

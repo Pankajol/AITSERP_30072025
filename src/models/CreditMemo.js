@@ -50,6 +50,7 @@ const CreditNoteSchema = new mongoose.Schema({
   salesEmployee: { type: String },
   status: { type: String },
   postingDate: { type: Date },
+  memoDate: { type: Date },
   validUntil: { type: Date },
   documentDate: { type: Date },
   documentNumberCreditNote: { type: String, required: true },

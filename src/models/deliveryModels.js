@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Counter from "@/models/Counter";
+import Customer from "./CustomerModel";
 const { Schema } = mongoose;
 
 // Batch schema
@@ -47,7 +48,7 @@ const DeliverySchema = new Schema({
   createdBy: { type: Schema.Types.ObjectId, ref: "User" },
   branchId: { type: Schema.Types.ObjectId, ref: "Branch" },
 
-  deliveryType: { type: String, enum: ["Sales", "Purchase"], required: true },
+  deliveryType: { type: String },
   deliveryDate: { type: Date, required: true },
   deliveryNumber: { type: String },
   documentNumberDelivery: { type: String, required: true },
@@ -60,7 +61,7 @@ const DeliverySchema = new Schema({
   refNumber: String,
   salesEmployee: String,
 
-  status: { type: String, enum: ["Pending", "Confirmed", "Partially Delivered", "Delivered", "Close", "Draft"], default: "Pending" },
+  status: { type: String, default: "Pending" },
 
   orderDate: Date,
   expectedDeliveryDate: Date,

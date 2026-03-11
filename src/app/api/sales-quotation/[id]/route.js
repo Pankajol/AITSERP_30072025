@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import dbConnect from "@/lib/db";
 import SalesQuotation from "@/models/SalesQuotationModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import { checkPermission } from "@/lib/checkPermission";
 import { v2 as cloudinary } from "cloudinary";
 
 // ✅ Cloudinary Config
@@ -21,6 +22,7 @@ export const config = { api: { bodyParser: false } };
 export async function GET(req, { params }) {
   try {
     await dbConnect();
+    checkPermission(req, "Sales Quotation", "view");
 
     const token = getTokenFromHeader(req);
     if (!token) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -56,6 +58,7 @@ export async function PUT(req, { params }) {
   if (!decoded) return NextResponse.json({ success: false, error: "Invalid token" }, { status: 401 });
 
   const { id } = params;
+  checkPermission(req, "Sales Quotation", "edit");
   if (!mongoose.isValidObjectId(id)) {
     return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
   }
@@ -170,6 +173,8 @@ export async function DELETE(req, { params }) {
     if (!mongoose.isValidObjectId(id)) {
       return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
     }
+
+    checkPermission(req, "Sales Quotation", "delete");
 
     const quotation = await SalesQuotation.findById(id);
 
