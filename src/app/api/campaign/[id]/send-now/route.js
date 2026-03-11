@@ -11,6 +11,7 @@ import EmailMaster from "@/models/emailMaster/emailMaster";
 import nodemailer from "nodemailer";
 import fetch from "node-fetch"; 
 import crypto from "crypto";
+import path from "path"; // Required for attachments
 
 // -------------------------
 // CONFIGS
@@ -18,7 +19,9 @@ import crypto from "crypto";
 const META_URL = "https://graph.facebook.com/v18.0";
 const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
 const META_TOKEN = process.env.META_WABA_TOKEN;
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "";
+
+// BASE_URL cleanup: trailing slash hata rahe hain taaki URL double slash na banaye
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "").replace(/\/$/, "");
 
 // -------------------------
 // Helpers
@@ -30,7 +33,6 @@ function tryDecryptEncryptedPassword(encrypted) {
   if (!encrypted) return null;
   const secret = process.env.ENCRYPTION_KEY;
   if (!secret) return null;
-
   try {
     let ivBuf, cipherBuf;
     if (typeof encrypted === "string" && encrypted.includes(":")) {
@@ -42,28 +44,21 @@ function tryDecryptEncryptedPassword(encrypted) {
       ivBuf = all.slice(0, 16);
       cipherBuf = all.slice(16);
     }
-
     const key = crypto.createHash("sha256").update(secret).digest();
     const decipher = crypto.createDecipheriv("aes-256-cbc", key, ivBuf);
     let decrypted = decipher.update(cipherBuf, undefined, "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
-  } catch (err) {
-    return null;
-  }
+  } catch (err) { return null; }
 }
 
 async function buildTransporterForEmailMaster(emailMaster) {
   if (!emailMaster) return null;
   const user = emailMaster.email;
   const pass = emailMaster.encryptedAppPassword ? tryDecryptEncryptedPassword(emailMaster.encryptedAppPassword) : null;
-
   if (!user || !pass) return null;
   const service = (emailMaster.service || "").toLowerCase();
-
-  if (service === "gmail") {
-    return nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
-  }
+  if (service === "gmail") return nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
   if (["outlook", "office365", "hotmail"].includes(service)) {
     return nodemailer.createTransport({
       host: "smtp.office365.com",
@@ -95,7 +90,6 @@ function formatFrom(name, email) {
 export async function POST(req, context) {
   try {
     await dbConnect();
-
     const token = getTokenFromHeader(req);
     if (!token) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
 
@@ -106,7 +100,7 @@ export async function POST(req, context) {
     const campaign = await EmailCampaign.findById(id);
     if (!campaign) return new Response(JSON.stringify({ success: false, error: "Not found" }), { status: 404 });
 
-    // Build Recipients
+    // 1. Build & Clean Recipients
     let recipients = [];
     if (campaign.recipientSource === "segment") {
       const Model = campaign.recipientList === "source_customers" ? Customer : Lead;
@@ -118,7 +112,6 @@ export async function POST(req, context) {
       recipients = campaign.recipientExcelEmails || campaign.recipients || [];
     }
 
-    // Clean Recipients
     if (campaign.channel === "email") {
       recipients = [...new Set(recipients.map(e => e.toLowerCase().trim()).filter(isValidEmail))];
     } else {
@@ -130,7 +123,7 @@ export async function POST(req, context) {
 
     if (!recipients.length) return new Response(JSON.stringify({ success: false, error: "No recipients" }), { status: 400 });
 
-    // Setup Transporter
+    // 2. Transporter Setup
     let emailMaster = await EmailMaster.findById(campaign.emailMasterId).lean() || 
                        await EmailMaster.findOne({ companyId: campaign.companyId, status: "Active" }).lean();
     
@@ -143,7 +136,7 @@ export async function POST(req, context) {
     const fromName = emailMaster?.owner || campaign.sender || "";
     const fromHeader = formatFrom(fromName, fromEmail);
 
-    // SEND EMAILS
+    // 3. SEND EMAILS
     if (campaign.channel === "email") {
       for (const to of recipients) {
         const log = await EmailLog.create({
@@ -154,19 +147,28 @@ export async function POST(req, context) {
           emailMasterId: emailMaster?._id || null,
         });
 
-        // 1. CTA Link Setup
-        let targetUrl = campaign.ctaLink || "";
+        // FIX: CTA Link Ensure it's not empty
+        let targetUrl = campaign.ctaLink || BASE_URL; 
         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
-        const trackingBase = BASE_URL.replace(/\/$/, "");
-     const trackedLink = campaign.ctaText 
-  ? `<a href="${trackingBase}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}" 
-        style="display:inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-        ${campaign.ctaText}
-     </a>` : "";
+
+        // Tracking URL Construction
+        const trackingUrl = `${BASE_URL}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}`;
+        
+        const trackedLink = campaign.ctaText 
+          ? `<a href="${trackingUrl}" style="display:inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">${campaign.ctaText}</a>` 
+          : "";
 
         const openPixel = `<img src="${BASE_URL}/api/track/email-open?id=${log._id}" width="1" height="1" style="display:none;" />`;
 
-        const finalHtml = `<div>${campaign.content || ""}<br/><br/>${trackedLink}<br/><br/>${openPixel}</div>`;
+        const finalHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            ${campaign.content || ""}
+            <br/><br/>
+            ${trackedLink}
+            <br/><br/>
+            ${openPixel}
+          </div>
+        `;
 
         try {
           await transporter.sendMail({
@@ -174,16 +176,14 @@ export async function POST(req, context) {
             to,
             subject: campaign.emailSubject || "(no subject)",
             html: finalHtml,
-            // 2. Attachments Fix
-         // transporter.sendMail ke andar
-attachments: (campaign.attachments || []).map((p) => {
-    // Agar p ek full URL hai (http...) toh directly path use karein
-    // Agar p local file path hai toh path module use karke absolute path banayein
-    return {
-        filename: p.split('/').pop() || "attachment", // File ka asli naam
-        path: p, // Nodemailer URL ya absolute local path dono handle karta hai
-    };
-}),
+            // FIX: Attachment absolute path handling
+            attachments: (campaign.attachments || []).map(p => {
+                const isUrl = p.startsWith('http');
+                return {
+                    filename: p.split('/').pop() || "attachment",
+                    path: isUrl ? p : path.join(process.cwd(), p)
+                };
+            }),
           });
           log.status = "sent";
           log.sentAt = new Date();
@@ -196,14 +196,16 @@ attachments: (campaign.attachments || []).map((p) => {
       }
     }
 
-    // SEND WHATSAPP
+    // 4. SEND WHATSAPP
     if (campaign.channel === "whatsapp") {
       for (const num of recipients) {
-        await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ messaging_product: "whatsapp", to: num, type: "text", text: { body: campaign.content } }),
-        });
+        try {
+          await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ messaging_product: "whatsapp", to: num, type: "text", text: { body: campaign.content } }),
+          });
+        } catch(e) { console.error("WA Error", e.message); }
       }
     }
 
