@@ -1,6 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { 
+  FaHandshake, FaCalculator, FaCalendarAlt, FaBullseye, 
+  FaSave, FaArrowLeft, FaCheckCircle, FaInfoCircle 
+} from "react-icons/fa";
 
 // Initial form state
 const initialFormData = {
@@ -15,90 +20,61 @@ const initialFormData = {
 };
 
 const OpportunityForm = () => {
+  const router = useRouter();
   const [formData, setFormData] = useState(initialFormData);
+  const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState({
     isVisible: false,
     message: "",
   });
 
-  /* ----------------------------------------------------------
-     AUTO-FILL OPPORTUNITY DATA FROM LEAD (sessionStorage)
-  -----------------------------------------------------------*/
+  /* ── AUTO-FILL OPPORTUNITY DATA FROM LEAD ── */
   useEffect(() => {
     const stored = sessionStorage.getItem("opportunityCopyData");
-
     if (stored) {
       const lead = JSON.parse(stored);
-
       setFormData((prev) => ({
         ...prev,
         opportunityName: `${lead.firstName} ${lead.lastName}`,
-        accountName:
-          lead.companyName || `${lead.firstName} ${lead.lastName}`,
+        accountName: lead.organizationName || lead.companyName || `${lead.firstName} ${lead.lastName}`,
         value: lead.estimatedValue || "",
         leadSource: lead.source || "",
         description: lead.description || "",
       }));
+      // Optional: clear the storage once consumed
+      // sessionStorage.removeItem("opportunityCopyData");
     }
   }, []);
 
-  /* ----------------------------------------------------------
-     HANDLE FORM FIELD CHANGE
-  -----------------------------------------------------------*/
   const handleChange = (e) => {
     const { name, value, type } = e.target;
-
     setFormData((prev) => ({
       ...prev,
       [name]: type === "number" ? Number(value) : value,
     }));
   };
 
-  /* ----------------------------------------------------------
-     VALIDATION
-  -----------------------------------------------------------*/
   const validateForm = () => {
-    if (!formData.opportunityName.trim()) {
-      alert("Opportunity name is required");
-      return false;
-    }
-    if (!formData.accountName.trim()) {
-      alert("Account name is required");
-      return false;
-    }
-    if (!formData.value || formData.value <= 0) {
-      alert("Value must be a positive number");
-      return false;
-    }
-    if (!formData.stage) {
-      alert("Please select a sales stage");
-      return false;
-    }
-    if (!formData.closeDate) {
-      alert("Please select a closing date");
-      return false;
-    }
+    if (!formData.opportunityName.trim()) { alert("Opportunity name is required"); return false; }
+    if (!formData.accountName.trim()) { alert("Account name is required"); return false; }
+    if (!formData.value || formData.value <= 0) { alert("Value must be a positive number"); return false; }
+    if (!formData.stage) { alert("Please select a sales stage"); return false; }
+    if (!formData.closeDate) { alert("Please select a closing date"); return false; }
     return true;
   };
 
-  /* ----------------------------------------------------------
-     FINAL SUBMIT HANDLER (API POST)
-  -----------------------------------------------------------*/
   const handleSubmit = async (e) => {
-    e.preventDefault();
-
+    if (e) e.preventDefault();
     if (!validateForm()) return;
 
+    setSubmitting(true);
     try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-            alert("Unauthorized! Please log in.");
-            return;
-        }
+      const token = localStorage.getItem("token");
+      if (!token) { alert("Unauthorized! Please log in."); return; }
 
       const res = await fetch("/api/opportunity", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`,"Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
@@ -109,121 +85,123 @@ const OpportunityForm = () => {
           isVisible: true,
           message: `Opportunity "${formData.opportunityName}" created successfully!`,
         });
-
         setFormData(initialFormData);
-
-        setTimeout(() => {
-          setConfirmation({ isVisible: false, message: "" });
-        }, 4000);
+        setTimeout(() => router.push("/admin/opportunities-list"), 1500);
       } else {
         alert("Error: " + result.error);
       }
     } catch (err) {
       alert("Request failed: " + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const formFieldClass =
-    "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-blue focus:border-primary-blue transition duration-150 ease-in-out";
+  // ── UI Helpers ──
+  const Lbl = ({ text, req }) => (
+    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+      {text}{req && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
 
-  const requiredAsterisk = <span className="text-red-500">*</span>;
+  const fi = "w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300";
+
+  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
+        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}>
+          <Icon className="text-sm" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-900">{title}</p>
+          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
 
   return (
-    <div className="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans">
-      <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden">
-        {/* Header */}
-        <header className="bg-[#1e40af] p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-white">Create New Opportunity</h1>
-          <p className="text-gray-200 text-sm mt-1">
-            Capture essential details to move the deal forward.
-          </p>
-        </header>
+    <div className="min-h-screen bg-gray-50 pb-12">
+      {/* ── Sticky Header ── */}
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-6 py-4 mb-8">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 font-bold text-sm hover:text-indigo-600 transition-colors">
+            <FaArrowLeft size={12} /> Back
+          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleSubmit} 
+              disabled={submitting}
+              className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50"
+            >
+              {submitting ? "Processing..." : <><FaSave size={12} /> Save Opportunity</>}
+            </button>
+          </div>
+        </div>
+      </div>
 
-        <div className="p-6 sm:p-10">
-          {/* Confirmation Message */}
-          {confirmation.isVisible && (
-            <div className="mb-6 p-4 rounded-lg bg-[#10b981] text-white font-semibold flex items-center shadow-lg">
-              <svg
-                className="w-6 h-6 mr-3"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              <span>{confirmation.message}</span>
-            </div>
-          )}
+      <div className="max-w-4xl mx-auto px-4">
+        {/* Success Alert */}
+        {confirmation.isVisible && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500 text-white font-bold flex items-center shadow-lg">
+            <FaCheckCircle className="mr-3 text-xl" />
+            {confirmation.message}
+          </div>
+        )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {/* Row 1 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Opportunity Name */}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Section 1: Deal Information */}
+          <SectionCard icon={FaHandshake} title="Deal Overview" subtitle="General opportunity and account links" color="indigo">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Opportunity Name {requiredAsterisk}
-                </label>
-                <input
-                  type="text"
-                  name="opportunityName"
-                  value={formData.opportunityName}
-                  onChange={handleChange}
-                  required
-                  className={formFieldClass}
-                />
+                <Lbl text="Opportunity Name" req />
+                <input name="opportunityName" value={formData.opportunityName} onChange={handleChange} className={fi} placeholder="e.g. Acme Q4 Upgrade" required />
               </div>
-
-              {/* Account Name */}
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Account Name {requiredAsterisk}
-                </label>
-                <input
-                  type="text"
-                  name="accountName"
-                  value={formData.accountName}
-                  onChange={handleChange}
-                  required
-                  className={formFieldClass}
-                />
+                <Lbl text="Account Name" req />
+                <input name="accountName" value={formData.accountName} onChange={handleChange} className={fi} placeholder="Company or Individual" required />
+              </div>
+              <div className="md:col-span-2">
+                <Lbl text="Lead Source" />
+                <select name="leadSource" value={formData.leadSource} onChange={handleChange} className={fi}>
+                  <option value="">Select the source</option>
+                  <option value="web">Web Inquiry</option>
+                  <option value="referral">Customer Referral</option>
+                  <option value="partner">Partner</option>
+                  <option value="cold_call">Cold Call</option>
+                </select>
               </div>
             </div>
+          </SectionCard>
 
-            {/* Row 2 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Value */}
+          {/* Section 2: Financials & Probability */}
+          <SectionCard icon={FaCalculator} title="Financials & Forecasting" subtitle="Deal value and closing probability" color="emerald">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Estimated Value (USD) {requiredAsterisk}
-                </label>
-                <input
-                  type="number"
-                  name="value"
-                  value={formData.value}
-                  onChange={handleChange}
-                  required
-                  min="1"
-                  className={formFieldClass}
-                />
+                <Lbl text="Estimated Value (INR)" req />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">₹</span>
+                  <input type="number" name="value" value={formData.value} onChange={handleChange} className={`${fi} pl-7 font-mono`} placeholder="0.00" min="1" required />
+                </div>
               </div>
-
-              {/* Stage */}
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Sales Stage {requiredAsterisk}
-                </label>
-                <select
-                  name="stage"
-                  value={formData.stage}
-                  onChange={handleChange}
-                  required
-                  className={`${formFieldClass} appearance-none pr-8`}
-                >
+                <Lbl text="Probability (%)" />
+                <div className="flex items-center gap-4 py-2">
+                  <input type="range" name="probability" min="0" max="100" step="5" value={formData.probability} onChange={handleChange} className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                  <span className="w-12 text-center font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">{formData.probability}%</span>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Section 3: Timeline */}
+          <SectionCard icon={FaCalendarAlt} title="Pipeline & Schedule" subtitle="Tracking deal progress" color="blue">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <Lbl text="Sales Stage" req />
+                <select name="stage" value={formData.stage} onChange={handleChange} className={fi} required>
                   <option value="" disabled>Select a pipeline stage</option>
                   <option value="qualification">Qualification</option>
                   <option value="needs_analysis">Needs Analysis</option>
@@ -233,92 +211,353 @@ const OpportunityForm = () => {
                   <option value="closed_lost">Closed Lost</option>
                 </select>
               </div>
-            </div>
-
-            {/* Row 3 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Close Date */}
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  Expected Close Date {requiredAsterisk}
-                </label>
-                <input
-                  type="date"
-                  name="closeDate"
-                  value={formData.closeDate}
-                  onChange={handleChange}
-                  required
-                  className={formFieldClass}
-                />
-              </div>
-
-              {/* Probability */}
-              <div>
-                <label className="block text-sm font-medium mb-1">Probability (%)</label>
-                <input
-                  type="range"
-                  name="probability"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={formData.probability}
-                  onChange={handleChange}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <p className="text-right mt-1 text-sm text-gray-500">
-                  {formData.probability}%
-                </p>
+                <Lbl text="Expected Close Date" req />
+                <input type="date" name="closeDate" value={formData.closeDate} onChange={handleChange} className={fi} required />
               </div>
             </div>
+          </SectionCard>
 
-            {/* Lead Source */}
+          {/* Section 4: Details */}
+          <SectionCard icon={FaInfoCircle} title="Additional Context" subtitle="Notes and next steps" color="gray">
             <div>
-              <label className="block text-sm font-medium mb-1">Lead Source</label>
-              <select
-                name="leadSource"
-                value={formData.leadSource}
-                onChange={handleChange}
-                className={`${formFieldClass} appearance-none pr-8`}
-              >
-                <option value="" disabled>Select the source</option>
-                <option value="web">Web Inquiry</option>
-                <option value="referral">Customer Referral</option>
-                <option value="partner">Partner</option>
-                <option value="cold_call">Cold Call</option>
-                <option value="conference">Conference</option>
-              </select>
+              <Lbl text="Description / Internal Notes" />
+              <textarea name="description" rows="4" value={formData.description} onChange={handleChange} className={`${fi} resize-none`} placeholder="Describe the current status or required actions..."></textarea>
             </div>
+          </SectionCard>
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Description / Next Steps
-              </label>
-              <textarea
-                name="description"
-                rows="4"
-                value={formData.description}
-                onChange={handleChange}
-                className={formFieldClass}
-                placeholder="Notes about the opportunity..."
-              ></textarea>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              className="w-full bg-[#10b981] hover:bg-green-600 text-white font-bold py-3 rounded-lg"
-            >
-              Save Opportunity
-            </button>
-          </form>
-        </div>
+        </form>
       </div>
     </div>
   );
 };
 
 export default OpportunityForm;
+
+
+
+
+// "use client";
+
+// import React, { useState, useEffect } from "react";
+
+// // Initial form state
+// const initialFormData = {
+//   opportunityName: "",
+//   accountName: "",
+//   value: "",
+//   stage: "",
+//   closeDate: "",
+//   probability: 50,
+//   leadSource: "",
+//   description: "",
+// };
+
+// const OpportunityForm = () => {
+//   const [formData, setFormData] = useState(initialFormData);
+//   const [confirmation, setConfirmation] = useState({
+//     isVisible: false,
+//     message: "",
+//   });
+
+//   /* ----------------------------------------------------------
+//      AUTO-FILL OPPORTUNITY DATA FROM LEAD (sessionStorage)
+//   -----------------------------------------------------------*/
+//   useEffect(() => {
+//     const stored = sessionStorage.getItem("opportunityCopyData");
+
+//     if (stored) {
+//       const lead = JSON.parse(stored);
+
+//       setFormData((prev) => ({
+//         ...prev,
+//         opportunityName: `${lead.firstName} ${lead.lastName}`,
+//         accountName:
+//           lead.companyName || `${lead.firstName} ${lead.lastName}`,
+//         value: lead.estimatedValue || "",
+//         leadSource: lead.source || "",
+//         description: lead.description || "",
+//       }));
+//     }
+//   }, []);
+
+//   /* ----------------------------------------------------------
+//      HANDLE FORM FIELD CHANGE
+//   -----------------------------------------------------------*/
+//   const handleChange = (e) => {
+//     const { name, value, type } = e.target;
+
+//     setFormData((prev) => ({
+//       ...prev,
+//       [name]: type === "number" ? Number(value) : value,
+//     }));
+//   };
+
+//   /* ----------------------------------------------------------
+//      VALIDATION
+//   -----------------------------------------------------------*/
+//   const validateForm = () => {
+//     if (!formData.opportunityName.trim()) {
+//       alert("Opportunity name is required");
+//       return false;
+//     }
+//     if (!formData.accountName.trim()) {
+//       alert("Account name is required");
+//       return false;
+//     }
+//     if (!formData.value || formData.value <= 0) {
+//       alert("Value must be a positive number");
+//       return false;
+//     }
+//     if (!formData.stage) {
+//       alert("Please select a sales stage");
+//       return false;
+//     }
+//     if (!formData.closeDate) {
+//       alert("Please select a closing date");
+//       return false;
+//     }
+//     return true;
+//   };
+
+//   /* ----------------------------------------------------------
+//      FINAL SUBMIT HANDLER (API POST)
+//   -----------------------------------------------------------*/
+//   const handleSubmit = async (e) => {
+//     e.preventDefault();
+
+//     if (!validateForm()) return;
+
+//     try {
+//         const token = localStorage.getItem("token");
+//         if (!token) {
+//             alert("Unauthorized! Please log in.");
+//             return;
+//         }
+
+//       const res = await fetch("/api/opportunity", {
+//         method: "POST",
+//         headers: { Authorization: `Bearer ${token}`,"Content-Type": "application/json" },
+//         body: JSON.stringify(formData),
+//       });
+
+//       const result = await res.json();
+
+//       if (result.success) {
+//         setConfirmation({
+//           isVisible: true,
+//           message: `Opportunity "${formData.opportunityName}" created successfully!`,
+//         });
+
+//         setFormData(initialFormData);
+
+//         setTimeout(() => {
+//           setConfirmation({ isVisible: false, message: "" });
+//         }, 4000);
+//       } else {
+//         alert("Error: " + result.error);
+//       }
+//     } catch (err) {
+//       alert("Request failed: " + err.message);
+//     }
+//   };
+
+//   const formFieldClass =
+//     "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-blue focus:border-primary-blue transition duration-150 ease-in-out";
+
+//   const requiredAsterisk = <span className="text-red-500">*</span>;
+
+//   return (
+//     <div className="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans">
+//       <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden">
+//         {/* Header */}
+//         <header className="bg-[#1e40af] p-6 sm:p-8">
+//           <h1 className="text-3xl font-bold text-white">Create New Opportunity</h1>
+//           <p className="text-gray-200 text-sm mt-1">
+//             Capture essential details to move the deal forward.
+//           </p>
+//         </header>
+
+//         <div className="p-6 sm:p-10">
+//           {/* Confirmation Message */}
+//           {confirmation.isVisible && (
+//             <div className="mb-6 p-4 rounded-lg bg-[#10b981] text-white font-semibold flex items-center shadow-lg">
+//               <svg
+//                 className="w-6 h-6 mr-3"
+//                 fill="none"
+//                 stroke="currentColor"
+//                 viewBox="0 0 24 24"
+//               >
+//                 <path
+//                   strokeLinecap="round"
+//                   strokeLinejoin="round"
+//                   strokeWidth="2"
+//                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+//                 ></path>
+//               </svg>
+//               <span>{confirmation.message}</span>
+//             </div>
+//           )}
+
+//           <form className="space-y-6" onSubmit={handleSubmit}>
+//             {/* Row 1 */}
+//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+//               {/* Opportunity Name */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">
+//                   Opportunity Name {requiredAsterisk}
+//                 </label>
+//                 <input
+//                   type="text"
+//                   name="opportunityName"
+//                   value={formData.opportunityName}
+//                   onChange={handleChange}
+//                   required
+//                   className={formFieldClass}
+//                 />
+//               </div>
+
+//               {/* Account Name */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">
+//                   Account Name {requiredAsterisk}
+//                 </label>
+//                 <input
+//                   type="text"
+//                   name="accountName"
+//                   value={formData.accountName}
+//                   onChange={handleChange}
+//                   required
+//                   className={formFieldClass}
+//                 />
+//               </div>
+//             </div>
+
+//             {/* Row 2 */}
+//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+//               {/* Value */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">
+//                   Estimated Value (USD) {requiredAsterisk}
+//                 </label>
+//                 <input
+//                   type="number"
+//                   name="value"
+//                   value={formData.value}
+//                   onChange={handleChange}
+//                   required
+//                   min="1"
+//                   className={formFieldClass}
+//                 />
+//               </div>
+
+//               {/* Stage */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">
+//                   Sales Stage {requiredAsterisk}
+//                 </label>
+//                 <select
+//                   name="stage"
+//                   value={formData.stage}
+//                   onChange={handleChange}
+//                   required
+//                   className={`${formFieldClass} appearance-none pr-8`}
+//                 >
+//                   <option value="" disabled>Select a pipeline stage</option>
+//                   <option value="qualification">Qualification</option>
+//                   <option value="needs_analysis">Needs Analysis</option>
+//                   <option value="proposal">Proposal</option>
+//                   <option value="negotiation">Negotiation</option>
+//                   <option value="closed_won">Closed Won</option>
+//                   <option value="closed_lost">Closed Lost</option>
+//                 </select>
+//               </div>
+//             </div>
+
+//             {/* Row 3 */}
+//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+//               {/* Close Date */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">
+//                   Expected Close Date {requiredAsterisk}
+//                 </label>
+//                 <input
+//                   type="date"
+//                   name="closeDate"
+//                   value={formData.closeDate}
+//                   onChange={handleChange}
+//                   required
+//                   className={formFieldClass}
+//                 />
+//               </div>
+
+//               {/* Probability */}
+//               <div>
+//                 <label className="block text-sm font-medium mb-1">Probability (%)</label>
+//                 <input
+//                   type="range"
+//                   name="probability"
+//                   min="0"
+//                   max="100"
+//                   step="5"
+//                   value={formData.probability}
+//                   onChange={handleChange}
+//                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+//                 />
+//                 <p className="text-right mt-1 text-sm text-gray-500">
+//                   {formData.probability}%
+//                 </p>
+//               </div>
+//             </div>
+
+//             {/* Lead Source */}
+//             <div>
+//               <label className="block text-sm font-medium mb-1">Lead Source</label>
+//               <select
+//                 name="leadSource"
+//                 value={formData.leadSource}
+//                 onChange={handleChange}
+//                 className={`${formFieldClass} appearance-none pr-8`}
+//               >
+//                 <option value="" disabled>Select the source</option>
+//                 <option value="web">Web Inquiry</option>
+//                 <option value="referral">Customer Referral</option>
+//                 <option value="partner">Partner</option>
+//                 <option value="cold_call">Cold Call</option>
+//                 <option value="conference">Conference</option>
+//               </select>
+//             </div>
+
+//             {/* Description */}
+//             <div>
+//               <label className="block text-sm font-medium mb-1">
+//                 Description / Next Steps
+//               </label>
+//               <textarea
+//                 name="description"
+//                 rows="4"
+//                 value={formData.description}
+//                 onChange={handleChange}
+//                 className={formFieldClass}
+//                 placeholder="Notes about the opportunity..."
+//               ></textarea>
+//             </div>
+
+//             {/* Submit */}
+//             <button
+//               type="submit"
+//               className="w-full bg-[#10b981] hover:bg-green-600 text-white font-bold py-3 rounded-lg"
+//             >
+//               Save Opportunity
+//             </button>
+//           </form>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
+
+// export default OpportunityForm;
 
 
 

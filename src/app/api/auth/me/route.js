@@ -2,35 +2,82 @@ import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import dbConnect from "@/lib/db";
 import CompanyUser from "@/models/CompanyUser";
+import Company from "@/models/Company";
 
 const SECRET = process.env.JWT_SECRET;
 
 export async function GET(req) {
   try {
+    // ✅ Token lo Authorization header se
     const auth = req.headers.get("authorization") || "";
-    const [, token] = auth.split(" ");
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
     if (!token) {
-      return NextResponse.json({ success: false, msg: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, msg: "Unauthorized: No token provided" },
+        { status: 401 }
+      );
     }
 
-    const decoded = jwt.verify(token, SECRET);
+    // ✅ Verify karo
+    let decoded;
+    try {
+      decoded = jwt.verify(token, SECRET);
+    } catch (err) {
+      const msg =
+        err.name === "TokenExpiredError"
+          ? "Session expired, please login again"
+          : "Invalid token";
+      return NextResponse.json({ success: false, msg }, { status: 401 });
+    }
 
     await dbConnect();
 
-    const user = await CompanyUser.findById(decoded.id)
-      .select("-password")
-      .lean();
+    let user = null;
+    const userType = decoded.type;
 
-    if (!user) {
-      return NextResponse.json({ success: false, msg: "User not found" }, { status: 404 });
+    if (userType === "company") {
+      // ✅ Company model se uthao
+      const rawUser = await Company.findById(decoded.id).select("-password -__v");
+
+      if (rawUser) {
+        user = rawUser.toObject();
+        user.type = "company";
+      }
+    } else {
+      // ✅ CompanyUser model se uthao — .toObject() use karo lean() nahi
+      const rawUser = await CompanyUser.findById(decoded.id).select("-password -__v");
+
+      if (rawUser) {
+        user = rawUser.toObject(); // ✅ Map automatically plain object ban jaata hai
+
+        // ✅ Agar phir bhi Map instance ho toh convert karo
+        if (user.modules instanceof Map) {
+          user.modules = Object.fromEntries(user.modules);
+        }
+
+        // ✅ Har module ki value fix karo — selected aur permissions ensure karo
+        if (user.modules && typeof user.modules === "object") {
+          const fixedModules = {};
+          for (const [moduleName, moduleData] of Object.entries(user.modules)) {
+            fixedModules[moduleName] = {
+              selected: moduleData?.selected ?? false,
+              permissions: moduleData?.permissions ?? {},
+            };
+          }
+          user.modules = fixedModules;
+        }
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-      user,
-    });
+    if (!user) {
+      return NextResponse.json(
+        { success: false, msg: "User not found" },
+        { status: 404 }
+      );
+    }
 
+    return NextResponse.json({ success: true, user });
   } catch (err) {
     console.error("Error fetching user data:", err);
     return NextResponse.json(

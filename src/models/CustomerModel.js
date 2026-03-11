@@ -91,18 +91,7 @@ contactEmails: [
   gstCategory: {
     type: String,
     trim: true,
-    enum:[
-    "Registered Regular",
-    "Registered Composition",
-    "Unregistered",
-    "SEZ",
-    "Overseas",
-    "Deemed Export",
-    "UIN Holders",
-    "Tax Deductor",
-    "Tax Collector",
-    "Input Service Distributor"
-  ]
+  
   },
   pan: {
     type: String,

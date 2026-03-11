@@ -1,23 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import ItemSection from "@/components/ItemSection";
 import CustomerSearch from "@/components/CustomerSearch";
-import { Suspense } from "react";
-import { toast } from "react-toastify";
+import { toast , ToastContainer} from "react-toastify";
 import {
   FaArrowLeft, FaCheck, FaUser, FaCalendarAlt,
   FaFileAlt, FaBoxOpen, FaUserTie, FaPaperclip,
-  FaCalculator, FaTimes, FaExclamationCircle
+  FaCalculator, FaTimes
 } from "react-icons/fa";
 
-// ── Helpers ──
+// ============================================================
+// ── HELPERS & SUB-COMPONENTS (Defined OUTSIDE to prevent focus loss) ──
+// ============================================================
+
 const round = (num, decimals = 2) => {
   const n = Number(num);
-  if (isNaN(n)) return 0;
-  return Number(n.toFixed(decimals));
+  return isNaN(n) ? 0 : Number(n.toFixed(decimals));
 };
 
 const computeItemValues = (item) => {
@@ -25,334 +26,196 @@ const computeItemValues = (item) => {
   const unitPrice = parseFloat(item.unitPrice) || 0;
   const discount = parseFloat(item.discount) || 0;
   const freight = parseFloat(item.freight) || 0;
-  const priceAfterDiscount = round(unitPrice - discount);
-  const totalAmount = round(quantity * priceAfterDiscount + freight);
+  const pad = round(unitPrice - discount);
+  const total = round(quantity * pad + freight);
 
   if (item.taxOption === "GST") {
     const gstRate = parseFloat(item.gstRate) || 0;
-    const cgstRate = parseFloat(item.cgstRate) || gstRate / 2;
-    const sgstRate = parseFloat(item.sgstRate) || gstRate / 2;
-    const cgstAmount = round(totalAmount * (cgstRate / 100));
-    const sgstAmount = round(totalAmount * (sgstRate / 100));
-    const gstAmount = round(cgstAmount + sgstAmount);
-    return { priceAfterDiscount, totalAmount, gstAmount, cgstAmount, sgstAmount, igstAmount: 0 };
+    const cgst = round(total * (gstRate / 200));
+    return { priceAfterDiscount: pad, totalAmount: total, gstAmount: cgst * 2, cgstAmount: cgst, sgstAmount: cgst, igstAmount: 0 };
   }
-  if (item.taxOption === "IGST") {
-    const igstRate = parseFloat(item.igstRate) || parseFloat(item.gstRate) || 0;
-    const igstAmount = round(totalAmount * (igstRate / 100));
-    return { priceAfterDiscount, totalAmount, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount };
-  }
-  return { priceAfterDiscount, totalAmount, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0 };
+  const igst = round(total * ((parseFloat(item.igstRate) || parseFloat(item.gstRate) || 0) / 100));
+  return { priceAfterDiscount: pad, totalAmount: total, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: igst };
 };
 
 function formatDateForInput(date) {
   if (!date) return "";
   const d = new Date(date);
-  if (isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${("0" + d.getDate()).slice(-2)}`;
+  return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
 }
 
+const Lbl = ({ text, req }) => (
+  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+    {text}{req && <span className="text-red-500 ml-0.5">*</span>}
+  </label>
+);
+
+const fi = (readOnly = false) =>
+  `w-full px-3 py-2.5 rounded-lg border text-sm font-medium transition-all outline-none
+   ${readOnly ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed" : "border-gray-200 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300"}`;
+
+const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+    <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
+      <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}><Icon className="text-sm" /></div>
+      <div><p className="text-sm font-bold text-gray-900">{title}</p>{subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}</div>
+    </div>
+    <div className="px-6 py-5">{children}</div>
+  </div>
+);
+
+const ReadField = ({ label, value }) => (
+  <div>
+    <Lbl text={label} />
+    <div className="px-3 py-2.5 rounded-lg border border-gray-100 bg-gray-50 text-sm font-semibold text-gray-400">
+      {value || <span className="italic font-normal text-gray-300">Auto-filled</span>}
+    </div>
+  </div>
+);
+
 const initialState = {
-  sourceQuotationId: "", customer: "", customerCode: "", customerName: "",
-  contactPerson: "", refNumber: "", status: "Draft",
-  postingDate: formatDateForInput(new Date()), validUntil: "",
-  documentDate: formatDateForInput(new Date()),
+  customer: "", customerCode: "", customerName: "", contactPerson: "", refNumber: "", 
+  status: "Draft", postingDate: formatDateForInput(new Date()), validUntil: "", documentDate: formatDateForInput(new Date()),
   items: [{
-    item: "", itemCode: "", itemName: "", itemDescription: "",
-    quantity: 0, orderedQuantity: 0, unitPrice: 0, discount: 0, freight: 0,
-    gstRate: 0, taxOption: "GST", priceAfterDiscount: 0, totalAmount: 0,
-    gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstRate: 0, igstAmount: 0,
-    tdsAmount: 0, warehouse: "", warehouseCode: "", warehouseName: "",
-    stockAdded: false, managedBy: "", batches: [], qualityCheckDetails: [], removalReason: "",
+    item: "", itemCode: "", itemName: "", itemDescription: "", quantity: 0, unitPrice: 0, discount: 0, freight: 0,
+    gstRate: 0, taxOption: "GST", priceAfterDiscount: 0, totalAmount: 0, gstAmount: 0, cgstAmount: 0, sgstAmount: 0,
+    igstRate: 0, igstAmount: 0, warehouse: "", managedByBatch: true,
   }],
-  salesEmployee: "", remarks: "", freight: 0, rounding: 0,
-  totalBeforeDiscount: 0, totalDownPayment: 0, appliedAmounts: 0,
-  gstTotal: 0, grandTotal: 0, openBalance: 0,
+  salesEmployee: "", remarks: "", freight: 0, rounding: 0, totalBeforeDiscount: 0, gstTotal: 0, grandTotal: 0,
   invoiceType: "Normal", existingFiles: [], removedFiles: [],
 };
 
-// ── Wrapper ──
-function SalesQuotationFormWrapper() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-400">
-          <span className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
-          Loading form…
-        </div>
-      </div>
-    }>
-      <SalesQuotationForm />
-    </Suspense>
-  );
-}
+// ============================================================
+// ── MAIN FORM COMPONENT ──
+// ============================================================
 
-// ── Main Form ──
 function SalesQuotationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
 
   const [attachments, setAttachments] = useState([]);
-  const [formData, setFormData]       = useState(initialState);
-  const [loading, setLoading]         = useState(false);
+  const [formData, setFormData] = useState(initialState);
+  const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
 
-  // ── Fetch for edit ──
+  // Fetch for Edit
   useEffect(() => {
     if (editId && /^[0-9a-fA-F]{24}$/.test(editId)) {
       setFetchLoading(true);
       const token = localStorage.getItem("token");
-      if (!token) { toast.error("Unauthorized"); setFetchLoading(false); return; }
-
       axios.get(`/api/sales-quotation/${editId}`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => {
-          if (!res.data.success) throw new Error(res.data.error || "Failed to load");
           const record = res.data.data;
-          if (!Array.isArray(record.items)) record.items = [];
-
-          setFormData((prev) => ({
-            ...prev,
+          setFormData({
+            ...initialState,
             ...record,
             existingFiles: record.attachments || [],
-            sourceQuotationId: record._id || "",
-            customer: record.customer?._id || record.customer || "",
-            customerCode: record.customerCode || "",
-            customerName: record.customerName || "",
-            contactPerson: record.contactPerson || "",
-            status: record.status || "Draft",
             postingDate: formatDateForInput(record.postingDate),
             validUntil: formatDateForInput(record.validUntil),
             documentDate: formatDateForInput(record.documentDate),
-            items: record.items.length > 0
-              ? record.items.map((item) => {
-                  const computed = computeItemValues({ ...item, quantity: item.quantity || 0, unitPrice: item.unitPrice || 0, discount: item.discount || 0, freight: item.freight || 0, gstRate: item.gstRate || 0, taxOption: item.taxOption || "GST", igstRate: item.igstRate || 0 });
-                  return { ...initialState.items[0], ...item, ...computed, item: item.item?._id || item.item || "", warehouse: item.warehouse?._id || item.warehouse || "" };
-                })
-              : [{ ...initialState.items[0] }],
-            freight: record.freight || 0, rounding: record.rounding || 0,
-            gstTotal: record.gstAmount || 0, grandTotal: record.grandTotal || 0,
-          }));
+            items: record.items.map(item => ({ ...item, ...computeItemValues(item) }))
+          });
         })
-        .catch((err) => { toast.error("Error loading quotation: " + (err.message || "Unknown")); })
         .finally(() => setFetchLoading(false));
     }
   }, [editId]);
 
-  // ── Customer select ──
-  const handleCustomerSelect = useCallback((c) => {
-    setFormData((prev) => ({
-      ...prev,
-      customer: c._id || "",
-      customerCode: c.customerCode || "",
-      customerName: c.customerName || "",
-      contactPerson: c.contactPersonName || "",
-    }));
-  }, []);
+  // Totals Calculation
+  useEffect(() => {
+    const totalBeforeDiscount = round(formData.items.reduce((acc, it) => acc + (it.unitPrice - it.discount) * it.quantity, 0));
+    const gstTotal = round(formData.items.reduce((acc, it) => acc + (it.taxOption === "IGST" ? it.igstAmount : it.gstAmount), 0));
+    const grandTotal = round(formData.items.reduce((acc, it) => acc + it.totalAmount, 0) + gstTotal + Number(formData.freight) + Number(formData.rounding));
+    setFormData(prev => ({ ...prev, totalBeforeDiscount, gstTotal, grandTotal }));
+  }, [formData.items, formData.freight, formData.rounding]);
 
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   }, []);
 
   const handleItemChange = useCallback((index, e) => {
     const { name, value } = e.target;
-    setFormData((prev) => {
+    setFormData(prev => {
       const updatedItems = [...prev.items];
-      const numericFields = ["quantity", "unitPrice", "discount", "freight", "gstRate", "igstRate", "tdsAmount"];
-      const newValue = numericFields.includes(name) ? parseFloat(value) || 0 : value;
-      updatedItems[index] = { ...updatedItems[index], [name]: newValue };
-      const computed = computeItemValues(updatedItems[index]);
-      updatedItems[index] = { ...updatedItems[index], ...computed };
+      updatedItems[index] = { ...updatedItems[index], [name]: value };
+      updatedItems[index] = { ...updatedItems[index], ...computeItemValues(updatedItems[index]) };
       return { ...prev, items: updatedItems };
     });
   }, []);
+  const validateForm = () => {
+      if (!formData.customerName || !formData.customerCode) {
+        toast.error("Please select a valid customer.");
+        return false;
+      }
+      if (!formData.documentDate) {
+        toast.error("Document date is required.");
+        return false;
+      }
+      if (formData.items.length === 0) {
+        toast.error("At least one item is required.");
+        return false;
+      }
+  
+      for (let i = 0; i < formData.items.length; i++) {
+        const item = formData.items[i];
+        if (!item.item || item.item === "") {
+          toast.error(`Item selection missing in row ${i + 1}`);
+          return false;
+        }
+        // if (!item.warehouse || item.warehouse === "") {
+        //   toast.error(`Warehouse missing for item in row ${i + 1}`);
+        //   return false;
+        // }
+        if (Number(item.quantity) <= 0) {
+          toast.error(`Quantity must be greater than 0 in row ${i + 1}`);
+          return false;
+        }
+      }
+      return true;
+    };
 
-  const addItemRow    = useCallback(() => setFormData((prev) => ({ ...prev, items: [...prev.items, { ...initialState.items[0] }] })), []);
-  const removeItemRow = useCallback((i) => setFormData((prev) => ({ ...prev, items: prev.items.filter((_, j) => j !== i) })), []);
-
-  // ── Auto-compute totals ──
-  useEffect(() => {
-    const totalBeforeDiscount = round(formData.items.reduce((acc, item) => {
-      const unitPrice = parseFloat(item.unitPrice) || 0;
-      const discount  = parseFloat(item.discount)  || 0;
-      const quantity  = parseFloat(item.quantity)  || 0;
-      return acc + (unitPrice - discount) * quantity;
-    }, 0));
-    const totalItems = round(formData.items.reduce((acc, item) => acc + (parseFloat(item.totalAmount) || 0), 0));
-    const gstTotal   = round(formData.items.reduce((acc, item) => acc + (parseFloat(item.taxOption === "IGST" ? item.igstAmount : item.gstAmount) || 0), 0));
-    const overallFreight   = round(parseFloat(formData.freight) || 0);
-    const rounding         = round(parseFloat(formData.rounding) || 0);
-    const totalDownPayment = round(parseFloat(formData.totalDownPayment) || 0);
-    const appliedAmounts   = round(parseFloat(formData.appliedAmounts) || 0);
-    const grandTotal       = round(totalItems + gstTotal + overallFreight + rounding);
-    const openBalance      = round(grandTotal - (totalDownPayment + appliedAmounts));
-    setFormData((prev) => ({ ...prev, totalBeforeDiscount, gstTotal, grandTotal, openBalance }));
-  }, [formData.items, formData.freight, formData.rounding, formData.totalDownPayment, formData.appliedAmounts]);
-
-  // ── Submit ──
   const handleSubmit = async () => {
-    if (!formData.customerName || !formData.customerCode) { toast.error("Please select a valid customer"); return; }
-    if (formData.items.length === 0 || formData.items.every((item) => !item.itemName)) { toast.error("Please add at least one valid item"); return; }
-    if (formData.items.some((it) => Number(it.quantity) <= 0)) { toast.error("Quantity must be at least 1 for every item"); return; }
-    const token = localStorage.getItem("token");
-    if (!token) { toast.error("Unauthorized! Please log in."); return; }
-
     setLoading(true);
     try {
-      const sanitizedItems = (formData.items || []).map((it) => {
-        const item = { ...it };
-        if (item.warehouse === "" || item.warehouse == null) { delete item.warehouse; delete item.warehouseCode; delete item.warehouseName; }
-        return item;
-      });
+      const token = localStorage.getItem("token");
+      const fd = new FormData();
+      fd.append("quotationData", JSON.stringify(formData));
+      attachments.forEach(f => fd.append("attachments", f));
 
-      const payload = { ...formData, items: sanitizedItems, existingFiles: formData.existingFiles || [], removedFiles: formData.removedFiles || [] };
-      const formDataToSend = new FormData();
-      formDataToSend.append("quotationData", JSON.stringify(payload));
-      if (attachments?.length > 0) attachments.forEach((f) => formDataToSend.append("attachments", f));
-
-      const url    = editId ? `/api/sales-quotation/${editId}` : `/api/sales-quotation`;
-      const method = editId ? "put" : "post";
-      const response = await axios[method](url, formDataToSend, { headers: { Authorization: `Bearer ${token}` } });
-
-      toast.success(response.data.message || "Quotation saved!");
-      setFormData(initialState);
-      setAttachments([]);
-      sessionStorage.removeItem("salesQuotationData");
+      const url = editId ? `/api/sales-quotation/${editId}` : `/api/sales-quotation`;
+      await axios[editId ? "put" : "post"](url, fd, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Saved!");
       router.push("/admin/sales-quotation-view");
-    } catch (error) {
-      toast.error(`Failed to ${editId ? "update" : "create"} quotation: ${error.response?.data?.error || error.message}`);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      toast.error(err.message);
+    } finally { setLoading(false); }
   };
 
-  const handleReset = () => {
-    setFormData(initialState);
-    setAttachments([]);
-    router.push("/admin/sales-quotation-view");
-  };
-
-  // ── UI helpers ──
-  const Lbl = ({ text, req }) => (
-    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-      {text}{req && <span className="text-red-500 ml-0.5">*</span>}
-    </label>
-  );
-
-  const fi = (readOnly = false) =>
-    `w-full px-3 py-2.5 rounded-lg border text-sm font-medium transition-all outline-none
-     ${readOnly
-       ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
-       : "border-gray-200 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300"}`;
-
-  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
-      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
-        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}>
-          <Icon className="text-sm" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-900">{title}</p>
-          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
-        </div>
-      </div>
-      <div className="px-6 py-5">{children}</div>
-    </div>
-  );
-
-  const ReadField = ({ label, value }) => (
-    <div>
-      <Lbl text={label} />
-      <div className="px-3 py-2.5 rounded-lg border border-gray-100 bg-gray-50 text-sm font-semibold text-gray-400">
-        {value || <span className="italic font-normal text-gray-300">Auto-filled</span>}
-      </div>
-    </div>
-  );
-
-  if (fetchLoading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="flex items-center gap-3 text-gray-400 text-sm font-medium">
-        <span className="w-5 h-5 border-2 border-gray-200 border-t-indigo-500 rounded-full animate-spin" />
-        Loading quotation…
-      </div>
-    </div>
-  );
+  if (fetchLoading) return <div className="p-10 text-center">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-
-        {/* ── Header ── */}
-        <button onClick={() => router.push("/admin/sales-quotation-view")}
-          className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4 hover:text-indigo-800 transition-colors">
-          <FaArrowLeft className="text-xs" /> Back to Quotations
+        <button onClick={() => router.push("/admin/sales-quotation-view")} className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4">
+          <FaArrowLeft className="text-xs" /> Back
         </button>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
-              {editId ? "Edit Sales Quotation" : "New Sales Quotation"}
-            </h1>
-            <p className="text-sm text-gray-400 mt-0.5">
-              {editId ? "Update the quotation details below" : "Fill in the details to create a new quotation"}
-            </p>
-          </div>
-          {/* Status badge */}
-          <span className={`text-xs font-bold px-3 py-1.5 rounded-full border
-            ${formData.status === "Approved" || formData.status === "Accepted" ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-              : formData.status === "Draft" ? "bg-gray-100 text-gray-500 border-gray-200"
-              : formData.status === "Rejected" || formData.status === "Cancelled" ? "bg-red-50 text-red-500 border-red-200"
-              : "bg-amber-50 text-amber-600 border-amber-200"}`}>
-            {formData.status}
-          </span>
-        </div>
-
-        {/* ── Section 1: Customer ── */}
-        <SectionCard icon={FaUser} title="Customer Details" subtitle="Select customer and basic info" color="indigo">
+        <SectionCard icon={FaUser} title="Customer Details" color="indigo">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-           
-              <CustomerSearch
-                onSelectCustomer={handleCustomerSelect}
-
-                initialCustomer={editId && formData.customer ? { _id: formData.customer, customerName: formData.customerName } : undefined}
-              />
+              <CustomerSearch onSelectCustomer={(c) => setFormData(p => ({ ...p, customer: c._id, customerCode: c.customerCode, customerName: c.customerName, contactPerson: c.contactPersonName }))} />
             </div>
-            <ReadField label="Customer Name"   value={formData.customerName} />
-            <ReadField label="Customer Code"   value={formData.customerCode} />
-            <ReadField label="Contact Person"  value={formData.contactPerson} />
+            <ReadField label="Customer Name" value={formData.customerName} />
             <div>
               <Lbl text="Reference Number" />
-              <input className={fi()} name="refNumber" value={formData.refNumber || ""} onChange={handleInputChange} placeholder="Auto-generated if blank (e.g. SQ-001)" />
-            </div>
-            <div>
-              <Lbl text="Invoice Type" />
-              <select className={fi()} name="invoiceType" value={formData.invoiceType || "Normal"} onChange={handleInputChange}>
-                <option value="Normal">Normal</option>
-                <option value="Proforma">Proforma</option>
-                <option value="Export">Export</option>
-              </select>
+              <input key="ref-input" className={fi()} name="refNumber" value={formData.refNumber || ""} onChange={handleInputChange} />
             </div>
           </div>
         </SectionCard>
 
-        {/* ── Section 2: Dates & Status ── */}
-        <SectionCard icon={FaCalendarAlt} title="Dates & Status" subtitle="Posting date, validity and document status" color="blue">
+        <SectionCard icon={FaCalendarAlt} title="Dates & Status" color="blue">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <Lbl text="Status" />
-              <select className={fi()} name="status" value={formData.status || ""} onChange={handleInputChange}>
-                <option value="Draft">Draft</option>
-                <option value="Sent">Sent</option>
-                <option value="Accepted">Accepted</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Open">Open</option>
-                <option value="Closed">Closed</option>
-                <option value="Pending">Pending</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
             <div>
               <Lbl text="Posting Date" req />
               <input className={fi()} type="date" name="postingDate" value={formData.postingDate || ""} onChange={handleInputChange} />
@@ -361,175 +224,52 @@ function SalesQuotationForm() {
               <Lbl text="Valid Until" />
               <input className={fi()} type="date" name="validUntil" value={formData.validUntil || ""} onChange={handleInputChange} />
             </div>
-            <div>
-              <Lbl text="Document Date" />
-              <input className={fi()} type="date" name="documentDate" value={formData.documentDate || ""} onChange={handleInputChange} />
-            </div>
           </div>
         </SectionCard>
 
-        {/* ── Section 3: Items ── */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-emerald-50/40">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-500">
-              <FaBoxOpen className="text-sm" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900">Items</p>
-              <p className="text-xs text-gray-400">{formData.items.length} item{formData.items.length !== 1 ? "s" : ""} added</p>
-            </div>
-          </div>
-          <div className="px-4 py-4 overflow-x-auto">
-            <ItemSection
-              items={formData.items}
-              onItemChange={handleItemChange}
-              onAddItem={addItemRow}
-              onRemoveItem={removeItemRow}
-              computeItemValues={computeItemValues}
-            />
+        <div className="bg-white rounded-2xl shadow-sm border mb-5">
+          <div className="px-6 py-4 border-b bg-emerald-50/40 font-bold">Items</div>
+          <div className="p-4 overflow-x-auto">
+            <ItemSection items={formData.items} onItemChange={handleItemChange} onAddItem={() => setFormData(p => ({ ...p, items: [...p.items, { ...initialState.items[0] }] }))} onRemoveItem={(i) => setFormData(p => ({ ...p, items: p.items.filter((_, j) => j !== i) }))} computeItemValues={computeItemValues} />
           </div>
         </div>
 
-        {/* ── Section 4: Employee & Remarks ── */}
-        <SectionCard icon={FaUserTie} title="Additional Info" subtitle="Sales employee and remarks" color="purple">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Lbl text="Sales Employee" />
-              <input className={fi()} name="salesEmployee" value={formData.salesEmployee || ""} onChange={handleInputChange} placeholder="Employee name" />
-            </div>
-            <div>
-              <Lbl text="Remarks" />
-              <textarea className={`${fi()} resize-none`} name="remarks" rows={3} value={formData.remarks || ""} onChange={handleInputChange} placeholder="Any remarks or notes…" />
-            </div>
+        <SectionCard icon={FaCalculator} title="Summary" color="amber">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <ReadField label="Taxable Amount (₹)" value={formData.totalBeforeDiscount} />
+            <ReadField label="GST Total (₹)" value={formData.gstTotal} />
+            <div><Lbl text="Grand Total (₹)" /><div className="px-3 py-2.5 rounded-lg border-2 border-indigo-200 bg-indigo-50 font-extrabold text-indigo-700">₹ {formData.grandTotal}</div></div>
           </div>
+          <div className="mt-4"><Lbl text="Remarks" /><textarea className={`${fi()} resize-none`} name="remarks" rows={2} value={formData.remarks || ""} onChange={handleInputChange} /></div>
         </SectionCard>
 
-        {/* ── Section 5: Totals ── */}
-        <SectionCard icon={FaCalculator} title="Summary" subtitle="Tax and grand total calculation" color="amber">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <ReadField label="Taxable Amount (₹)" value={`₹ ${Number(formData.totalBeforeDiscount || 0).toLocaleString("en-IN")}`} />
-            <ReadField label="GST Total (₹)"       value={`₹ ${Number(formData.gstTotal || 0).toLocaleString("en-IN")}`} />
-            <div>
-              <Lbl text="Overall Freight (₹)" />
-              <input className={fi()} type="number" name="freight" value={formData.freight || 0} onChange={handleInputChange} placeholder="0" />
-            </div>
-            <div>
-              <Lbl text="Rounding (₹)" />
-              <input className={fi()} type="number" name="rounding" value={formData.rounding || 0} onChange={handleInputChange} placeholder="0" />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-1">
-              <Lbl text="Grand Total (₹)" />
-              <div className="px-3 py-2.5 rounded-lg border-2 border-indigo-200 bg-indigo-50 text-sm font-extrabold text-indigo-700 tracking-tight">
-                ₹ {Number(formData.grandTotal || 0).toLocaleString("en-IN")}
-              </div>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* ── Section 6: Attachments ── */}
-        <SectionCard icon={FaPaperclip} title="Attachments" subtitle="Upload images or PDF documents" color="gray">
-
-          {/* Existing files */}
-          {formData.existingFiles?.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
-              {formData.existingFiles.map((file, idx) => {
-                const url = typeof file === "string" ? file : file?.fileUrl || file?.url || file?.path || file?.location || "";
-                const type = file?.fileType || "";
-                const name = file?.fileName || url?.split("/").pop() || `File-${idx}`;
-                if (!url) return null;
-                const isPDF = type === "application/pdf" || url.toLowerCase().endsWith(".pdf");
-                return (
-                  <div key={idx} className="relative rounded-xl border border-gray-200 overflow-hidden group">
-                    {isPDF
-                      ? <object data={url} type="application/pdf" className="h-28 w-full" />
-                      : <img src={url} alt={name} className="h-28 w-full object-cover" />}
-                    <a href={url} target="_blank" rel="noopener noreferrer"
-                      className="block bg-white/90 px-2 py-1 text-[10px] text-indigo-600 font-semibold truncate border-t border-gray-100">
-                      {name}
-                    </a>
-                    <button
-                      onClick={() => setFormData(prev => ({
-                        ...prev,
-                        existingFiles: prev.existingFiles.filter((_, i) => i !== idx),
-                        removedFiles: [...prev.removedFiles, file],
-                      }))}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all shadow">
-                      <FaTimes className="text-[9px]" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* New file upload */}
-          <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all group">
-            <FaPaperclip className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
-            <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-500 transition-colors">
-              Click to upload images or PDFs
-            </span>
-            <input type="file" multiple accept="image/*,application/pdf" hidden
-              onChange={(e) => {
-                const files = Array.from(e.target.files);
-                setAttachments((prev) => {
-                  const m = new Map(prev.map((f) => [f.name + f.size, f]));
-                  files.forEach((f) => m.set(f.name + f.size, f));
-                  return [...m.values()];
-                });
-                e.target.value = "";
-              }}
-            />
+        <SectionCard icon={FaPaperclip} title="Attachments" color="gray">
+          <label className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-indigo-50 transition-all">
+            <FaPaperclip className="text-gray-300" />
+            <span className="text-sm font-medium text-gray-400">Click to upload files</span>
+            <input type="file" multiple hidden onChange={(e) => setAttachments([...attachments, ...Array.from(e.target.files)])} />
           </label>
-
-          {/* New file previews */}
-          {attachments.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-3">
-              {attachments.map((file, idx) => {
-                const url    = URL.createObjectURL(file);
-                const isPDF  = file.type === "application/pdf";
-                const isImg  = file.type.startsWith("image/");
-                return (
-                  <div key={idx} className="relative rounded-xl border border-gray-200 overflow-hidden group">
-                    {isImg
-                      ? <img src={url} alt={file.name} className="h-28 w-full object-cover" />
-                      : isPDF
-                      ? <object data={url} type="application/pdf" className="h-28 w-full" />
-                      : <div className="h-28 flex items-center justify-center bg-gray-50"><FaFileAlt className="text-gray-300 text-3xl" /></div>}
-                    <div className="bg-white/90 px-2 py-1 text-[10px] text-gray-600 font-medium truncate border-t border-gray-100">
-                      {file.name}
-                    </div>
-                    <button onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all shadow">
-                      <FaTimes className="text-[9px]" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </SectionCard>
 
-        {/* ── Footer Buttons ── */}
         <div className="flex items-center justify-between pt-2 pb-8">
-          <button type="button" onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-semibold text-sm hover:bg-gray-200 transition-all border border-gray-200">
-            <FaArrowLeft className="text-xs" /> Cancel
-          </button>
-
-          <button type="button" onClick={handleSubmit} disabled={loading}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed">
-            {loading
-              ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving…</>
-              : <><FaCheck className="text-xs" /> {editId ? "Update Quotation" : "Create Quotation"}</>}
+          <button type="button" onClick={() => router.push("/admin/sales-quotation-view")} className="px-4 py-2.5 rounded-xl bg-gray-100 text-sm font-semibold">Cancel</button>
+          <button type="button" onClick={handleSubmit} disabled={loading} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold shadow-sm">
+            {loading ? "Saving..." : editId ? "Update Quotation" : "Create Quotation"}
           </button>
         </div>
       </div>
+      <ToastContainer />
     </div>
   );
 }
 
-export default SalesQuotationFormWrapper;
-
+export default function SalesQuotationFormWrapper() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center">Loading form…</div>}>
+      <SalesQuotationForm />
+    </Suspense>
+  );
+}
 
 
 // "use client";

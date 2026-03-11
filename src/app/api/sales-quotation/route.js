@@ -7,6 +7,7 @@ import dbConnect from "@/lib/db";
 import SalesQuotation from "@/models/SalesQuotationModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import Counter from "@/models/Counter";
+import { checkPermission } from "@/lib/checkPermission";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -23,6 +24,7 @@ export async function POST(req) {
 
   try {
     const token = getTokenFromHeader(req);
+    checkPermission(req, "Sales Quotation", "create");
     if (!token) throw new Error("Unauthorized: No token provided");
 
     const decoded = verifyJWT(token);
@@ -130,6 +132,7 @@ export async function POST(req) {
 export async function GET(req) {
   try {
     await dbConnect();
+    checkPermission(req, "Sales Quotation", "view");
 
     const token = getTokenFromHeader(req);
     if (!token) {

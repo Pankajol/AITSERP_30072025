@@ -77,7 +77,7 @@ export default function EmailForm({ initial = {}, onSaved, onCancel }) {
     setError("");
     try {
       if (form._id) {
-        await api.put("/email-masters", form);
+        await api.put(`/email-masters/${form._id}`, form);
       } else {
         await api.post("/email-masters", form);
       }

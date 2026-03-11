@@ -53,7 +53,11 @@ const CampaignSchema = new mongoose.Schema(
       required: true,
     },
 
-    recipientList: { type: String },
+      // ✅ FIX: Changed from String to [String] — frontend array ko accept karo
+    recipientList: {
+      type: [String],
+      default: [],
+    },
     recipientManual: { type: String },
     recipientExcelEmails: {
   type: [String],

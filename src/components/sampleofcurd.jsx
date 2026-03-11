@@ -15,14 +15,14 @@ import GroupSearch from "@/components/groupmaster";
 import AccountSearch from "@/components/AccountSearch";
 import { toast } from "react-toastify";
 
-// ─── 6 Steps: SLA+Agents on 5, Review+Submit on 6 ───
+// ─── 6 Steps ───
 const STEPS = [
-  { id: 1, label: "Basic Info",       icon: FaUser },
-  { id: 2, label: "Contact",          icon: FaPhone },
-  { id: 3, label: "Addresses",        icon: FaMapMarkerAlt },
-  { id: 4, label: "Tax & Finance",    icon: HiOutlineDocumentText },
-  { id: 5, label: "SLA & Agents",     icon: FaShieldAlt },
-  { id: 6, label: "Review & Submit",  icon: FaClipboardCheck },
+  { id: 1, label: "Basic Info",      icon: FaUser },
+  { id: 2, label: "Contact",         icon: FaPhone },
+  { id: 3, label: "Addresses",       icon: FaMapMarkerAlt },
+  { id: 4, label: "Tax & Finance",   icon: HiOutlineDocumentText },
+  { id: 5, label: "SLA & Agents",    icon: FaShieldAlt },
+  { id: 6, label: "Review & Submit", icon: FaClipboardCheck },
 ];
 
 const EMPTY_ADDR = { address1: "", address2: "", country: "", state: "", city: "", pin: "" };
@@ -63,13 +63,13 @@ const VALIDATORS = {
   },
   4: (d) => {
     const e = {};
-    if (!d.pan?.trim())                          e.pan       = "PAN is required";
-    else if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(d.pan)) e.pan = "Invalid PAN (e.g. ABCDE1234F)";
+    if (!d.pan?.trim())                                    e.pan = "PAN is required";
+    else if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(d.pan))     e.pan = "Invalid PAN (e.g. ABCDE1234F)";
     if (d.gstNumber && !/^[A-Z0-9]{15}$/.test(d.gstNumber)) e.gstNumber = "GST must be 15 alphanumeric chars";
     return e;
   },
-  5: () => ({}), // SLA & Agents — optional, no block
-  6: () => ({}), // Review — no extra validation
+  5: () => ({}),
+  6: () => ({}),
 };
 
 const AddrBlock = ({ type, list, color, onChange, onRemove, onAdd, onFetchPin, fi, Err, errs }) => (
@@ -120,25 +120,62 @@ const AddrBlock = ({ type, list, color, onChange, onRemove, onAdd, onFetchPin, f
 );
 
 export default function CustomerManagement() {
-  const [view,            setView]            = useState("list");
-  const [customers,       setCustomers]       = useState([]);
-  const [searchTerm,      setSearchTerm]      = useState("");
-  const [filterType,      setFilterType]      = useState("All");
-  const [availableUsers,  setAvailableUsers]  = useState([]);
-  const [slaPolicies,     setSlaPolicies]     = useState([]);
-  const [uploading,       setUploading]       = useState(false);
-  const [loading,         setLoading]         = useState(false);
-  const [step,            setStep]            = useState(1);
-  const [cd,              setCd]              = useState({ ...EMPTY }); // cd = customerDetails
-  const [errs,            setErrs]            = useState({});
-  const [submitting,      setSubmitting]      = useState(false);
+  const [view,           setView]           = useState("list");
+  const [customers,      setCustomers]      = useState([]);
+  const [searchTerm,     setSearchTerm]     = useState("");
+  const [filterType,     setFilterType]     = useState("All");
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [slaPolicies,    setSlaPolicies]    = useState([]);
+  const [uploading,      setUploading]      = useState(false);
+  const [loading,        setLoading]        = useState(false);
+  const [step,           setStep]           = useState(1);
+  const [cd,             setCd]             = useState({ ...EMPTY });
+  const [errs,           setErrs]           = useState({});
+  const [submitting,     setSubmitting]     = useState(false);
+
+  // ✅ Permission state — yahan define karo
+  const [canCreate, setCanCreate] = useState(false);
+  const [canEdit,   setCanEdit]   = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
 
   // ─── Loaders ───
   useEffect(() => {
     fetchCustomers();
     loadUsers();
     loadSla();
+    fetchPermissions(); // ✅ permissions bhi load karo
   }, []);
+
+  // ✅ Permission fetch — /api/auth/me se
+  const fetchPermissions = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const res  = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      const p = data?.user?.modules?.Customers?.permissions || {};
+
+      // ✅ Company/Admin ko hamesha full access
+      const isCompany = data?.user?.type?.toLowerCase() === "company";
+      const isAdmin   = data?.user?.roles?.includes("Admin");
+
+      if (isCompany || isAdmin) {
+        setCanCreate(true);
+        setCanEdit(true);
+        setCanDelete(true);
+      } else {
+        setCanCreate(p.create === true);
+        setCanEdit(p.edit     === true);
+        setCanDelete(p.delete === true);
+      }
+    } catch (err) {
+      console.error("Permission fetch error:", err);
+    }
+  };
 
   const fetchCustomers = async () => {
     setLoading(true);
@@ -213,9 +250,9 @@ export default function CustomerManagement() {
   const addAddr    = (type) => { const k = type === "bill" ? "billingAddresses" : "shippingAddresses"; setCd(p => ({ ...p, [k]: [...p[k], { ...EMPTY_ADDR }] })); };
   const removeAddr = (type, idx) => { const k = type === "bill" ? "billingAddresses" : "shippingAddresses"; if (cd[k].length === 1) return; setCd(p => ({ ...p, [k]: p[k].filter((_, i) => i !== idx) })); };
 
-  const addCE     = ()        => setCd(p => ({ ...p, contactEmails: [...(p.contactEmails || []), { name: "", email: "" }] }));
-  const removeCE  = (i)       => setCd(p => ({ ...p, contactEmails: p.contactEmails.filter((_, j) => j !== i) }));
-  const handleCE  = (i, f, v) => { const arr = [...cd.contactEmails]; arr[i] = { ...arr[i], [f]: v }; setCd(p => ({ ...p, contactEmails: arr })); if (f === "email") clearErr(`ce_${i}`); };
+  const addCE    = ()        => setCd(p => ({ ...p, contactEmails: [...(p.contactEmails || []), { name: "", email: "" }] }));
+  const removeCE = (i)       => setCd(p => ({ ...p, contactEmails: p.contactEmails.filter((_, j) => j !== i) }));
+  const handleCE = (i, f, v) => { const arr = [...cd.contactEmails]; arr[i] = { ...arr[i], [f]: v }; setCd(p => ({ ...p, contactEmails: arr })); if (f === "email") clearErr(`ce_${i}`); };
 
   const toggleAgent = (id) => {
     setCd(p => {
@@ -243,24 +280,42 @@ export default function CustomerManagement() {
 
   const goPrev = () => { setErrs({}); setStep(s => s - 1); };
 
+  const reset = () => { setCd({ ...EMPTY }); setStep(1); setErrs({}); setView("list"); };
+
   // ─── Submit ───
   const handleSubmit = async () => {
-    // Final validation all steps
+    // ✅ 1. Permission check
+    if (cd._id && !canEdit) {
+      toast.error("You don't have permission to edit customers");
+      return;
+    }
+    if (!cd._id && !canCreate) {
+      toast.error("You don't have permission to create customers");
+      return;
+    }
+
+    // ✅ 2. Final validation — all steps
     let allE = {};
-    for (let s = 1; s <= 5; s++) { const v = VALIDATORS[s]; if (v) allE = { ...allE, ...v(cd) }; }
+    for (let s = 1; s <= 5; s++) {
+      const v = VALIDATORS[s];
+      if (v) allE = { ...allE, ...v(cd) };
+    }
     if (Object.keys(allE).length) {
       setErrs(allE);
       toast.error("Please fix errors before submitting");
       return;
     }
+
     setSubmitting(true);
+
     const token   = localStorage.getItem("token");
     const payload = {
       ...cd,
       assignedAgents: cd.assignedAgents.map(id => ({ _id: id })),
-      glAccount:      cd.glAccount?._id  || null,
+      glAccount:      cd.glAccount?._id   || null,
       slaPolicyId:    cd.slaPolicyId?._id || cd.slaPolicyId || null,
     };
+
     try {
       if (cd._id) {
         await axios.put(`/api/customers/${cd._id}`, payload, { headers: { Authorization: `Bearer ${token}` } });
@@ -269,12 +324,31 @@ export default function CustomerManagement() {
         await axios.post("/api/customers", payload, { headers: { Authorization: `Bearer ${token}` } });
         toast.success("Customer created!");
       }
-      reset(); fetchCustomers();
-    } catch { toast.error("Error saving customer"); }
-    setSubmitting(false);
-  };
+      reset();
+      fetchCustomers();
 
-  const reset = () => { setCd({ ...EMPTY }); setStep(1); setErrs({}); setView("list"); };
+    } catch (err) {
+      // ✅ 3. Proper backend error handling
+      const status  = err?.response?.status;
+      const message = err?.response?.data?.message
+                   || err?.response?.data?.msg
+                   || err?.response?.data?.error
+                   || null;
+
+      if (status === 401)        toast.error("Session expired. Please login again.");
+      else if (status === 403)   toast.error("You are not authorized to perform this action.");
+      else if (status === 409)   toast.error(message || "Customer already exists.");
+      else if (status === 400 || status === 422) toast.error(message || "Invalid data. Please check all fields.");
+      else if (status >= 500)    toast.error("Server error. Please try again later.");
+      else if (message)          toast.error(message);
+      else                       toast.error("Unexpected error. Please try again.");
+
+      console.error("Customer save error:", err?.response?.data || err.message);
+    } finally {
+      // ✅ 4. Hamesha submitting false karo
+      setSubmitting(false);
+    }
+  };
 
   const handleEdit = (c) => {
     setCd({
@@ -287,15 +361,25 @@ export default function CustomerManagement() {
   };
 
   const handleDelete = async (id) => {
+    if (!canDelete) {
+      toast.error("You don't have permission to delete customers");
+      return;
+    }
     if (!confirm("Delete this customer?")) return;
-    const token = localStorage.getItem("token");
-    await axios.delete(`/api/customers/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-    fetchCustomers();
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`/api/customers/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Customer deleted!");
+      fetchCustomers();
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.response?.data?.msg || null;
+      toast.error(message || "Failed to delete customer");
+    }
   };
 
   // ─── Bulk upload ───
   const parseCSV = (csv) => {
-    const lines = csv.split("\n").filter(l => l.trim());
+    const lines   = csv.split("\n").filter(l => l.trim());
     const headers = lines[0].split(",");
     return lines.slice(1).map(line => { const vals = line.split(","); const obj = {}; headers.forEach((h, i) => (obj[h] = vals[i] || "")); return obj; });
   };
@@ -312,7 +396,7 @@ export default function CustomerManagement() {
     setUploading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.post("/api/customers/bulk", { customers: parseCSV(await file.text()) }, { headers: { Authorization: `Bearer ${token}` } });
+      const res   = await axios.post("/api/customers/bulk", { customers: parseCSV(await file.text()) }, { headers: { Authorization: `Bearer ${token}` } });
       const { success, results } = res.data;
       if (success) {
         const cr = results.filter(r => r.success && r.action === "created").length;
@@ -327,7 +411,7 @@ export default function CustomerManagement() {
 
   // ─── Derived ───
   const filtered = customers.filter(c => {
-    const q = searchTerm.toLowerCase();
+    const q      = searchTerm.toLowerCase();
     const matchQ = [c.customerCode, c.customerName, c.emailId, c.customerGroup, c.customerType].some(v => v?.toLowerCase().includes(q));
     const matchT = filterType === "All" || c.customerType === filterType;
     return matchQ && matchT;
@@ -358,7 +442,6 @@ export default function CustomerManagement() {
     </label>
   );
 
-  // ─── Review row ───
   const RRow = ({ label: l, value }) => (
     <div className="flex justify-between py-2 border-b border-gray-100 last:border-0">
       <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{l}</span>
@@ -369,8 +452,6 @@ export default function CustomerManagement() {
   // ─── Step content ───
   const renderStep = () => {
     switch (step) {
-
-      // ── Step 1: Basic Info ──
       case 1: return (
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -388,10 +469,7 @@ export default function CustomerManagement() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               {label("Customer Group", true)}
-              <GroupSearch
-                value={cd.customerGroup}
-                onSelectGroup={name => { setCd(p => ({ ...p, customerGroup: name })); clearErr("customerGroup"); }}
-              />
+              <GroupSearch value={cd.customerGroup} onSelectGroup={name => { setCd(p => ({ ...p, customerGroup: name })); clearErr("customerGroup"); }} />
               <Err k="customerGroup" />
             </div>
             <div>
@@ -408,7 +486,6 @@ export default function CustomerManagement() {
         </div>
       );
 
-      // ── Step 2: Contact ──
       case 2: return (
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -428,11 +505,10 @@ export default function CustomerManagement() {
               <input className={fi("")} name="contactPersonName" value={cd.contactPersonName || ""} onChange={handleChange} placeholder="Full name" />
             </div>
           </div>
-
           <div className="border-t border-gray-100 pt-5">
             <p className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
               <FaEnvelope className="text-indigo-500" /> Additional Contact Emails
-              <span className="text-xs font-normal text-gray-400">optional — e.g. department heads</span>
+              <span className="text-xs font-normal text-gray-400">optional</span>
             </p>
             {(cd.contactEmails || []).map((c, i) => (
               <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 mb-2 items-start">
@@ -455,25 +531,19 @@ export default function CustomerManagement() {
         </div>
       );
 
-      // ── Step 3: Addresses ──
       case 3: return (
         <div className="space-y-6">
           <div>
-            <p className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-              <FaMapMarkerAlt className="text-indigo-500" /> Billing Addresses
-            </p>
+            <p className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><FaMapMarkerAlt className="text-indigo-500" /> Billing Addresses</p>
             <AddrBlock type="bill" list={cd.billingAddresses} color="bg-indigo-50 text-indigo-600" onChange={handleAddrChange} onRemove={removeAddr} onAdd={addAddr} onFetchPin={fetchPin} fi={fi} Err={Err} errs={errs} />
           </div>
           <div className="border-t border-gray-100 pt-5">
-            <p className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-              <FaMapMarkerAlt className="text-emerald-500" /> Shipping Addresses
-            </p>
+            <p className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><FaMapMarkerAlt className="text-emerald-500" /> Shipping Addresses</p>
             <AddrBlock type="ship" list={cd.shippingAddresses} color="bg-emerald-50 text-emerald-600" onChange={handleAddrChange} onRemove={removeAddr} onAdd={addAddr} onFetchPin={fetchPin} fi={fi} Err={Err} errs={errs} />
           </div>
         </div>
       );
 
-      // ── Step 4: Tax & Finance ──
       case 4: return (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -514,17 +584,14 @@ export default function CustomerManagement() {
         </div>
       );
 
-      // ── Step 5: SLA & Agents ──
       case 5: return (
         <div className="space-y-6">
-          {/* SLA */}
           <div>
             <p className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">
               <FaShieldAlt className="text-violet-500" /> SLA Policy
               <span className="text-xs font-normal text-gray-400 ml-1">Select one (optional)</span>
             </p>
             <p className="text-xs text-gray-400 mb-4">Choose the Service Level Agreement that applies to this customer.</p>
-
             {slaPolicies.length === 0 ? (
               <div className="text-center py-10 text-gray-300">
                 <FaShieldAlt className="text-4xl mx-auto mb-2 opacity-30" />
@@ -532,46 +599,33 @@ export default function CustomerManagement() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {/* None option */}
-                <div
-                  onClick={() => setCd(p => ({ ...p, slaPolicyId: null }))}
+                <div onClick={() => setCd(p => ({ ...p, slaPolicyId: null }))}
                   className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all
-                    ${!cd.slaPolicyId
-                      ? "border-violet-400 bg-violet-50 shadow-sm shadow-violet-100"
-                      : "border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50/40"}`}>
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 transition-all
-                    ${!cd.slaPolicyId ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-400"}`}>✕</div>
+                    ${!cd.slaPolicyId ? "border-violet-400 bg-violet-50 shadow-sm shadow-violet-100" : "border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50/40"}`}>
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 transition-all ${!cd.slaPolicyId ? "bg-violet-500 text-white" : "bg-gray-200 text-gray-400"}`}>✕</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-800">No SLA</p>
                     <p className="text-xs text-gray-400">Default handling</p>
                   </div>
-                  <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                    ${!cd.slaPolicyId ? "border-violet-500 bg-violet-500" : "border-gray-300"}`}>
+                  <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${!cd.slaPolicyId ? "border-violet-500 bg-violet-500" : "border-gray-300"}`}>
                     {!cd.slaPolicyId && <FaCheck className="text-white" style={{ fontSize: 8 }} />}
                   </div>
                 </div>
-
                 {slaPolicies.map(sla => {
-                  const curId  = cd.slaPolicyId?._id || cd.slaPolicyId;
-                  const isSel  = curId && curId.toString() === sla._id.toString();
+                  const curId = cd.slaPolicyId?._id || cd.slaPolicyId;
+                  const isSel = curId && curId.toString() === sla._id.toString();
                   return (
-                    <div
-                      key={sla._id}
-                      onClick={() => selectSla(sla._id)}
+                    <div key={sla._id} onClick={() => selectSla(sla._id)}
                       className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all
-                        ${isSel
-                          ? "border-violet-400 bg-violet-50 shadow-sm shadow-violet-100"
-                          : "border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50/40"}`}>
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all
-                        ${isSel ? "bg-violet-500 text-white" : "bg-violet-100 text-violet-500"}`}>
+                        ${isSel ? "border-violet-400 bg-violet-50 shadow-sm shadow-violet-100" : "border-gray-200 bg-gray-50 hover:border-violet-300 hover:bg-violet-50/40"}`}>
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all ${isSel ? "bg-violet-500 text-white" : "bg-violet-100 text-violet-500"}`}>
                         <FaShieldAlt className="text-sm" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-gray-800 truncate">{sla.name}</p>
                         <p className="text-xs text-gray-400 truncate">{sla.description || sla.responseTime || "Custom policy"}</p>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                        ${isSel ? "border-violet-500 bg-violet-500" : "border-gray-300"}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? "border-violet-500 bg-violet-500" : "border-gray-300"}`}>
                         {isSel && <FaCheck className="text-white" style={{ fontSize: 8 }} />}
                       </div>
                     </div>
@@ -579,7 +633,6 @@ export default function CustomerManagement() {
                 })}
               </div>
             )}
-
             {cd.slaPolicyId && (
               <div className="mt-3 flex items-center gap-2 text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-sm font-semibold">
                 <FaCheck className="text-xs" /> SLA Policy selected
@@ -587,14 +640,12 @@ export default function CustomerManagement() {
             )}
           </div>
 
-          {/* Agents */}
           <div className="border-t border-gray-100 pt-5">
             <p className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">
               <FaUsers className="text-indigo-500" /> Assign Agents
-              <span className="text-xs font-normal text-gray-400 ml-1">Support Executives & Agents (optional)</span>
+              <span className="text-xs font-normal text-gray-400 ml-1">optional</span>
             </p>
             <p className="text-xs text-gray-400 mb-4">Select one or more agents to handle this customer's support.</p>
-
             {availableUsers.length === 0 ? (
               <div className="text-center py-10 text-gray-300">
                 <FaUsers className="text-4xl mx-auto mb-2 opacity-30" />
@@ -605,23 +656,17 @@ export default function CustomerManagement() {
                 {availableUsers.map(user => {
                   const isSel = cd.assignedAgents?.map(x => x.toString()).includes(user._id.toString());
                   return (
-                    <div
-                      key={user._id}
-                      onClick={() => toggleAgent(user._id)}
+                    <div key={user._id} onClick={() => toggleAgent(user._id)}
                       className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all select-none
-                        ${isSel
-                          ? "border-indigo-400 bg-indigo-50 shadow-sm shadow-indigo-100"
-                          : "border-gray-200 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50/40"}`}>
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-extrabold shrink-0 transition-all
-                        ${isSel ? "bg-indigo-500 text-white" : "bg-indigo-100 text-indigo-500"}`}>
+                        ${isSel ? "border-indigo-400 bg-indigo-50 shadow-sm shadow-indigo-100" : "border-gray-200 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50/40"}`}>
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-extrabold shrink-0 transition-all ${isSel ? "bg-indigo-500 text-white" : "bg-indigo-100 text-indigo-500"}`}>
                         {(user.name || "?")[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-gray-800 truncate">{user.name}</p>
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 truncate">{user.roles?.join(", ")}</p>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                        ${isSel ? "border-indigo-500 bg-indigo-500" : "border-gray-300"}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? "border-indigo-500 bg-indigo-500" : "border-gray-300"}`}>
                         {isSel && <FaCheck className="text-white" style={{ fontSize: 8 }} />}
                       </div>
                     </div>
@@ -629,7 +674,6 @@ export default function CustomerManagement() {
                 })}
               </div>
             )}
-
             {cd.assignedAgents?.length > 0 && (
               <div className="mt-3 flex items-center gap-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-sm font-semibold">
                 <FaCheck className="text-xs" />
@@ -640,21 +684,16 @@ export default function CustomerManagement() {
         </div>
       );
 
-      // ── Step 6: Review & Submit ──
       case 6: return (
         <div className="space-y-4">
           <p className="text-sm text-gray-500">Review all details before saving. Click Previous to edit any section.</p>
-
-          {/* Basic */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5"><FaUser className="text-indigo-400" /> Basic Info</p>
-            <RRow label="Code"   value={cd.customerCode} />
-            <RRow label="Name"   value={cd.customerName} />
-            <RRow label="Group"  value={cd.customerGroup} />
-            <RRow label="Type"   value={cd.customerType} />
+            <RRow label="Code"  value={cd.customerCode} />
+            <RRow label="Name"  value={cd.customerName} />
+            <RRow label="Group" value={cd.customerGroup} />
+            <RRow label="Type"  value={cd.customerType} />
           </div>
-
-          {/* Contact */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5"><FaPhone className="text-indigo-400" /> Contact</p>
             <RRow label="Email"          value={cd.emailId} />
@@ -663,14 +702,10 @@ export default function CustomerManagement() {
             {cd.contactEmails?.length > 0 && (
               <div className="flex justify-between py-2 border-b border-gray-100 last:border-0">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Extra Emails</span>
-                <div className="text-right">
-                  {cd.contactEmails.map((c, i) => <p key={i} className="text-xs font-medium text-gray-700">{c.name} — {c.email}</p>)}
-                </div>
+                <div className="text-right">{cd.contactEmails.map((c, i) => <p key={i} className="text-xs font-medium text-gray-700">{c.name} — {c.email}</p>)}</div>
               </div>
             )}
           </div>
-
-          {/* Tax */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5"><HiOutlineDocumentText className="text-indigo-400" /> Tax & Finance</p>
             <RRow label="GST"           value={cd.gstNumber} />
@@ -680,29 +715,18 @@ export default function CustomerManagement() {
             <RRow label="Commission"    value={cd.commissionRate ? `${cd.commissionRate}%` : ""} />
             <RRow label="GL Account"    value={cd.glAccount?.accountName} />
           </div>
-
-          {/* SLA & Agents */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5"><FaShieldAlt className="text-violet-400" /> SLA & Agents</p>
-            <RRow label="SLA Policy" value={
-              cd.slaPolicyId
-                ? slaPolicies.find(s => s._id.toString() === (cd.slaPolicyId?._id || cd.slaPolicyId)?.toString())?.name || "Selected"
-                : "No SLA"
-            } />
+            <RRow label="SLA Policy" value={cd.slaPolicyId ? slaPolicies.find(s => s._id.toString() === (cd.slaPolicyId?._id || cd.slaPolicyId)?.toString())?.name || "Selected" : "No SLA"} />
             <div className="flex justify-between py-2">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Agents</span>
               <div className="text-right">
                 {cd.assignedAgents?.length > 0
-                  ? cd.assignedAgents.map(id => {
-                      const u = availableUsers.find(u => u._id.toString() === id.toString());
-                      return <p key={id} className="text-xs font-medium text-gray-700">{u?.name || id}</p>;
-                    })
+                  ? cd.assignedAgents.map(id => { const u = availableUsers.find(u => u._id.toString() === id.toString()); return <p key={id} className="text-xs font-medium text-gray-700">{u?.name || id}</p>; })
                   : <span className="text-gray-300 font-normal text-sm">—</span>}
               </div>
             </div>
           </div>
-
-          {/* Addresses summary */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5"><FaMapMarkerAlt className="text-indigo-400" /> Addresses</p>
             <RRow label="Billing Addresses"  value={`${cd.billingAddresses?.filter(a => a.address1).length || 0} added`} />
@@ -737,11 +761,13 @@ export default function CustomerManagement() {
               {uploading ? "Uploading…" : <><FaFileUpload className="text-xs" /> Bulk Upload</>}
               <input type="file" hidden accept=".csv" onChange={handleBulk} />
             </label>
-            <button
-              onClick={() => { generateCode(); setView("form"); }}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
-              <FaPlus className="text-xs" /> Add Customer
-            </button>
+            {/* ✅ canCreate nahi hai toh button hide */}
+            {canCreate && (
+              <button onClick={() => { generateCode(); setView("form"); }}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
+                <FaPlus className="text-xs" /> Add Customer
+              </button>
+            )}
           </div>
         </div>
 
@@ -767,7 +793,6 @@ export default function CustomerManagement() {
 
         {/* Table card */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-gray-100">
             <div className="relative flex-1 min-w-[180px] max-w-xs">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs pointer-events-none" />
@@ -787,8 +812,8 @@ export default function CustomerManagement() {
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* ===== DESKTOP TABLE ===== */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
@@ -855,12 +880,18 @@ export default function CustomerManagement() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">
-                        <button onClick={() => handleEdit(c)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-all">
-                          <FaEdit className="text-xs" />
-                        </button>
-                        <button onClick={() => handleDelete(c._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all">
-                          <FaTrash className="text-xs" />
-                        </button>
+                        {/* ✅ canEdit nahi hai toh edit button hide */}
+                        {canEdit && (
+                          <button onClick={() => handleEdit(c)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-all">
+                            <FaEdit className="text-xs" />
+                          </button>
+                        )}
+                        {/* ✅ canDelete nahi hai toh delete button hide */}
+                        {canDelete && (
+                          <button onClick={() => handleDelete(c._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all">
+                            <FaTrash className="text-xs" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -868,9 +899,81 @@ export default function CustomerManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* ===== MOBILE CARDS ===== */}
+          <div className="md:hidden">
+            {loading ? (
+              Array(4).fill(0).map((_, i) => (
+                <div key={i} className="p-4 border-b border-gray-100">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="h-4 w-20 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite]" />
+                    <div className="h-4 w-16 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite]" />
+                  </div>
+                  <div className="h-3.5 w-3/4 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite] mb-2" />
+                  <div className="h-3 w-1/2 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite]" />
+                </div>
+              ))
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16 text-gray-300">
+                <div className="text-4xl mb-2 opacity-30">📋</div>
+                <p className="text-sm font-medium">No customers found</p>
+              </div>
+            ) : filtered.map(c => (
+              <div key={c._id} className="p-4 border-b border-gray-100 hover:bg-indigo-50/20 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{c.customerCode}</span>
+                  <div className="flex gap-1.5">
+                    {canEdit && (
+                      <button onClick={() => handleEdit(c)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-all">
+                        <FaEdit className="text-xs" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={() => handleDelete(c._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all">
+                        <FaTrash className="text-xs" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mb-2">
+                  <p className="font-semibold text-gray-900 text-sm">{c.customerName}</p>
+                  {c.customerGroup && <p className="text-xs text-gray-400">{c.customerGroup}</p>}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full
+                    ${c.customerType === "Individual" ? "bg-indigo-50 text-indigo-600"
+                      : c.customerType === "Business" ? "bg-amber-50 text-amber-600"
+                      : "bg-emerald-50 text-emerald-600"}`}>
+                    {c.customerType}
+                  </span>
+                  {c.slaPolicyId && (
+                    <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-600">{c.slaPolicyId?.name || "SLA"}</span>
+                  )}
+                </div>
+                {c.emailId && <p className="text-xs text-gray-500 mb-1.5 truncate">📧 {c.emailId}</p>}
+                {c.glAccount?.accountName && <p className="text-xs text-gray-500 mb-1.5">🏦 {c.glAccount.accountName}</p>}
+                {c.assignedAgents?.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide">Agents:</span>
+                    <div className="flex">
+                      {c.assignedAgents.slice(0, 4).map((a, i) => (
+                        <div key={i} className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 border-2 border-white -ml-1.5 first:ml-0 flex items-center justify-center text-white text-[9px] font-bold">
+                          {(a.name || "?")[0].toUpperCase()}
+                        </div>
+                      ))}
+                      {c.assignedAgents.length > 4 && (
+                        <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white -ml-1.5 flex items-center justify-center text-gray-500 text-[9px] font-bold">
+                          +{c.assignedAgents.length - 4}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-
       <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
     </div>
   );
@@ -881,13 +984,9 @@ export default function CustomerManagement() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
-
-        {/* Back */}
         <button onClick={reset} className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4 hover:text-indigo-800 transition-colors">
           <FaArrowLeft className="text-xs" /> Back to Customers
         </button>
-
-        {/* Title */}
         <h2 className="text-xl font-extrabold tracking-tight text-gray-900 mb-0.5">
           {cd._id ? "Edit Customer" : "New Customer"}
         </h2>
@@ -898,15 +997,13 @@ export default function CustomerManagement() {
         {/* Stepper */}
         <div className="flex items-start mb-7">
           {STEPS.map((s, i) => {
-            const Icon = s.icon;
+            const Icon  = s.icon;
             const done   = step > s.id;
             const active = step === s.id;
             return (
               <React.Fragment key={s.id}>
                 <div className="flex flex-col items-center shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => done && setStep(s.id)}
+                  <button type="button" onClick={() => done && setStep(s.id)}
                     className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all
                       ${done   ? "bg-emerald-500 border-emerald-500 text-white cursor-pointer hover:bg-emerald-600"
                         : active ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200"
@@ -928,7 +1025,6 @@ export default function CustomerManagement() {
 
         {/* Form card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 mb-4">
-          {/* Card header */}
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
               {React.createElement(STEPS[step - 1].icon, { className: "text-base" })}
@@ -939,15 +1035,12 @@ export default function CustomerManagement() {
             </div>
             <span className="ml-auto text-xs font-bold text-gray-300 font-mono">{step}/{STEPS.length}</span>
           </div>
-
           {renderStep()}
         </div>
 
         {/* Navigation */}
         <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={step > 1 ? goPrev : reset}
+          <button type="button" onClick={step > 1 ? goPrev : reset}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-semibold text-sm hover:bg-gray-200 transition-all border border-gray-200">
             <FaChevronLeft className="text-xs" /> {step > 1 ? "Previous" : "Cancel"}
           </button>
@@ -955,19 +1048,24 @@ export default function CustomerManagement() {
           <span className="text-xs font-bold text-gray-300 font-mono">{step} / {STEPS.length}</span>
 
           {step < STEPS.length ? (
-            <button
-              type="button"
-              onClick={goNext}
+            <button type="button" onClick={goNext}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
               Next <FaChevronRight className="text-xs" />
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed">
-              {submitting ? "Saving…" : <><FaCheck className="text-xs" /> {cd._id ? "Update Customer" : "Create Customer"}</>}
+            // ✅ Permission ke hisaab se submit button
+            <button type="button" onClick={handleSubmit}
+              disabled={submitting || (cd._id ? !canEdit : !canCreate)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-semibold text-sm transition-all
+                ${submitting || (cd._id ? !canEdit : !canCreate)
+                  ? "bg-gray-300 cursor-not-allowed opacity-60"
+                  : "bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-200"}`}>
+              {submitting
+                ? "Saving…"
+                : cd._id
+                  ? (canEdit   ? <><FaCheck className="text-xs" /> Update Customer</> : "No Edit Permission")
+                  : (canCreate ? <><FaCheck className="text-xs" /> Create Customer</> : "No Create Permission")
+              }
             </button>
           )}
         </div>
@@ -975,7 +1073,6 @@ export default function CustomerManagement() {
     </div>
   );
 }
-
 
 
 // "use client";

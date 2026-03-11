@@ -3,9 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { FiEye, FiEyeOff, FiMail, FiLock, FiChevronRight, FiLoader, FiShield } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiMail, FiLock, FiChevronRight, FiLoader, FiShield, FiUser, FiBriefcase } from 'react-icons/fi';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+const Link = ({ href, children, className }) => (
+  <a href={href} className={className}>
+    {children}
+  </a>
+);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,282 +23,194 @@ export default function LoginPage() {
 
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // ===============================
-  // 🔎 CUSTOMER EMAIL CHECK
-  // ===============================
-  const checkCustomer = async () => {
-    if (!form.email) return toast.error("Email is required to proceed");
-    setLoading(true);
-    try {
-      const res = await axios.post("/api/customers/check", { email: form.email });
-      if (!res.data.exists) {
-        toast.error("Account not found. Please contact support.");
-        return;
-      }
-      // Agar password pehle se hai toh login, varna set password
-      setStep(res.data.hasPassword ? "login" : "setPassword");
-    } catch {
-      toast.error("Network error. Try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ===============================
-  // 🔐 MAIN LOGIN SUBMIT
-  // ===============================
-  // const submit = async (e) => {
-  //   e.preventDefault();
-  //   if (!form.email || !form.password) return toast.error("All fields are mandatory");
-    
-  //   setLoading(true);
-  //   try {
-  //     const urls = {
-  //       Company: "/api/company/login",
-  //       User: "/api/users/login",
-  //       Customer: "/api/customers/login"
-  //     };
-
-  //     const res = await axios.post(urls[mode], form);
-  //     const { token, company, user, customer } = res.data;
-  //     const finalUser = company || user || customer;
-
-  //     if (!token) throw new Error("Auth token missing");
-
-  //     // Store in storage
-  //     localStorage.setItem("token", token);
-  //     localStorage.setItem("user", JSON.stringify(finalUser));
-      
-  //     toast.success("Identity Verified. Redirecting...");
-
-  //     let redirect = "/";
-  //     if (mode === "Company") redirect = "/admin";
-  //     if (mode === "User") {
-  //       const roles = finalUser?.roles?.map(r => r.toLowerCase()) || [];
-  //       if (roles.includes("admin")) redirect = "/admin";
-  //       else if (roles.includes("agent")) redirect = "/agent-dashboard";
-  //       else if (roles.includes("employee")) redirect = "/employee-dashboard";
-  //     }
-  //     if (mode === "Customer") redirect = "/customer-dashboard";
-
-  //     // let redirect = "/admin";
-
-  //     setTimeout(() => router.push(redirect), 800);
-  //   } catch (error) {
-  //     toast.error(error?.response?.data?.message || "Invalid Email or Password");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-
-
-
-const submit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!form.email || !form.password) return toast.error("Credentials required");
-    
+
     setLoading(true);
     try {
       const urls = {
         Company: "/api/company/login",
         User: "/api/users/login",
-        Customer: "/api/customers/login"
+        Customer: "/api/customers/login",
       };
 
       const res = await axios.post(urls[mode], form);
       const { token, company, user, customer } = res.data;
-      
       const finalUser = company || user || customer;
 
-      if (!token) throw new Error("Auth Token Error");
+      if (!token || !finalUser) throw new Error("Authentication failed");
 
-      // Store identity
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(finalUser));
-      
-      toast.success(`Access Granted: ${finalUser.name || 'User'}`);
 
-      // Smart Redirect
-      let redirect = "/";
-      if (mode === "Company") redirect = "/admin";
-      if (mode === "User") {
-        const roles = finalUser?.roles?.map(r => r.toLowerCase()) || [];
-        if (roles.includes("admin")) redirect = "/admin";
-        else if (roles.includes("agent")) redirect = "/agent-dashboard";
-        else redirect = "/employee-dashboard";
+      toast.success(`Access Granted: ${finalUser.name || "User"}`);
+
+      const roleRedirectMap = {
+        admin: "/admin",
+        agent: "/admin",
+        employee: "/admin",
+        customer: "/customer-dashboard",
+      };
+
+      let redirect = "/admin";
+      if (mode === "Customer") {
+        redirect = "/customer-dashboard";
+      } else if (mode === "User") {
+        const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+        const matchedRole = roles.find((r) => roleRedirectMap[r]);
+        redirect = roleRedirectMap[matchedRole] || "/admin";
       }
-      if (mode === "Customer") redirect = "/customer-dashboard";
 
-      setTimeout(() => router.push(redirect), 800);
+      setTimeout(() => router.push(redirect), 500);
     } catch (error) {
       toast.error(error?.response?.data?.message || "Verification Failed");
     } finally {
       setLoading(false);
     }
   };
-  // ===============================
-  // 🆕 SET CUSTOMER PASSWORD
-  // ===============================
-  const setCustomerPassword = async () => {
-    if (form.password.length < 6) return toast.error("Password must be 6+ characters");
-    setLoading(true);
-    try {
-      await axios.post("/api/customers/set-password", form);
-      toast.success("Security Configured! You can now login.");
-      setStep("login");
-    } catch {
-      toast.error("Failed to set security credentials");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0c10] relative overflow-hidden">
+    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0f] relative overflow-hidden font-sans">
       
-      {/* GLOW EFFECTS */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full -translate-x-1/2 translate-y-1/2" />
+      {/* ADVANCED BACKGROUND BLOBS */}
+      <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-600/10 blur-[120px] rounded-full animate-pulse" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse delay-700" />
 
       <ToastContainer position="top-center" theme="dark" />
 
-      <div className="w-full max-w-md z-10 px-4">
-        <div className="bg-white/5 backdrop-blur-2xl border border-white/10 shadow-3xl rounded-[2rem] p-8 md:p-10 transition-all duration-500">
-          
-          {/* HEADER AREA */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl shadow-lg shadow-amber-500/20 mb-4">
-              <FiShield className="text-white text-3xl" />
-            </div>
-            <h1 className="text-white text-3xl font-black tracking-tighter uppercase">ERP  <span className="text-amber-500">Express</span></h1>
-            <p className="text-slate-400 text-sm mt-2">Enterprise Access Management System</p>
+      <div className="w-full max-w-[440px] z-10 px-6">
+        
+        {/* LOGO AREA */}
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-16 h-16 bg-indigo-600 rounded-[22px] flex items-center justify-center text-3xl shadow-2xl shadow-indigo-500/20 mb-4 transition-transform hover:scale-110 duration-500">
+             <FiShield className="text-white" />
           </div>
+          <h1 className="text-white text-3xl font-black tracking-tighter uppercase">
+            AITS <span className="text-indigo-500">Cloud</span>
+          </h1>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-2">Enterprise Resource Hub</p>
+        </div>
 
-          {/* MODE SELECTOR */}
-          <div className="flex p-1 bg-black/40 rounded-2xl border border-white/5 mb-8">
-            {['Company', 'User', 'Customer'].map((m) => (
+        {/* LOGIN CARD */}
+        <div className="bg-[#11111d] border border-white/5 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)] rounded-[40px] overflow-hidden transition-all duration-500">
+          
+          {/* TAB SELECTOR */}
+          <div className="flex p-2 bg-black/20 gap-1">
+            {[
+              { id: 'Company', icon: <FiBriefcase /> },
+              { id: 'User', icon: <FiUser /> },
+              { id: 'Customer', icon: <FiMail /> }
+            ].map((m) => (
               <button
-                key={m}
+                key={m.id}
                 type="button"
                 onClick={() => {
-                  setMode(m);
+                  setMode(m.id);
                   setForm({ email: '', password: '' });
-                  setStep(m === "Customer" ? "email" : "login");
                 }}
-                className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 ${
-                  mode === m 
-                  ? 'bg-amber-500 text-white shadow-xl' 
-                  : 'text-slate-500 hover:text-slate-300'
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all duration-500 ${
+                  mode === m.id 
+                  ? 'bg-indigo-600 text-white shadow-lg' 
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
                 }`}
               >
-                {m}
+                {m.icon} {m.id}
               </button>
             ))}
           </div>
 
-          <form onSubmit={submit} className="space-y-5">
-            
-            {/* EMAIL */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 text-[11px] font-bold uppercase ml-1 tracking-wider">Work Email</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none group-focus-within:text-amber-500 transition-colors">
-                  <FiMail className="text-slate-500" />
+          <div className="p-10 pt-8">
+            <form onSubmit={submit} className="space-y-6">
+              
+              {/* EMAIL FIELD */}
+              <div className="group">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1 transition-colors group-focus-within:text-indigo-400">Identity Identifier</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-600 group-focus-within:text-indigo-500 transition-colors">
+                    <FiMail size={18} />
+                  </div>
+                  <input
+                    type="email"
+                    name="email"
+                    value={form.email}
+                    onChange={handle}
+                    className="w-full bg-black/40 border-2 border-transparent focus:border-indigo-500/50 text-white pl-14 pr-5 py-4 rounded-2xl outline-none transition-all duration-300 placeholder:text-slate-700 font-bold text-sm shadow-inner"
+                    placeholder="name@company.com"
+                  />
                 </div>
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handle}
-                  disabled={loading && step !== "email"}
-                  className="w-full bg-black/40 border border-white/10 text-white pl-11 pr-4 py-3.5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-all placeholder:text-slate-700 text-sm"
-                  placeholder="name@domain.com"
-                />
               </div>
-            </div>
 
-            {/* PASSWORD: Hidden only on first customer check step */}
-            {(mode !== "Customer" || step !== "email") && (
-              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-4 duration-500">
-                <label className="text-slate-400 text-[11px] font-bold uppercase ml-1 tracking-wider">
-                  {step === "setPassword" ? "Create New Password" : "Secure Password"}
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none group-focus-within:text-amber-500 transition-colors">
-                    <FiLock className="text-slate-500" />
+              {/* PASSWORD FIELD */}
+              <div className="group">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1 transition-colors group-focus-within:text-indigo-400">Access Secret</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-600 group-focus-within:text-indigo-500 transition-colors">
+                    <FiLock size={18} />
                   </div>
                   <input
                     type={show ? "text" : "password"}
                     name="password"
                     value={form.password}
                     onChange={handle}
-                    className="w-full bg-black/40 border border-white/10 text-white pl-11 pr-12 py-3.5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-all placeholder:text-slate-700 text-sm"
+                    className="w-full bg-black/40 border-2 border-transparent focus:border-indigo-500/50 text-white pl-14 pr-14 py-4 rounded-2xl outline-none transition-all duration-300 placeholder:text-slate-700 font-bold text-sm shadow-inner"
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShow(!show)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                    className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-indigo-400 transition-colors"
                   >
                     {show ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                   </button>
                 </div>
               </div>
-            )}
 
-            {/* DYNAMIC ACTION BUTTON */}
-            <div className="pt-4">
-              {mode === "Customer" && step === "email" ? (
-                <button
-                  type="button"
-                  onClick={checkCustomer}
-                  disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95 text-xs uppercase tracking-widest"
-                >
-                  {loading ? <FiLoader className="animate-spin" /> : "Verify Identity"}
-                  {!loading && <FiChevronRight />}
-                </button>
-              ) : mode === "Customer" && step === "setPassword" ? (
-                <button
-                  type="button"
-                  onClick={setCustomerPassword}
-                  disabled={loading}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all active:scale-95 text-xs uppercase tracking-widest"
-                >
-                  {loading ? <FiLoader className="animate-spin" /> : "Set Access Key"}
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20 transition-all disabled:opacity-50 active:scale-95 text-xs uppercase tracking-widest"
-                >
-                  {loading ? <FiLoader className="animate-spin" /> : "Establish Connection"}
-                </button>
-              )}
+              {/* FORGOT PASS */}
+              <div className="flex justify-end px-1">
+                <button type="button" className="text-[10px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-400 transition-colors">Forgot Secret Key?</button>
+              </div>
+
+              {/* SUBMIT BUTTON */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl overflow-hidden transition-all duration-300 active:scale-95 shadow-2xl shadow-indigo-500/20"
+              >
+                <div className="relative z-10 flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em]">
+                  {loading ? <FiLoader className="animate-spin" /> : "Authenticate Connection"}
+                  {!loading && <FiChevronRight className="group-hover:translate-x-1 transition-transform" />}
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              </button>
+            </form>
+
+            {/* REGISTER LINK */}
+            <div className="mt-8 text-center">
+              <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                New to the platform? <Link href="/signup" className="text-indigo-500 hover:text-indigo-400 underline decoration-2 underline-offset-4 ml-1">Establish Instance</Link>
+              </p>
             </div>
-          </form>
+          </div>
 
-          {/* BACK OPTIONS */}
-          {mode === "Customer" && step !== "email" && (
-            <button 
-              onClick={() => setStep("email")}
-              className="w-full text-slate-500 text-[10px] font-black mt-6 hover:text-slate-300 transition-colors uppercase tracking-[0.2em]"
-            >
-              ← Change Identification
-            </button>
-          )}
+          {/* FOOTER STRIP */}
+          <div className="bg-black/40 py-4 px-8 border-t border-white/5 flex justify-between items-center">
+            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">AITS v3.0.4</span>
+            <div className="flex gap-2">
+               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+               <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Servers Online</span>
+            </div>
+          </div>
         </div>
-        
-        <p className="text-slate-600 text-center mt-10 text-[10px] font-bold uppercase tracking-[0.3em]">
-          {/* Protected by AES-256 Encryption */}
+
+        {/* SECURITY NOTE */}
+        <p className="text-slate-700 text-center mt-8 text-[9px] font-black uppercase tracking-[0.3em] leading-relaxed px-10">
+          Encrypted with military-grade 256-bit AES protocol. Authorized access only.
         </p>
       </div>
     </main>
   );
 }
-
 
 // 'use client';
 

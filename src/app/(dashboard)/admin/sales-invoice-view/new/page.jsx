@@ -1,1077 +1,1493 @@
 "use client";
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  Suspense,
-} from "react";
+
+import { useState, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
-import ItemSection from "@/components/ItemSection"; // Ensure this component is correctly implemented
-import CustomerSearch from "@/components/CustomerSearch"; // Ensure this component is correctly implemented
+import ItemSection from "@/components/ItemSection";
+import CustomerSearch from "@/components/CustomerSearch";
+import CustomerAddressSelector from "@/components/CustomerAddressSelector";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { jwtDecode } from "jwt-decode";
+import {
+  FaArrowLeft, FaCheck, FaUser, FaCalendarAlt,
+  FaBoxOpen, FaCalculator, FaPaperclip, FaTimes
+} from "react-icons/fa";
 
-// IMPORTANT: This import MUST be your advanced multi-batch modal component
-import BatchAllocationModal from "@/components/MultiBatchModalbtach"; // This is the correct path and component
+// ============================================================
+// HELPERS & SUB-COMPONENTS (Defined OUTSIDE to prevent focus loss)
+// ============================================================
 
-/* ------------------------------------------------------------------ */
-/* NOTE: The inline 'BatchModal' function (old, single-batch modal)  */
-/* has been ENTIRELY REMOVED from this file to prevent conflicts.     */
-/* All batch allocation now uses 'BatchAllocationModal'.              */
-/* ------------------------------------------------------------------ */
-
-
-// Initial state for Sales Invoice.
-const initialInvoiceState = {
-  customerCode: "",
-  customerName: "",
-  contactPerson: "",
-  refNumber: "", // Invoice Number.
-  salesEmployee: "",
-  status: "Pending",
-  orderDate: "",
-  expectedDeliveryDate: "",
-  items: [
-    {
-      item: "", // Stores item ObjectId from DB
-      itemCode: "",
-      itemId: "", // Optional: duplicate of 'item' for convenience
-      itemName: "",
-      itemDescription: "",
-      quantity: 0, // Total quantity for the item.
-      allowedQuantity: 0,
-      unitPrice: 0,
-      discount: 0,
-      freight: 0,
-      gstType: 0,
-      priceAfterDiscount: 0,
-      totalAmount: 0,
-      gstAmount: 0,
-      cgstAmount: 0, // Ensure these are initialized for calculations
-      sgstAmount: 0, // Ensure these are initialized for calculations
-      igstAmount: 0,
-      tdsAmount: 0,
-      batches: [], // Array to store allocated batch details {batchCode, allocatedQuantity, etc.}
-      warehouse: "", // Stores warehouse ObjectId from DB
-      warehouseName: "",
-      warehouseCode: "",
-      warehouseId: "", // Optional: duplicate of 'warehouse'
-      errorMessage: "",
-      taxOption: "GST",
-      managedByBatch: false, // Set default to false, will be set true if item.managedBy is 'batch'
-      gstRate: 0,
-      managedBy: "", // Stores 'batch', 'serial', or 'none' from item master
-    },
-  ],
-  remarks: "",
-  freight: 0,
-  rounding: 0,
-  totalDownPayment: 0,
-  appliedAmounts: 0,
-  totalBeforeDiscount: 0,
-  gstTotal: 0,
-  grandTotal: 0,
-  openBalance: 0,
-  fromQuote: false,
-  attachments: [], // For storing attachment metadata
+const initialState = {
+  customerCode: "", customerName: "", contactPerson: "", refNumber: "",
+  salesEmployee: "", status: "Open",
+  invoiceDate: "", dueDate: "",
+  billingAddress: null, shippingAddress: null,
+  items: [{
+    item: "", itemCode: "", itemId: "", itemName: "", itemDescription: "",
+    quantity: 0, unitPrice: 0, discount: 0, freight: 0,
+    taxOption: "GST", priceAfterDiscount: 0, totalAmount: 0,
+    gstAmount: 0, gstRate: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0,
+    warehouse: "", warehouseName: "", warehouseCode: "", warehouseId: "",
+    managedByBatch: true,
+  }],
+  remarks: "", freight: 0, rounding: 0, totalDownPayment: 0, appliedAmounts: 0,
+  totalBeforeDiscount: 0, gstTotal: 0, grandTotal: 0, openBalance: 0,
+  attachments: [],
 };
 
-function formatDateForInput(date) {
-  if (!date) return "";
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = ("0" + (d.getMonth() + 1)).slice(-2);
-  const day = ("0" + d.getDate()).slice(-2);
-  return `${year}-${month}-${day}`;
+const round = (num, d = 2) => { const n = Number(num); return isNaN(n) ? 0 : Number(n.toFixed(d)); };
+
+function formatDate(d) {
+  if (!d) return "";
+  const date = new Date(d);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function SalesInvoiceFormWrapper() {
+const computeItemValues = (item) => {
+  const qty = parseFloat(item.quantity) || 0;
+  const price = parseFloat(item.unitPrice) || 0;
+  const disc = parseFloat(item.discount) || 0;
+  const fr = parseFloat(item.freight) || 0;
+  const pad = round(price - disc);
+  const total = round(qty * pad + fr);
+  if (item.taxOption === "GST") {
+    const gstRate = parseFloat(item.gstRate) || 0;
+    const cgst = round(total * (gstRate / 200));
+    return { priceAfterDiscount: pad, totalAmount: total, gstAmount: cgst * 2, cgstAmount: cgst, sgstAmount: cgst, igstAmount: 0 };
+  }
+  const igst = round(total * ((parseFloat(item.gstRate) || 0) / 100));
+  return { priceAfterDiscount: pad, totalAmount: total, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: igst };
+};
+
+const Lbl = ({ text, req }) => (
+  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+    {text}{req && <span className="text-red-500 ml-0.5">*</span>}
+  </label>
+);
+
+const fi = (readOnly = false) =>
+  `w-full px-3 py-2.5 rounded-lg border text-sm font-medium transition-all outline-none
+   ${readOnly ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed" : "border-gray-200 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300"}`;
+
+const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+    <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
+      <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}><Icon className="text-sm" /></div>
+      <div><p className="text-sm font-bold text-gray-900">{title}</p>{subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}</div>
+    </div>
+    <div className="px-6 py-5">{children}</div>
+  </div>
+);
+
+// ============================================================
+// MAIN PAGE COMPONENT
+// ============================================================
+
+export default function SalesInvoicePage() {
   return (
-    <Suspense fallback={<div className="text-center py-10">Loading form data...</div>}>
-      <SalesInvoiceEditPage />
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-gray-400">Loading Invoice Form...</div>}>
+      <SalesInvoiceForm />
     </Suspense>
   );
 }
 
-function SalesInvoiceEditPage() {
+function SalesInvoiceForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const editId = searchParams.get("editId");
+  const params = useSearchParams();
+  const editId = params.get("editId");
 
-  const [attachments, setAttachments] = useState([]); // New files to upload
-  const [existingFiles, setExistingFiles] = useState([]); // Files already uploaded (from editId)
-  const [removedFiles, setRemovedFiles] = useState([]); // Files to be marked for removal on update
+  const [formData, setFormData]           = useState(initialState);
+  const [attachments, setAttachments]     = useState([]);
+  const [existingFiles, setExistingFiles] = useState([]);
+  const [removedFiles, setRemovedFiles]   = useState([]);
+  const [loading, setLoading]             = useState(false);
+  const [submitting, setSubmitting]       = useState(false);
+  const [error, setError]                 = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isAdmin, setIsAdmin]             = useState(false);
+  const [isCopied, setIsCopied]           = useState(false);
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
-  const [isReadOnly, setIsReadOnly] = useState(false); // Controls if form fields are read-only
+  const stableInitial = useMemo(() => initialState, []);
+  const isReadOnly = !!editId && !isAdmin;
 
-  const [formData, setFormData] = useState(initialInvoiceState);
-  const [modalItemIndex, setModalItemIndex] = useState(null); // Index of the item for which batch modal is open
-  const [batchModalOptions, setBatchModalOptions] = useState([]); // State to hold available batches fetched for the modal
-
-  const [isCopied, setIsCopied] = useState(false); // Flag indicating if form data was copied
-
-  // Effect to fetch existing Sales Invoice data if in edit mode
   useEffect(() => {
-    if (!editId) return;
-
-    const fetchSalesInvoice = async () => {
-      try {
-        // You might want a loading state here: setLoading(true);
-        const token = localStorage.getItem("token");
-        if (!token) {
-          toast.error("Authentication required to fetch sales invoice.");
-          router.push("/login");
-          return;
-        }
-
-        const res = await axios.get(`/api/sales-invoice/${editId}`, {
-          headers: { Authorization: `Bearer ${token}` }, // Add authorization header
-        });
-
-        if (res.data.success) {
-          const record = res.data.data;
-          setFormData({
-            ...record,
-            orderDate: formatDateForInput(record.orderDate),
-            expectedDeliveryDate: formatDateForInput(record.expectedDeliveryDate),
-            // Ensure items' managedByBatch and batches array are correctly structured
-            items: record.items.map(item => ({
-              ...item,
-              managedByBatch: item.managedBy && item.managedBy.toLowerCase() === 'batch',
-              batches: item.managedBy && item.managedBy.toLowerCase() === 'batch' && Array.isArray(item.batches)
-                ? item.batches.map(b => ({
-                    batchCode: b.batchCode || b.batchNumber || '',
-                    allocatedQuantity: Number(b.allocatedQuantity) || Number(b.quantity) || 0,
-                    expiryDate: b.expiryDate || null,
-                    manufacturer: b.manufacturer || '',
-                    unitPrice: Number(b.unitPrice) || 0,
-                  }))
-                : [],
-            }))
-          });
-          // Set existing files from the fetched record
-          if (record.attachments && Array.isArray(record.attachments)) {
-            setExistingFiles(record.attachments);
-          } else {
-            setExistingFiles([]);
-          }
-          // Optionally set isReadOnly based on document status (e.g., if status is "Confirmed")
-          // if (record.status === "Confirmed") setIsReadOnly(true);
-
-        } else {
-          toast.error(res.data.message || "Sales invoice record not found");
-        }
-      } catch (err) {
-        console.error("Error fetching sales invoice for edit:", err.response?.data?.message || err.message);
-        toast.error(err.response?.data?.message || "Error fetching sales invoice data");
-      } finally {
-        // setLoading(false);
-      }
-    };
-
-    fetchSalesInvoice();
-  }, [editId, router]);
-
-
-  // Effect to handle copying data from session storage (e.g., from Sales Quote or another Sales Invoice)
-  useEffect(() => {
-    if (typeof window === "undefined") return; // Ensure running in browser environment
-
-    const salesInvoiceKey = "SalesInvoiceData"; // Key for a Sales Invoice's own copy
-    const salesQuoteKey = "SalesQuoteData"; // Key for copying from Sales Quote
-
-    let storedData = sessionStorage.getItem(salesInvoiceKey);
-    let isQuoteCopy = false;
-
-    if (!storedData) { // If no SalesInvoiceData found, check for SalesQuoteData
-      storedData = sessionStorage.getItem(salesQuoteKey);
-      if (storedData) isQuoteCopy = true;
-    }
-
-    if (!storedData) return; // No data to copy
-
+    const token = localStorage.getItem("token");
+    if (!token) return;
     try {
-      const parsedData = JSON.parse(storedData);
-      sessionStorage.removeItem(salesInvoiceKey); // Clear used session storage keys
-      sessionStorage.removeItem(salesQuoteKey);
+      const d = jwtDecode(token);
+      const roles = Array.isArray(d?.roles) ? d.roles : [];
+      setIsAdmin(roles.includes("admin") || roles.includes("sales manager") || d?.type === "company");
+    } catch (e) { console.error(e); }
+  }, []);
 
-      // Map common fields from source document to Sales Invoice structure
-      const mappedFormData = {
-        ...initialInvoiceState, // Start with a fresh initial state
-        ...parsedData, // Overlay all parsed data
-        refNumber: parsedData.refNumber ? `INV-${parsedData.refNumber}` : "", // Prefix invoice number
-        status: "Pending", // New invoice always starts as Pending
-        orderDate: formatDateForInput(parsedData.orderDate || new Date()),
-        expectedDeliveryDate: formatDateForInput(parsedData.expectedDeliveryDate || parsedData.dueDate || new Date()),
-        customerCode: parsedData.customer?.customerCode || parsedData.customerCode || "",
-        customerName: parsedData.customer?.customerName || parsedData.customerName || "",
-        contactPerson: parsedData.customer?.contactPersonName || parsedData.contactPerson || "",
-        salesEmployee: parsedData.salesEmployee || "",
-        remarks: parsedData.remarks || "",
-        freight: Number(parsedData.freight) || 0,
-        rounding: Number(parsedData.rounding) || 0,
-        totalDownPayment: Number(parsedData.totalDownPayment) || 0,
-        appliedAmounts: Number(parsedData.appliedAmounts) || 0,
-        fromQuote: isQuoteCopy,
-      };
-
-      // Map and normalize item data, ensuring correct types and defaults
-      mappedFormData.items = (parsedData.items || []).map((item) => {
-        const unitPrice = parseFloat(item.unitPrice) || 0;
-        const discount = parseFloat(item.discount) || 0;
-        const quantity = parseFloat(item.quantity) || 0;
-        const freight = parseFloat(item.freight) || 0;
-        const gstRate = parseFloat(item.gstRate) || 0;
-        const taxOption = item.taxOption || "GST";
-        const managedBy = item.managedBy || "";
-
-        const priceAfterDiscount = unitPrice - discount;
-        const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
-
-        let calculatedCgstAmount = 0;
-        let calculatedSgstAmount = 0;
-        let calculatedIgstAmount = 0;
-        let calculatedGstAmount = 0;
-
-        if (taxOption === "IGST") {
-          calculatedIgstAmount = totalAmountBeforeTax * (gstRate / 100);
-          calculatedGstAmount = calculatedIgstAmount;
-        } else {
-          const halfGstRate = gstRate / 2;
-          calculatedCgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-          calculatedSgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-          calculatedGstAmount = calculatedCgstAmount + calculatedSgstAmount;
-        }
-
-        const copiedBatches = (managedBy.toLowerCase() === "batch" && Array.isArray(item.batches))
-            ? item.batches.map(b => ({
-                batchCode: b.batchCode || b.batchNumber || '',
-                allocatedQuantity: Number(b.allocatedQuantity) || Number(b.quantity) || 0,
-                expiryDate: b.expiryDate || null,
-                manufacturer: b.manufacturer || '',
-                unitPrice: Number(b.unitPrice) || 0,
-            }))
-            : [];
-
-        return {
-          ...item, // Keep other item properties
-          // Ensure item, warehouse IDs are extracted from potentially populated objects
-          item: item.item?._id || item.item || "",
-          itemCode: item.item?.itemCode || item.itemCode || "",
-          itemName: item.item?.itemName || item.itemName || "",
-          itemDescription: item.item?.description || item.itemDescription || "",
-          warehouse: item.warehouse?._id || item.warehouse || "",
-          warehouseName: item.warehouse?.warehouseName || item.warehouseName || "",
-          warehouseCode: item.warehouse?.warehouseCode || item.warehouseCode || "",
-          quantity: quantity,
-          unitPrice: unitPrice,
-          discount: discount,
-          freight: freight,
-          gstRate: gstRate,
-          gstType: item.gstType || 0,
-          taxOption: taxOption,
-          priceAfterDiscount: priceAfterDiscount,
-          totalAmount: totalAmountBeforeTax,
-          gstAmount: calculatedGstAmount,
-          cgstAmount: calculatedCgstAmount,
-          sgstAmount: calculatedSgstAmount,
-          igstAmount: calculatedIgstAmount,
-          tdsAmount: item.tdsAmount || 0,
-          managedBy: managedBy,
-          managedByBatch: managedBy.toLowerCase() === "batch",
-          batches: copiedBatches, // Retain copied batch allocations
-          errorMessage: "",
-        };
-      });
-
-      // Handle attachments from copied data (stored in parsedData.attachments)
-      if (Array.isArray(parsedData.attachments)) {
-        setExistingFiles(parsedData.attachments); // Set these as existing files for the new form
-      } else {
-        setExistingFiles([]);
+  useEffect(() => {
+    const stored = sessionStorage.getItem("SalesInvoiceData");
+    setAttachmentsLoading(true);
+    if (!stored) { setAttachmentsLoading(false); return; }
+    try {
+      const parsed = JSON.parse(stored);
+      setFormData({ ...stableInitial, ...parsed, invoiceDate: formatDate(new Date()), dueDate: "" });
+      if (Array.isArray(parsed.attachments) && parsed.attachments.length > 0) {
+        const normalized = parsed.attachments
+          .map(f => f?.fileUrl ? { fileUrl: f.fileUrl, fileName: f.fileName || f.fileUrl.split("/").pop() || "Attachment", fileType: f.fileType || "image/*" } : null)
+          .filter(Boolean);
+        setExistingFiles(normalized);
       }
-
-      setFormData(mappedFormData);
       setIsCopied(true);
-      toast.success("Data copied successfully!");
-    }
-    catch (err) {
-      console.error("❌ Error parsing copied data:", err);
-      toast.error(`Failed to copy sales invoice data: ${err.message || 'Unknown error'}`);
-    }
-  }, []);
+    } catch (err) { console.error(err); }
+    finally { sessionStorage.removeItem("SalesInvoiceData"); setAttachmentsLoading(false); }
+  }, [stableInitial]);
 
-
-  // Effect to recalculate summary totals whenever relevant formData changes
   useEffect(() => {
-    const items = formData.items ?? [];
-
-    const totalBeforeDiscountCalc = items.reduce(
-      (acc, it) => {
-        const up = Number(it.unitPrice) || 0;
-        const disc = Number(it.discount) || 0;
-        const qty = Number(it.quantity) || 0;
-        return acc + (up - disc) * qty;
-      },
-      0,
-    ) || 0;
-
-    const gstTotalCalc = items.reduce((acc, it) => {
-      if (it.taxOption === "IGST")
-        return acc + (Number(it.igstAmount) || 0);
-      return acc + (Number(it.cgstAmount) || 0) + (Number(it.sgstAmount) || 0);
-    }, 0) || 0;
-
-    const freight = Number(formData.freight) || 0;
-    const rounding = Number(formData.rounding) || 0;
-    const grandTotal =
-      totalBeforeDiscountCalc + gstTotalCalc + freight + rounding;
-
-    setFormData((p) => ({
-      ...p,
-      totalBeforeDiscount: totalBeforeDiscountCalc,
-      gstTotal: gstTotalCalc,
-      grandTotal: grandTotal,
-      openBalance:
-        grandTotal -
-        ((Number(p.totalDownPayment) || 0) +
-          (Number(p.appliedAmounts) || 0)),
-    }));
-  }, [
-    formData.items,
-    formData.freight,
-    formData.rounding,
-    formData.totalDownPayment,
-    formData.appliedAmounts,
-  ]);
-
-
-  // Helper function to render previews of newly selected files
-  const renderNewFilesPreview = () => (
-    attachments.length > 0 && (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-3">
-        {attachments.map((file, idx) => {
-          if (file instanceof File) {
-            const url = URL.createObjectURL(file);
-            const isPDF = file.type === "application/pdf";
-            return (
-              <div key={idx} className="relative border rounded p-2 text-center bg-slate-300">
-                {isPDF ? (
-                  <object data={url} type="application/pdf" className="h-24 w-full rounded" />
-                ) : (
-                  <img src={url} alt={file.name} className="h-24 w-full object-cover rounded" />
-                )}
-                <button
-                  onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                  className="absolute top-1 right-1 bg-red-600 text-white rounded px-1 text-xs"
-                >
-                  ×
-                </button>
-              </div>
-            );
+    if (editId && /^[0-9a-fA-F]{24}$/.test(editId)) {
+      setLoading(true);
+      axios.get(`/api/sales-invoice/${editId}`)
+        .then(res => {
+          const record = res.data.data;
+          const items = Array.isArray(record.items)
+            ? record.items.map(i => ({ ...stableInitial.items[0], ...i, item: i.item?._id || i.item || "", warehouse: i.warehouse?._id || i.warehouse || "", taxOption: i.taxOption || "GST" }))
+            : [...stableInitial.items];
+          setFormData({ ...stableInitial, ...record, items, invoiceDate: formatDate(record.invoiceDate), dueDate: formatDate(record.dueDate) });
+          if (record.customerCode || record.customerName) {
+            setSelectedCustomer({ _id: record.customer, customerCode: record.customerCode, customerName: record.customerName, contactPersonName: record.contactPerson });
           }
-          return null;
-        })}
-      </div>
-    )
-  );
-
-
-  // Generic handler for changes in main form fields
-  const handleInputChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  }, []);
-
-  // Handler for customer selection from CustomerSearch component
-  const handleCustomerSelect = useCallback((selectedCustomer) => {
-    setFormData((prev) => ({
-      ...prev,
-      customerCode: selectedCustomer.customerCode || "",
-      customerName: selectedCustomer.customerName || "",
-      contactPerson: selectedCustomer.contactPersonName || "",
-    }));
-  }, []);
-
-  // Helper function for ItemSection to show toast on quantity change for batch-managed items
-  const showInfoOnQuantityChange = useCallback((item) => {
-    if (item.managedByBatch) {
-      toast.info(`Quantity changed for '${item.itemName}'. Please re-allocate batches.`);
-    }
-  }, []);
-
-  // Handler for changes within an item row
-  const handleItemChange = useCallback((index, e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => {
-      const updatedItems = [...prev.items];
-      const currentItem = { ...updatedItems[index] }; // Copy for comparison
-
-      updatedItems[index] = { ...currentItem, [name]: value }; // Apply new value
-
-      // Recalculate item-level totals and taxes
-      const item = updatedItems[index]; // Use the now updated item
-      const unitPrice = parseFloat(item.unitPrice) || 0;
-      const discount = parseFloat(item.discount) || 0;
-      const quantity = parseFloat(item.quantity) || 0; // Use the new quantity
-      const freight = parseFloat(item.freight) || 0;
-      const gstRate = parseFloat(item.gstRate) || 0;
-      const taxOption = item.taxOption || "GST";
-
-      const priceAfterDiscount = unitPrice - discount;
-      const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
-
-      let calculatedCgstAmount = 0;
-      let calculatedSgstAmount = 0;
-      let calculatedIgstAmount = 0;
-      let calculatedGstAmount = 0;
-
-      if (taxOption === "IGST") {
-        calculatedIgstAmount = totalAmountBeforeTax * (gstRate / 100);
-        calculatedGstAmount = calculatedIgstAmount;
-      } else {
-        const halfGstRate = gstRate / 2;
-        calculatedCgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-        calculatedSgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-        calculatedGstAmount = calculatedCgstAmount + calculatedSgstAmount;
-      }
-
-      updatedItems[index] = {
-          ...updatedItems[index],
-          priceAfterDiscount,
-          totalAmount: totalAmountBeforeTax,
-          gstAmount: calculatedGstAmount,
-          cgstAmount: calculatedCgstAmount,
-          sgstAmount: calculatedSgstAmount,
-          igstAmount: calculatedIgstAmount,
-      };
-
-      // Clear batches and show toast only if quantity actually changed for a batch-managed item
-      if (name === 'quantity' && item.managedByBatch && parseFloat(value) !== currentItem.quantity) {
-          updatedItems[index].batches = []; // Clear existing batch allocations
-          showInfoOnQuantityChange(item); // Show toast notification
-      }
-
-      return { ...prev, items: updatedItems };
-    });
-  }, [showInfoOnQuantityChange]); // Add showInfoOnQuantityChange to dependencies
-
-  const removeItemRow = useCallback((index) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index),
-    }));
-  }, []);
-
-  const addItemRow = useCallback(() => {
-    setFormData((prev) => ({
-      ...prev,
-      items: [
-        { ...initialInvoiceState.items[0] }, // Add new item with initial state structure
-        ...prev.items, // Add new item at the top
-      ],
-    }));
-  }, []);
-
-  // Handler for item selection from ItemSection component
-  const handleItemSelect = useCallback(async (index, selectedItem) => {
-    if (!selectedItem._id) {
-      toast.error("Selected item does not have a valid ID.");
-      return;
-    }
-
-    let managedByValue = selectedItem.managedBy;
-    if (!managedByValue || managedByValue.trim() === "") {
-      try {
-        const res = await axios.get(`/api/items/${selectedItem._id}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-        });
-        if (res.data.success) {
-          managedByValue = res.data.data.managedBy;
-          console.log(`Fetched managedBy for ${selectedItem.itemCode}:`, managedByValue);
-        }
-      } catch (error) {
-        console.error("Error fetching item master details:", error.response?.data?.message || error.message);
-        toast.error(`Error fetching item details: ${error.response?.data?.message || error.message}`);
-        managedByValue = ""; // Fallback
-      }
-    } else {
-      console.log(`Using managedBy from selected item for ${selectedItem.itemCode}:`, managedByValue);
-    }
-
-    const unitPrice = Number(selectedItem.unitPrice) || 0;
-    const discount = Number(selectedItem.discount) || 0;
-    const freight = Number(selectedItem.freight) || 0;
-    const quantity = 1; // Default quantity when selecting an item
-    const taxOption = selectedItem.taxOption || "GST";
-    const gstRate = selectedItem.gstRate ? Number(selectedItem.gstRate) : 0;
-
-    const priceAfterDiscount = unitPrice - discount;
-    const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
-
-    let cgstAmount = 0;
-    let sgstAmount = 0;
-    let igstAmount = 0;
-    let gstAmount = 0;
-
-    if (taxOption === "IGST") {
-      igstAmount = totalAmountBeforeTax * (gstRate / 100);
-      gstAmount = igstAmount;
-    } else {
-      const halfGstRate = gstRate / 2;
-      cgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-      sgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
-      gstAmount = cgstAmount + sgstAmount;
-    }
-
-    const updatedItem = {
-      item: selectedItem._id,
-      itemCode: selectedItem.itemCode || "",
-      itemId: selectedItem._id,
-      itemName: selectedItem.itemName,
-      itemDescription: selectedItem.description || "",
-      quantity,
-      allowedQuantity: selectedItem.allowedQuantity || 0,
-      unitPrice,
-      discount,
-      freight,
-      gstType: selectedItem.gstType || 0,
-      gstRate,
-      taxOption,
-      priceAfterDiscount,
-      totalAmount: totalAmountBeforeTax,
-      gstAmount,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      managedBy: managedByValue,
-      managedByBatch: managedByValue.toLowerCase() === "batch", // Set based on fetched/derived value
-      batches: [], // Always initialize empty for new item selection, force re-allocation
-      warehouse: selectedItem.warehouse || "",
-      warehouseName: selectedItem.warehouseName || "",
-      warehouseCode: selectedItem.warehouseCode || "",
-      warehouseId: selectedItem.warehouseId || "",
-      errorMessage: "",
-      tdsAmount: 0,
-    };
-
-    setFormData((prev) => {
-      const currentItems = [...prev.items];
-      currentItems[index] = updatedItem;
-      return { ...prev, items: currentItems };
-    });
-  }, []);
-
-
-  // Batch update: Update allocated batches for a specific item using the BatchAllocationModal
-  const handleUpdateBatch = useCallback((allocatedBatches) => {
-    setFormData((prev) => {
-      const updatedItems = [...prev.items];
-      const targetItem = { ...updatedItems[modalItemIndex] };
-
-      targetItem.batches = allocatedBatches.map(b => ({
-          batchCode: b.batchCode || '',
-          allocatedQuantity: Number(b.allocatedQuantity) || 0,
-          expiryDate: b.expiryDate || null,
-          manufacturer: b.manufacturer || '',
-          unitPrice: Number(b.unitPrice) || 0,
-          // `availableQuantity` is modal-specific; not needed in form data for submission
-      }));
-
-      updatedItems[modalItemIndex] = targetItem;
-      return { ...prev, items: updatedItems };
-    });
-  }, [modalItemIndex]);
-
-
-  // Function to open the Batch Allocation Modal
-  const openBatchModal = useCallback(async (index) => {
-    const currentItem = formData.items[index];
-    // Pre-checks for opening modal
-    if (!currentItem.item || !currentItem.warehouse) {
-      toast.warn("Please select an Item and a Warehouse for this line item before allocating batches.");
-      return;
-    }
-    if (!currentItem.managedBy || currentItem.managedBy.toLowerCase() !== 'batch') {
-      toast.warn(`Item '${currentItem.itemName || 'selected item'}' is not managed by batch. Cannot allocate batches.`);
-      return;
-    }
-    if (currentItem.quantity <= 0) {
-        toast.warn(`Please enter a quantity greater than 0 for '${currentItem.itemName}' before allocating batches.`);
-        return;
-    }
-
-    console.log("Opening Batch Allocation Modal for item index:", index, "with item ID:", currentItem.item, "warehouse ID:", currentItem.warehouse);
-
-    try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-            toast.error("Authentication required to fetch inventory batches.");
-            return;
-        }
-        const res = await axios.get(
-            `/api/inventory-batch/${currentItem.item}/${currentItem.warehouse}`,
-            { headers: { 'Authorization': `Bearer ${token}` } } // Add token
-        );
-
-        if (res.data.success) {
-            setBatchModalOptions(res.data.data.batches || []); // Set the fetched batches
-            setModalItemIndex(index); // Open modal after successful fetch
-        } else {
-            toast.error(res.data.message || "Failed to fetch available batches.");
-        }
-    } catch (error) {
-        console.error("Error fetching available batches:", error.response?.data?.message || error.message);
-        toast.error(`Error loading available batches: ${error.response?.data?.message || error.message}`);
-    }
-  }, [formData.items]); // Dependency on formData.items is fine, ensures latest item data
-
-
-  // Submit handler for Sales Invoice
-  const handleSubmit = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        toast.error("Authentication required. Please log in.");
-        router.push("/login");
-        return;
-      }
-
-      // Basic form validation
-      if (!formData.customerName || !formData.refNumber || formData.items.length === 0) {
-        toast.error("Please fill in Customer Name, Invoice Number, and add at least one item.");
-        return;
-      }
-      for (const item of formData.items) {
-        if (!item.item || !item.warehouse) { // Ensure item and warehouse IDs are selected
-          toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item and Warehouse selection.`);
-          return;
-        }
-        if (!item.itemCode || !item.itemName || item.quantity <= 0 || item.unitPrice <= 0) {
-          toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item Code, Item Name, Quantity (>0), and Unit Price (>0).`);
-          return;
-        }
-        // Validate batch allocation for batch-managed items
-        if (item.managedByBatch) {
-            const allocatedTotal = item.batches.reduce((sum, batch) => sum + (Number(batch.allocatedQuantity) || 0), 0);
-            if (allocatedTotal !== item.quantity) {
-                toast.error(`Item '${item.itemName}' requires total allocated batch quantity (${allocatedTotal}) to match item quantity (${item.quantity}). Please re-allocate batches.`);
-                return;
-            }
-            if (item.batches.length === 0 && item.quantity > 0) {
-                toast.error(`Item '${item.itemName}' is batch-managed but no batches are allocated.`);
-                return;
-            }
-        }
-      }
-
-      const dataToSend = new FormData();
-
-      const formDataForApi = { ...formData };
-      delete formDataForApi.attachments; // Exclude attachments from main JSON payload
-
-      dataToSend.append("invoiceData", JSON.stringify(formDataForApi));
-
-      attachments.forEach((file) => {
-        dataToSend.append("newAttachments", file); // Key matches backend expectation
-      });
-
-      // Filter out files that were marked for removal
-      const retainedExistingFiles = existingFiles.filter(
-        (file) => !removedFiles.some(removed => removed.publicId === file.publicId || removed.fileUrl === file.fileUrl)
-      );
-      if (retainedExistingFiles.length > 0) {
-        dataToSend.append("existingFiles", JSON.stringify(retainedExistingFiles));
-      }
-
-      if (removedFiles.length > 0) {
-        dataToSend.append("removedAttachmentIds", JSON.stringify(removedFiles.map(f => f.publicId || f.fileUrl))); // Backend expects publicId or fileUrl for deletion
-      }
-
-      const url = editId ? `/api/sales-invoice/${editId}` : "/api/sales-invoice";
-      const method = editId ? "put" : "post";
-
-      const response = await axios({
-        method,
-        url,
-        data: dataToSend,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data", // Essential for FormData
-        },
-      });
-
-      if (response.data.success) {
-          toast.success(editId ? "Sales Invoice updated successfully" : "Sales Invoice added successfully");
-          if (!editId) {
-            // Reset form for new entry after successful creation
-            setFormData(initialInvoiceState);
-            setAttachments([]);
-            setExistingFiles([]);
-            setRemovedFiles([]);
-          } else {
-            // Update existing files state with the fresh list from the backend response
-            // (Assuming backend returns the updated document with new attachment info)
-            setExistingFiles(response.data.salesInvoice?.attachments || []);
-            setRemovedFiles([]);
-            setAttachments([]);
+          if (!isCopied) {
+            setExistingFiles((record.attachments || []).map(f => ({ fileUrl: f.fileUrl || f.url, fileName: f.fileName || "Attachment" })));
           }
-          router.push("/admin/sales-invoice-view"); // Redirect to view page
-      } else {
-          toast.error(response.data.message || "Operation failed.");
-      }
-
-    } catch (error) {
-      console.error("Error saving sales invoice:", error);
-      const errorMessage = error.response?.data?.message || "An unexpected error occurred.";
-      toast.error(`Failed to save Sales Invoice: ${errorMessage}`);
+        })
+        .catch(err => setError(err.message || "Failed to load"))
+        .finally(() => setLoading(false));
     }
+  }, [editId, isCopied, stableInitial]);
+
+  useEffect(() => {
+    const items = Array.isArray(formData.items) ? formData.items : [];
+    const totalBeforeDiscount = items.reduce((s, i) => s + (Number(i.unitPrice) * Number(i.quantity) - Number(i.discount)), 0);
+    const gstTotal = items.reduce((s, i) => s + (Number(i.gstAmount) || 0), 0);
+    const grandTotal = totalBeforeDiscount + gstTotal + Number(formData.freight) + Number(formData.rounding);
+    const openBalance = grandTotal - (Number(formData.totalDownPayment) + Number(formData.appliedAmounts));
+    
+    setFormData(prev => {
+        if (prev.grandTotal === round(grandTotal) && prev.totalBeforeDiscount === round(totalBeforeDiscount)) return prev;
+        return { ...prev, totalBeforeDiscount: round(totalBeforeDiscount), gstTotal: round(gstTotal), grandTotal: round(grandTotal), openBalance: round(openBalance) };
+    });
+  }, [formData.items, formData.freight, formData.rounding, formData.totalDownPayment, formData.appliedAmounts]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+// vailidation
+
+const validateForm = () => {
+    if (!formData.customerName || !formData.customerCode) {
+      toast.error("Please select a valid customer.");
+      return false;
+    }
+    if (!formData.invoiceDate) {
+      toast.error("Invoice date is required.");
+      return false;
+    }
+    if (formData.items.length === 0) {
+      toast.error("At least one item is required.");
+      return false;
+    }
+
+    for (let i = 0; i < formData.items.length; i++) {
+      const item = formData.items[i];
+      if (!item.item || item.item === "") {
+        toast.error(`Item selection missing in row ${i + 1}`);
+        return false;
+      }
+      if (!item.warehouse || item.warehouse === "") {
+        toast.error(`Warehouse missing for item in row ${i + 1}`);
+        return false;
+      }
+      if (Number(item.quantity) <= 0) {
+        toast.error(`Quantity must be greater than 0 in row ${i + 1}`);
+        return false;
+      }
+    }
+    return true;
+  };
+  const handleItemChange = (index, e) => {
+  
+    const { name, value } = e.target;
+    setFormData(prev => {
+      const items = [...prev.items];
+      items[index] = { ...items[index], [name]: value, ...computeItemValues({ ...items[index], [name]: value }) };
+      return { ...prev, items };
+    });
   };
 
+  const addItemRow = () => setFormData(p => ({ ...p, items: [...p.items, { ...stableInitial.items[0] }] }));
+  const removeItemRow = (i) => setFormData(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
+
+  const handleSubmit = async () => {
+      if (!validateForm()) return;
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) { toast.error("Not authenticated"); setSubmitting(false); return; }
+      const normalizedItems = formData.items.map(i => ({
+        ...i,
+        item: typeof i.item === "object" ? i.item._id : i.item,
+        warehouse: typeof i.warehouse === "object" ? i.warehouse._id : i.warehouse,
+      }));
+      const fd = new FormData();
+      fd.append("invoiceData", JSON.stringify({ ...formData, items: normalizedItems, removedFiles }));
+      attachments.forEach(file => fd.append("newFiles", file));
+      const config = { headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" } };
+      const res = editId
+        ? await axios.put(`/api/sales-invoice/${editId}`, fd, config)
+        : await axios.post("/api/sales-invoice", fd, config);
+      if (res.data.success) {
+        toast.success(editId ? "Updated" : "Created");
+        router.push("/admin/sales-invoice-view");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Error saving invoice");
+    } finally { setSubmitting(false); }
+  };
+
+  const renderNewFilesPreview = () => attachments.length > 0 && (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-3">
+      {attachments.map((file, idx) => {
+        if (!(file instanceof File)) return null;
+        const url = URL.createObjectURL(file);
+        return (
+          <div key={idx} className="relative border rounded p-2 text-center bg-slate-100">
+            {file.type === "application/pdf"
+              ? <object data={url} type="application/pdf" className="h-24 w-full rounded" />
+              : <img src={url} alt={file.name} className="h-24 w-full object-cover rounded" />}
+            <button onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-600 text-white rounded px-1 text-xs">×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  if (loading) return <div className="p-10 text-center text-gray-400">Loading...</div>;
+
   return (
-    <div className="m-11 p-5 shadow-xl">
-      <h1 className="text-2xl font-bold mb-4">
-        {editId ? "Edit Sales Invoice" : "Create Sales Invoice"}
-      </h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
 
-      {/* Customer Section */}
-      <div className="flex flex-wrap justify-between m-10 p-5 border rounded-lg shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-          <div>
-            <label className="block mb-2 font-medium">Customer Name</label>
-            {isCopied || editId ? (
-              <input
-                type="text"
-                name="customerName"
-                value={formData.customerName || ""}
-                readOnly={Boolean(isCopied || editId)}
-                className={`w-full p-2 border rounded ${Boolean(isCopied || editId) ? 'bg-gray-100' : ''}`}
-              />
-            ) : (
-              <CustomerSearch onSelectCustomer={handleCustomerSelect} />
-            )}
-          </div>
-          <div>
-            <label className="block mb-2 font-medium">Customer Code</label>
-            <input
-              type="text"
-              name="customerCode"
-              value={formData.customerCode || ""}
-              readOnly
-              className="w-full p-2 border rounded bg-gray-100"
-            />
-          </div>
-          <div>
-            <label className="block mb-2 font-medium">Contact Person</label>
-            <input
-              type="text"
-              name="contactPerson"
-              value={formData.contactPerson || ""}
-              readOnly
-              className="w-full p-2 border rounded bg-gray-100"
-            />
-          </div>
-          <div>
-            <label className="block mb-2 font-medium">Invoice Number</label>
-            <input
-              type="text"
-              name="refNumber"
-              value={formData.refNumber || ""}
-              onChange={handleInputChange}
-              className="w-full p-2 border rounded"
-            />
-          </div>
+        <button onClick={() => router.push("/admin/sales-invoice-view")}
+          className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4">
+          <FaArrowLeft className="text-xs" /> Back to Invoices
+        </button>
+
+        <div className="mb-6">
+          <h1 className="text-2xl font-extrabold text-gray-900">{editId ? "Edit Sales Invoice" : "New Sales Invoice"}</h1>
         </div>
-        {/* Additional Invoice Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-4 md:mt-0">
-          <div>
-            <label className="block mb-2 font-medium">Status</label>
-            <select
-              name="status"
-              value={formData.status || "Pending"}
-              onChange={handleInputChange}
-              className="w-full p-2 border rounded"
-            >
-              <option value="Pending">Pending</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="Paid">Paid</option>
-            </select>
-          </div>
-          <div>
-            <label className="block mb-2 font-medium">Invoice Date</label>
-            <input
-              type="date"
-              name="orderDate"
-              value={formData.orderDate || ""}
-              onChange={handleInputChange}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block mb-2 font-medium">Expected Payment Date</label>
-            <input
-              type="date"
-              name="expectedDeliveryDate"
-              value={formData.expectedDeliveryDate || ""}
-              onChange={handleInputChange}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-        </div>
-      </div>
 
-      {/* Items Section */}
-      <h2 className="text-xl font-semibold mt-6">Items</h2>
-      <div className="flex flex-col m-10 p-5 border rounded-lg shadow-lg">
-        <ItemSection
-          items={formData.items}
-          onItemChange={handleItemChange}
-          onAddItem={addItemRow}
-          onRemoveItem={removeItemRow}
-          setFormData={setFormData}
-          onItemSelect={handleItemSelect}
-        />
-      </div>
-
-      {/* Batch Allocation Summary Section (for items managed by batch) */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold">Batch Allocation Summary</h2>
-        {formData.items.map((item, index) => {
-          if (!item.managedBy || item.managedBy.toLowerCase() !== 'batch') {
-            return null;
-          }
-
-          const totalAllocatedForCurrentItem = (item.batches || []).reduce(
-            (sum, b) => sum + (Number(b.allocatedQuantity) || 0),
-            0
-          );
-
-          return (
-            <div key={index} className="border p-4 my-2 rounded-lg bg-white shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-lg">{item.itemName || `Item ${index + 1}`} (Required: {item.quantity})</span>
-                <button
-                  onClick={() => openBatchModal(index)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                  disabled={!item.item || !item.warehouse || item.quantity <= 0}
-                >
-                  Allocate Batches
-                </button>
-              </div>
-
-              {/* Display currently allocated batches for this item */}
-              {item.batches && item.batches.length > 0 ? (
-                <div className="mt-2 pl-4 text-sm">
-                  <p className="font-medium mb-1">Current Allocations:</p>
-                  <ul className="list-disc list-inside">
-                    {item.batches.map((batch, idx) => (
-                      <li key={idx} className="text-gray-700">
-                        Batch: **{batch.batchCode || 'N/A'}** &mdash; Allocated: **{Number(batch.allocatedQuantity) || 0}**
-                      </li>
-                    ))}
-                  </ul>
-                  <p className={`mt-2 font-bold ${totalAllocatedForCurrentItem !== item.quantity ? "text-red-600" : "text-green-600"}`}>
-                    Total Allocated: {totalAllocatedForCurrentItem} / {item.quantity}
-                  </p>
+        {/* Customer */}
+        <SectionCard icon={FaUser} title="Customer Details" color="indigo">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Lbl text="Customer Name" req />
+              {(editId || isCopied) ? (
+                <input key="edit-input" className={fi()} name="customerName" value={formData.customerName || ""} onChange={handleChange} />
+              ) : isNewCustomer ? (
+                <div key="new-div" className="space-y-2">
+                  <input key="new-input" className={fi()} name="customerName" value={formData.customerName || ""} onChange={handleChange} placeholder="New Customer" />
+                  <button type="button" onClick={() => setIsNewCustomer(false)} className="text-[10px] font-bold text-gray-400">⬅ Back</button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 italic pl-4">No batches currently allocated for this item.</p>
+                <div key="search-div" className="space-y-2">
+                  <CustomerSearch onSelectCustomer={(c) => {
+                    setSelectedCustomer(c);
+                    setFormData(p => ({ ...p, customer: c._id, customerName: c.customerName, customerCode: c.customerCode, contactPerson: c.contactPersonName }));
+                  }} />
+                  <button type="button" onClick={() => setIsNewCustomer(true)} className="text-[10px] font-bold text-indigo-600 uppercase">+ Add new</button>
+                </div>
               )}
             </div>
-          );
-        })}
-      </div>
-
-      {/* Remarks & Sales Employee */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-8 m-8 border rounded-lg shadow-lg">
-        <div>
-          <label className="block mb-2 font-medium">Sales Employee</label>
-          <input
-            type="text"
-            name="salesEmployee"
-            value={formData.salesEmployee || ""}
-            onChange={handleInputChange}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Remarks</label>
-          <textarea
-            name="remarks"
-            value={formData.remarks || ""}
-            onChange={handleInputChange}
-            className="w-full p-2 border rounded"
-          ></textarea>
-        </div>
-      </div>
-
-      {/* Summary Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-8 m-8 border rounded-lg shadow-lg">
-        <div>
-          <label className="block mb-2 font-medium">Taxable Amount</label>
-          <input
-            type="number"
-            name="totalBeforeDiscount"
-            value={formData.totalBeforeDiscount.toFixed(2)}
-            readOnly
-            className="w-full p-2 border rounded bg-gray-100"
-          />
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Rounding</label>
-          <input
-            type="number"
-            name="rounding"
-            value={formData.rounding || 0}
-            onChange={handleInputChange}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">GST Total</label>
-          <input
-            type="number"
-            name="gstTotal"
-            value={formData.gstTotal.toFixed(2)}
-            readOnly
-            className="w-full p-2 border rounded bg-gray-100"
-          />
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Grand Total</label>
-          <input
-            type="number"
-            name="grandTotal"
-            value={formData.grandTotal.toFixed(2)}
-            readOnly
-            className="w-full p-2 border rounded bg-gray-100"
-          />
-        </div>
-      </div>
-
-      {/* Attachments Section */}
-      <div className="mt-6 p-8 m-8 border rounded-lg shadow-lg">
-        <label className="font-medium block mb-2">Attachments</label>
-
-        {existingFiles && existingFiles.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4 bg-gray-50 p-3 rounded border">
-            {existingFiles.map((file, idx) => {
-              const url = file.fileUrl;
-              const name = file.fileName;
-              const isPDF = file.fileType === "application/pdf" || url.toLowerCase().endsWith(".pdf");
-
-              return (
-                <div key={idx} className="relative border rounded p-2 text-center bg-slate-200">
-                  {isPDF ? (
-                    <object data={url} type="application/pdf" className="h-24 w-full rounded" />
-                  ) : (
-                    <img src={url} alt={name} className="h-24 w-full object-cover rounded" />
-                  )}
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-blue-600 text-xs mt-1 truncate"
-                  >
-                    {name}
-                  </a>
-                  {!isReadOnly && (
-                    <button
-                      onClick={() => {
-                        setExistingFiles((prev) => prev.filter((_, i) => i !== idx));
-                        setRemovedFiles((prev) => [...(prev || []), file]);
-                        toast.info(`Marked ${name} for removal.`);
-                      }}
-                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+            <div><Lbl text="Customer Code" /><input className={fi(true)} value={formData.customerCode} readOnly /></div>
+            <div><Lbl text="Contact Person" /><input className={fi(true)} value={formData.contactPerson} readOnly /></div>
+            <div><Lbl text="Reference No." /><input className={fi()} name="refNumber" value={formData.refNumber || ""} onChange={handleChange} placeholder="INV-12345" /></div>
           </div>
-        ) : (
-          <div className="p-3 text-center text-gray-500 bg-gray-100 rounded border">
-            No attachments available
+        </SectionCard>
+
+        {/* Address */}
+        <div className="mb-5">
+          <CustomerAddressSelector
+            customer={selectedCustomer}
+            selectedBillingAddress={formData.billingAddress}
+            selectedShippingAddress={formData.shippingAddress}
+            onBillingAddressSelect={(a) => setFormData(p => ({ ...p, billingAddress: a }))}
+            onShippingAddressSelect={(a) => setFormData(p => ({ ...p, shippingAddress: a }))}
+          />
+        </div>
+
+        {/* Dates */}
+        <SectionCard icon={FaCalendarAlt} title="Invoice Dates & Status" color="blue">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div><Lbl text="Invoice Date" req /><input type="date" className={fi()} name="invoiceDate" value={formData.invoiceDate || ""} onChange={handleChange} /></div>
+            <div><Lbl text="Due Date" /><input type="date" className={fi()} name="dueDate" value={formData.dueDate || ""} onChange={handleChange} /></div>
+            <div>
+              <Lbl text="Invoice Status" />
+              <select className={fi()} name="status" value={formData.status} onChange={handleChange}>
+                <option>Open</option><option>Pending</option><option>Paid</option><option>Cancelled</option>
+              </select>
+            </div>
           </div>
-        )}
+        </SectionCard>
 
-        {/* File Upload Input for New Attachments (only if not read-only) */}
-        {!isReadOnly && (
-          <>
-            <input
-              type="file"
-              multiple
-              accept="image/*,application/pdf"
-              onChange={(e) => {
-                const files = Array.from(e.target.files);
-                setAttachments((prev) => {
-                  const uniqueMap = new Map(prev.map((f) => [f.name + f.size, f]));
-                  files.forEach((f) => uniqueMap.set(f.name + f.size, f));
-                  return [...uniqueMap.values()];
-                });
-                e.target.value = "";
-              }}
-              className="border px-3 py-2 w-full mt-2 rounded"
-            />
-            {renderNewFilesPreview()}
-          </>
-        )}
+        {/* Items */}
+        <div className="bg-white rounded-2xl shadow-sm border mb-5 overflow-hidden">
+          <div className="px-6 py-4 border-b bg-emerald-50/40 font-bold">Line Items</div>
+          <div className="p-4 overflow-x-auto">
+            <ItemSection items={formData.items} onItemChange={handleItemChange} onAddItem={addItemRow} onRemoveItem={removeItemRow} computeItemValues={computeItemValues} />
+          </div>
+        </div>
+
+        {/* Totals */}
+        <SectionCard icon={FaCalculator} title="Financial Summary" color="amber">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div><Lbl text="Subtotal" /><input readOnly value={formData.totalBeforeDiscount} className={fi(true)} /></div>
+            <div><Lbl text="GST Total" /><input readOnly value={formData.gstTotal} className={fi(true)} /></div>
+            <div><Lbl text="Freight" /><input type="number" name="freight" value={formData.freight} onChange={handleChange} className={fi()} /></div>
+            <div><Lbl text="Rounding" /><input type="number" name="rounding" value={formData.rounding} onChange={handleChange} className={fi()} /></div>
+            <div>
+              <Lbl text="Grand Total" />
+              <div className="px-3 py-2.5 rounded-lg border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-extrabold">₹ {formData.grandTotal}</div>
+            </div>
+            <div><Lbl text="Open Balance" /><input readOnly value={formData.openBalance} className={fi(true)} /></div>
+          </div>
+          <div className="mt-4">
+            <Lbl text="Remarks" />
+            <textarea name="remarks" value={formData.remarks || ""} onChange={handleChange} rows={2} className={`${fi()} resize-none`} />
+          </div>
+        </SectionCard>
+
+        {/* Attachments */}
+        <SectionCard icon={FaPaperclip} title="Attachments" color="gray">
+          <div className="mb-4">
+            {existingFiles.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {existingFiles.map((file, idx) => (
+                  <div key={idx} className="relative group border rounded-xl p-2 bg-gray-50">
+                    <div className="h-20 flex items-center justify-center overflow-hidden rounded-lg">
+                      {file.fileUrl?.toLowerCase().endsWith(".pdf")
+                        ? <object data={file.fileUrl} type="application/pdf" className="h-full w-full pointer-events-none" />
+                        : <img src={file.fileUrl} alt={file.fileName} className="h-full object-cover" />}
+                    </div>
+                    {!isReadOnly && (
+                      <button onClick={() => { setExistingFiles(prev => prev.filter((_, i) => i !== idx)); setRemovedFiles(prev => [...prev, file]); }}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px]">
+                        <FaTimes />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <label className="flex items-center justify-center gap-3 px-4 py-4 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-indigo-50 transition-all">
+            <FaPaperclip className="text-gray-300" />
+            <span className="text-sm font-medium text-gray-400">Click to upload new files</span>
+            <input type="file" multiple accept="image/*,application/pdf" hidden onChange={(e) => {
+              const files = Array.from(e.target.files);
+              setAttachments(prev => [...prev, ...files]);
+              e.target.value = "";
+            }} />
+          </label>
+          {renderNewFilesPreview()}
+        </SectionCard>
+
+        <div className="flex items-center justify-between pt-4 pb-10">
+          <button onClick={() => router.push("/admin/sales-invoice-view")} className="px-6 py-2.5 rounded-xl bg-white border font-bold text-sm">Cancel</button>
+          <button onClick={handleSubmit} disabled={submitting} className={`px-8 py-2.5 rounded-xl text-white font-bold text-sm ${submitting ? "bg-gray-300" : "bg-indigo-600 shadow-lg"}`}>
+            {submitting ? "Processing..." : editId ? "Update Invoice" : "Create Invoice"}
+          </button>
+        </div>
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-4 p-8 m-8 border rounded-lg shadow-lg">
-        <button
-          onClick={handleSubmit}
-          className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
-        >
-          {editId ? "Update Sales Invoice" : "Add Sales Invoice"}
-        </button>
-        <button
-          onClick={() => router.push("/admin/sales-invoice-view")}
-          className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            // Corrected: Include existingFiles in the data copied to sessionStorage
-            sessionStorage.setItem(
-              "SalesInvoiceData",
-              JSON.stringify({ ...formData, attachments: existingFiles })
-            );
-            toast.success("Current form data copied to session storage!");
-          }}
-          className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400"
-        >
-          Copy Current Form
-        </button>
-      </div>
-
-      {/* Render the Batch Allocation Modal if an item is selected for batch editing */}
-      {modalItemIndex !== null && (
-        <BatchAllocationModal // Correctly using the imported BatchAllocationModal
-          itemsbatch={{
-            itemId: formData.items[modalItemIndex].item,
-            sourceWarehouse: formData.items[modalItemIndex].warehouse,
-            itemName: formData.items[modalItemIndex].itemName,
-            qty: formData.items[modalItemIndex].quantity,
-            currentAllocations: formData.items[modalItemIndex].batches,
-          }}
-          batchOptions={batchModalOptions} // Passing the fetched batch options
-          onClose={() => setModalItemIndex(null)}
-          onUpdateBatch={handleUpdateBatch}
-        />
-      )}
-
-      <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+      <ToastContainer />
     </div>
   );
 }
 
-export default SalesInvoiceFormWrapper;
+
+
+// "use client";
+// import React, {
+//   useState,
+//   useEffect,
+//   useCallback,
+//   Suspense,
+// } from "react";
+// import { useRouter, useSearchParams } from "next/navigation";
+// import axios from "axios";
+// import ItemSection from "@/components/ItemSection"; // Ensure this component is correctly implemented
+// import CustomerSearch from "@/components/CustomerSearch"; // Ensure this component is correctly implemented
+// import { toast, ToastContainer } from "react-toastify";
+// import "react-toastify/dist/ReactToastify.css";
+
+// // IMPORTANT: This import MUST be your advanced multi-batch modal component
+// import BatchAllocationModal from "@/components/MultiBatchModalbtach"; // This is the correct path and component
+
+// /* ------------------------------------------------------------------ */
+// /* NOTE: The inline 'BatchModal' function (old, single-batch modal)  */
+// /* has been ENTIRELY REMOVED from this file to prevent conflicts.     */
+// /* All batch allocation now uses 'BatchAllocationModal'.              */
+// /* ------------------------------------------------------------------ */
+
+
+// // Initial state for Sales Invoice.
+// const initialInvoiceState = {
+//   customerCode: "",
+//   customerName: "",
+//   contactPerson: "",
+//   refNumber: "", // Invoice Number.
+//   salesEmployee: "",
+//   status: "Pending",
+//   orderDate: "",
+//   expectedDeliveryDate: "",
+//   items: [
+//     {
+//       item: "", // Stores item ObjectId from DB
+//       itemCode: "",
+//       itemId: "", // Optional: duplicate of 'item' for convenience
+//       itemName: "",
+//       itemDescription: "",
+//       quantity: 0, // Total quantity for the item.
+//       allowedQuantity: 0,
+//       unitPrice: 0,
+//       discount: 0,
+//       freight: 0,
+//       gstType: 0,
+//       priceAfterDiscount: 0,
+//       totalAmount: 0,
+//       gstAmount: 0,
+//       cgstAmount: 0, // Ensure these are initialized for calculations
+//       sgstAmount: 0, // Ensure these are initialized for calculations
+//       igstAmount: 0,
+//       tdsAmount: 0,
+//       batches: [], // Array to store allocated batch details {batchCode, allocatedQuantity, etc.}
+//       warehouse: "", // Stores warehouse ObjectId from DB
+//       warehouseName: "",
+//       warehouseCode: "",
+//       warehouseId: "", // Optional: duplicate of 'warehouse'
+//       errorMessage: "",
+//       taxOption: "GST",
+//       managedByBatch: false, // Set default to false, will be set true if item.managedBy is 'batch'
+//       gstRate: 0,
+//       managedBy: "", // Stores 'batch', 'serial', or 'none' from item master
+//     },
+//   ],
+//   remarks: "",
+//   freight: 0,
+//   rounding: 0,
+//   totalDownPayment: 0,
+//   appliedAmounts: 0,
+//   totalBeforeDiscount: 0,
+//   gstTotal: 0,
+//   grandTotal: 0,
+//   openBalance: 0,
+//   fromQuote: false,
+//   attachments: [], // For storing attachment metadata
+// };
+
+// function formatDateForInput(date) {
+//   if (!date) return "";
+//   const d = new Date(date);
+//   const year = d.getFullYear();
+//   const month = ("0" + (d.getMonth() + 1)).slice(-2);
+//   const day = ("0" + d.getDate()).slice(-2);
+//   return `${year}-${month}-${day}`;
+// }
+
+// function SalesInvoiceFormWrapper() {
+//   return (
+//     <Suspense fallback={<div className="text-center py-10">Loading form data...</div>}>
+//       <SalesInvoiceEditPage />
+//     </Suspense>
+//   );
+// }
+
+// function SalesInvoiceEditPage() {
+//   const router = useRouter();
+//   const searchParams = useSearchParams();
+//   const editId = searchParams.get("editId");
+
+//   const [attachments, setAttachments] = useState([]); // New files to upload
+//   const [existingFiles, setExistingFiles] = useState([]); // Files already uploaded (from editId)
+//   const [removedFiles, setRemovedFiles] = useState([]); // Files to be marked for removal on update
+
+//   const [isReadOnly, setIsReadOnly] = useState(false); // Controls if form fields are read-only
+
+//   const [formData, setFormData] = useState(initialInvoiceState);
+//   const [modalItemIndex, setModalItemIndex] = useState(null); // Index of the item for which batch modal is open
+//   const [batchModalOptions, setBatchModalOptions] = useState([]); // State to hold available batches fetched for the modal
+
+//   const [isCopied, setIsCopied] = useState(false); // Flag indicating if form data was copied
+
+//   // Effect to fetch existing Sales Invoice data if in edit mode
+//   useEffect(() => {
+//     if (!editId) return;
+
+//     const fetchSalesInvoice = async () => {
+//       try {
+//         // You might want a loading state here: setLoading(true);
+//         const token = localStorage.getItem("token");
+//         if (!token) {
+//           toast.error("Authentication required to fetch sales invoice.");
+//           router.push("/login");
+//           return;
+//         }
+
+//         const res = await axios.get(`/api/sales-invoice/${editId}`, {
+//           headers: { Authorization: `Bearer ${token}` }, // Add authorization header
+//         });
+
+//         if (res.data.success) {
+//           const record = res.data.data;
+//           setFormData({
+//             ...record,
+//             orderDate: formatDateForInput(record.orderDate),
+//             expectedDeliveryDate: formatDateForInput(record.expectedDeliveryDate),
+//             // Ensure items' managedByBatch and batches array are correctly structured
+//             items: record.items.map(item => ({
+//               ...item,
+//               managedByBatch: item.managedBy && item.managedBy.toLowerCase() === 'batch',
+//               batches: item.managedBy && item.managedBy.toLowerCase() === 'batch' && Array.isArray(item.batches)
+//                 ? item.batches.map(b => ({
+//                     batchCode: b.batchCode || b.batchNumber || '',
+//                     allocatedQuantity: Number(b.allocatedQuantity) || Number(b.quantity) || 0,
+//                     expiryDate: b.expiryDate || null,
+//                     manufacturer: b.manufacturer || '',
+//                     unitPrice: Number(b.unitPrice) || 0,
+//                   }))
+//                 : [],
+//             }))
+//           });
+//           // Set existing files from the fetched record
+//           if (record.attachments && Array.isArray(record.attachments)) {
+//             setExistingFiles(record.attachments);
+//           } else {
+//             setExistingFiles([]);
+//           }
+//           // Optionally set isReadOnly based on document status (e.g., if status is "Confirmed")
+//           // if (record.status === "Confirmed") setIsReadOnly(true);
+
+//         } else {
+//           toast.error(res.data.message || "Sales invoice record not found");
+//         }
+//       } catch (err) {
+//         console.error("Error fetching sales invoice for edit:", err.response?.data?.message || err.message);
+//         toast.error(err.response?.data?.message || "Error fetching sales invoice data");
+//       } finally {
+//         // setLoading(false);
+//       }
+//     };
+
+//     fetchSalesInvoice();
+//   }, [editId, router]);
+
+
+//   // Effect to handle copying data from session storage (e.g., from Sales Quote or another Sales Invoice)
+//   useEffect(() => {
+//     if (typeof window === "undefined") return; // Ensure running in browser environment
+
+//     const salesInvoiceKey = "SalesInvoiceData"; // Key for a Sales Invoice's own copy
+//     const salesQuoteKey = "SalesQuoteData"; // Key for copying from Sales Quote
+
+//     let storedData = sessionStorage.getItem(salesInvoiceKey);
+//     let isQuoteCopy = false;
+
+//     if (!storedData) { // If no SalesInvoiceData found, check for SalesQuoteData
+//       storedData = sessionStorage.getItem(salesQuoteKey);
+//       if (storedData) isQuoteCopy = true;
+//     }
+
+//     if (!storedData) return; // No data to copy
+
+//     try {
+//       const parsedData = JSON.parse(storedData);
+//       sessionStorage.removeItem(salesInvoiceKey); // Clear used session storage keys
+//       sessionStorage.removeItem(salesQuoteKey);
+
+//       // Map common fields from source document to Sales Invoice structure
+//       const mappedFormData = {
+//         ...initialInvoiceState, // Start with a fresh initial state
+//         ...parsedData, // Overlay all parsed data
+//         refNumber: parsedData.refNumber ? `INV-${parsedData.refNumber}` : "", // Prefix invoice number
+//         status: "Pending", // New invoice always starts as Pending
+//         orderDate: formatDateForInput(parsedData.orderDate || new Date()),
+//         expectedDeliveryDate: formatDateForInput(parsedData.expectedDeliveryDate || parsedData.dueDate || new Date()),
+//         customerCode: parsedData.customer?.customerCode || parsedData.customerCode || "",
+//         customerName: parsedData.customer?.customerName || parsedData.customerName || "",
+//         contactPerson: parsedData.customer?.contactPersonName || parsedData.contactPerson || "",
+//         salesEmployee: parsedData.salesEmployee || "",
+//         remarks: parsedData.remarks || "",
+//         freight: Number(parsedData.freight) || 0,
+//         rounding: Number(parsedData.rounding) || 0,
+//         totalDownPayment: Number(parsedData.totalDownPayment) || 0,
+//         appliedAmounts: Number(parsedData.appliedAmounts) || 0,
+//         fromQuote: isQuoteCopy,
+//       };
+
+//       // Map and normalize item data, ensuring correct types and defaults
+//       mappedFormData.items = (parsedData.items || []).map((item) => {
+//         const unitPrice = parseFloat(item.unitPrice) || 0;
+//         const discount = parseFloat(item.discount) || 0;
+//         const quantity = parseFloat(item.quantity) || 0;
+//         const freight = parseFloat(item.freight) || 0;
+//         const gstRate = parseFloat(item.gstRate) || 0;
+//         const taxOption = item.taxOption || "GST";
+//         const managedBy = item.managedBy || "";
+
+//         const priceAfterDiscount = unitPrice - discount;
+//         const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
+
+//         let calculatedCgstAmount = 0;
+//         let calculatedSgstAmount = 0;
+//         let calculatedIgstAmount = 0;
+//         let calculatedGstAmount = 0;
+
+//         if (taxOption === "IGST") {
+//           calculatedIgstAmount = totalAmountBeforeTax * (gstRate / 100);
+//           calculatedGstAmount = calculatedIgstAmount;
+//         } else {
+//           const halfGstRate = gstRate / 2;
+//           calculatedCgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//           calculatedSgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//           calculatedGstAmount = calculatedCgstAmount + calculatedSgstAmount;
+//         }
+
+//         const copiedBatches = (managedBy.toLowerCase() === "batch" && Array.isArray(item.batches))
+//             ? item.batches.map(b => ({
+//                 batchCode: b.batchCode || b.batchNumber || '',
+//                 allocatedQuantity: Number(b.allocatedQuantity) || Number(b.quantity) || 0,
+//                 expiryDate: b.expiryDate || null,
+//                 manufacturer: b.manufacturer || '',
+//                 unitPrice: Number(b.unitPrice) || 0,
+//             }))
+//             : [];
+
+//         return {
+//           ...item, // Keep other item properties
+//           // Ensure item, warehouse IDs are extracted from potentially populated objects
+//           item: item.item?._id || item.item || "",
+//           itemCode: item.item?.itemCode || item.itemCode || "",
+//           itemName: item.item?.itemName || item.itemName || "",
+//           itemDescription: item.item?.description || item.itemDescription || "",
+//           warehouse: item.warehouse?._id || item.warehouse || "",
+//           warehouseName: item.warehouse?.warehouseName || item.warehouseName || "",
+//           warehouseCode: item.warehouse?.warehouseCode || item.warehouseCode || "",
+//           quantity: quantity,
+//           unitPrice: unitPrice,
+//           discount: discount,
+//           freight: freight,
+//           gstRate: gstRate,
+//           gstType: item.gstType || 0,
+//           taxOption: taxOption,
+//           priceAfterDiscount: priceAfterDiscount,
+//           totalAmount: totalAmountBeforeTax,
+//           gstAmount: calculatedGstAmount,
+//           cgstAmount: calculatedCgstAmount,
+//           sgstAmount: calculatedSgstAmount,
+//           igstAmount: calculatedIgstAmount,
+//           tdsAmount: item.tdsAmount || 0,
+//           managedBy: managedBy,
+//           managedByBatch: managedBy.toLowerCase() === "batch",
+//           batches: copiedBatches, // Retain copied batch allocations
+//           errorMessage: "",
+//         };
+//       });
+
+//       // Handle attachments from copied data (stored in parsedData.attachments)
+//       if (Array.isArray(parsedData.attachments)) {
+//         setExistingFiles(parsedData.attachments); // Set these as existing files for the new form
+//       } else {
+//         setExistingFiles([]);
+//       }
+
+//       setFormData(mappedFormData);
+//       setIsCopied(true);
+//       toast.success("Data copied successfully!");
+//     }
+//     catch (err) {
+//       console.error("❌ Error parsing copied data:", err);
+//       toast.error(`Failed to copy sales invoice data: ${err.message || 'Unknown error'}`);
+//     }
+//   }, []);
+
+
+//   // Effect to recalculate summary totals whenever relevant formData changes
+//   useEffect(() => {
+//     const items = formData.items ?? [];
+
+//     const totalBeforeDiscountCalc = items.reduce(
+//       (acc, it) => {
+//         const up = Number(it.unitPrice) || 0;
+//         const disc = Number(it.discount) || 0;
+//         const qty = Number(it.quantity) || 0;
+//         return acc + (up - disc) * qty;
+//       },
+//       0,
+//     ) || 0;
+
+//     const gstTotalCalc = items.reduce((acc, it) => {
+//       if (it.taxOption === "IGST")
+//         return acc + (Number(it.igstAmount) || 0);
+//       return acc + (Number(it.cgstAmount) || 0) + (Number(it.sgstAmount) || 0);
+//     }, 0) || 0;
+
+//     const freight = Number(formData.freight) || 0;
+//     const rounding = Number(formData.rounding) || 0;
+//     const grandTotal =
+//       totalBeforeDiscountCalc + gstTotalCalc + freight + rounding;
+
+//     setFormData((p) => ({
+//       ...p,
+//       totalBeforeDiscount: totalBeforeDiscountCalc,
+//       gstTotal: gstTotalCalc,
+//       grandTotal: grandTotal,
+//       openBalance:
+//         grandTotal -
+//         ((Number(p.totalDownPayment) || 0) +
+//           (Number(p.appliedAmounts) || 0)),
+//     }));
+//   }, [
+//     formData.items,
+//     formData.freight,
+//     formData.rounding,
+//     formData.totalDownPayment,
+//     formData.appliedAmounts,
+//   ]);
+
+
+//   // Helper function to render previews of newly selected files
+//   const renderNewFilesPreview = () => (
+//     attachments.length > 0 && (
+//       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-3">
+//         {attachments.map((file, idx) => {
+//           if (file instanceof File) {
+//             const url = URL.createObjectURL(file);
+//             const isPDF = file.type === "application/pdf";
+//             return (
+//               <div key={idx} className="relative border rounded p-2 text-center bg-slate-300">
+//                 {isPDF ? (
+//                   <object data={url} type="application/pdf" className="h-24 w-full rounded" />
+//                 ) : (
+//                   <img src={url} alt={file.name} className="h-24 w-full object-cover rounded" />
+//                 )}
+//                 <button
+//                   onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+//                   className="absolute top-1 right-1 bg-red-600 text-white rounded px-1 text-xs"
+//                 >
+//                   ×
+//                 </button>
+//               </div>
+//             );
+//           }
+//           return null;
+//         })}
+//       </div>
+//     )
+//   );
+
+
+//   // Generic handler for changes in main form fields
+//   const handleInputChange = useCallback((e) => {
+//     const { name, value } = e.target;
+//     setFormData((prev) => ({ ...prev, [name]: value }));
+//   }, []);
+
+//   // Handler for customer selection from CustomerSearch component
+//   const handleCustomerSelect = useCallback((selectedCustomer) => {
+//     setFormData((prev) => ({
+//       ...prev,
+//       customerCode: selectedCustomer.customerCode || "",
+//       customerName: selectedCustomer.customerName || "",
+//       contactPerson: selectedCustomer.contactPersonName || "",
+//     }));
+//   }, []);
+
+//   // Helper function for ItemSection to show toast on quantity change for batch-managed items
+//   const showInfoOnQuantityChange = useCallback((item) => {
+//     if (item.managedByBatch) {
+//       toast.info(`Quantity changed for '${item.itemName}'. Please re-allocate batches.`);
+//     }
+//   }, []);
+
+//   // Handler for changes within an item row
+//   const handleItemChange = useCallback((index, e) => {
+//     const { name, value } = e.target;
+//     setFormData((prev) => {
+//       const updatedItems = [...prev.items];
+//       const currentItem = { ...updatedItems[index] }; // Copy for comparison
+
+//       updatedItems[index] = { ...currentItem, [name]: value }; // Apply new value
+
+//       // Recalculate item-level totals and taxes
+//       const item = updatedItems[index]; // Use the now updated item
+//       const unitPrice = parseFloat(item.unitPrice) || 0;
+//       const discount = parseFloat(item.discount) || 0;
+//       const quantity = parseFloat(item.quantity) || 0; // Use the new quantity
+//       const freight = parseFloat(item.freight) || 0;
+//       const gstRate = parseFloat(item.gstRate) || 0;
+//       const taxOption = item.taxOption || "GST";
+
+//       const priceAfterDiscount = unitPrice - discount;
+//       const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
+
+//       let calculatedCgstAmount = 0;
+//       let calculatedSgstAmount = 0;
+//       let calculatedIgstAmount = 0;
+//       let calculatedGstAmount = 0;
+
+//       if (taxOption === "IGST") {
+//         calculatedIgstAmount = totalAmountBeforeTax * (gstRate / 100);
+//         calculatedGstAmount = calculatedIgstAmount;
+//       } else {
+//         const halfGstRate = gstRate / 2;
+//         calculatedCgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//         calculatedSgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//         calculatedGstAmount = calculatedCgstAmount + calculatedSgstAmount;
+//       }
+
+//       updatedItems[index] = {
+//           ...updatedItems[index],
+//           priceAfterDiscount,
+//           totalAmount: totalAmountBeforeTax,
+//           gstAmount: calculatedGstAmount,
+//           cgstAmount: calculatedCgstAmount,
+//           sgstAmount: calculatedSgstAmount,
+//           igstAmount: calculatedIgstAmount,
+//       };
+
+//       // Clear batches and show toast only if quantity actually changed for a batch-managed item
+//       if (name === 'quantity' && item.managedByBatch && parseFloat(value) !== currentItem.quantity) {
+//           updatedItems[index].batches = []; // Clear existing batch allocations
+//           showInfoOnQuantityChange(item); // Show toast notification
+//       }
+
+//       return { ...prev, items: updatedItems };
+//     });
+//   }, [showInfoOnQuantityChange]); // Add showInfoOnQuantityChange to dependencies
+
+//   const removeItemRow = useCallback((index) => {
+//     setFormData((prev) => ({
+//       ...prev,
+//       items: prev.items.filter((_, i) => i !== index),
+//     }));
+//   }, []);
+
+//   const addItemRow = useCallback(() => {
+//     setFormData((prev) => ({
+//       ...prev,
+//       items: [
+//         { ...initialInvoiceState.items[0] }, // Add new item with initial state structure
+//         ...prev.items, // Add new item at the top
+//       ],
+//     }));
+//   }, []);
+
+//   // Handler for item selection from ItemSection component
+//   const handleItemSelect = useCallback(async (index, selectedItem) => {
+//     if (!selectedItem._id) {
+//       toast.error("Selected item does not have a valid ID.");
+//       return;
+//     }
+
+//     let managedByValue = selectedItem.managedBy;
+//     if (!managedByValue || managedByValue.trim() === "") {
+//       try {
+//         const res = await axios.get(`/api/items/${selectedItem._id}`, {
+//           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+//         });
+//         if (res.data.success) {
+//           managedByValue = res.data.data.managedBy;
+//           console.log(`Fetched managedBy for ${selectedItem.itemCode}:`, managedByValue);
+//         }
+//       } catch (error) {
+//         console.error("Error fetching item master details:", error.response?.data?.message || error.message);
+//         toast.error(`Error fetching item details: ${error.response?.data?.message || error.message}`);
+//         managedByValue = ""; // Fallback
+//       }
+//     } else {
+//       console.log(`Using managedBy from selected item for ${selectedItem.itemCode}:`, managedByValue);
+//     }
+
+//     const unitPrice = Number(selectedItem.unitPrice) || 0;
+//     const discount = Number(selectedItem.discount) || 0;
+//     const freight = Number(selectedItem.freight) || 0;
+//     const quantity = 1; // Default quantity when selecting an item
+//     const taxOption = selectedItem.taxOption || "GST";
+//     const gstRate = selectedItem.gstRate ? Number(selectedItem.gstRate) : 0;
+
+//     const priceAfterDiscount = unitPrice - discount;
+//     const totalAmountBeforeTax = quantity * priceAfterDiscount + freight;
+
+//     let cgstAmount = 0;
+//     let sgstAmount = 0;
+//     let igstAmount = 0;
+//     let gstAmount = 0;
+
+//     if (taxOption === "IGST") {
+//       igstAmount = totalAmountBeforeTax * (gstRate / 100);
+//       gstAmount = igstAmount;
+//     } else {
+//       const halfGstRate = gstRate / 2;
+//       cgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//       sgstAmount = totalAmountBeforeTax * (halfGstRate / 100);
+//       gstAmount = cgstAmount + sgstAmount;
+//     }
+
+//     const updatedItem = {
+//       item: selectedItem._id,
+//       itemCode: selectedItem.itemCode || "",
+//       itemId: selectedItem._id,
+//       itemName: selectedItem.itemName,
+//       itemDescription: selectedItem.description || "",
+//       quantity,
+//       allowedQuantity: selectedItem.allowedQuantity || 0,
+//       unitPrice,
+//       discount,
+//       freight,
+//       gstType: selectedItem.gstType || 0,
+//       gstRate,
+//       taxOption,
+//       priceAfterDiscount,
+//       totalAmount: totalAmountBeforeTax,
+//       gstAmount,
+//       cgstAmount,
+//       sgstAmount,
+//       igstAmount,
+//       managedBy: managedByValue,
+//       managedByBatch: managedByValue.toLowerCase() === "batch", // Set based on fetched/derived value
+//       batches: [], // Always initialize empty for new item selection, force re-allocation
+//       warehouse: selectedItem.warehouse || "",
+//       warehouseName: selectedItem.warehouseName || "",
+//       warehouseCode: selectedItem.warehouseCode || "",
+//       warehouseId: selectedItem.warehouseId || "",
+//       errorMessage: "",
+//       tdsAmount: 0,
+//     };
+
+//     setFormData((prev) => {
+//       const currentItems = [...prev.items];
+//       currentItems[index] = updatedItem;
+//       return { ...prev, items: currentItems };
+//     });
+//   }, []);
+
+
+//   // Batch update: Update allocated batches for a specific item using the BatchAllocationModal
+//   const handleUpdateBatch = useCallback((allocatedBatches) => {
+//     setFormData((prev) => {
+//       const updatedItems = [...prev.items];
+//       const targetItem = { ...updatedItems[modalItemIndex] };
+
+//       targetItem.batches = allocatedBatches.map(b => ({
+//           batchCode: b.batchCode || '',
+//           allocatedQuantity: Number(b.allocatedQuantity) || 0,
+//           expiryDate: b.expiryDate || null,
+//           manufacturer: b.manufacturer || '',
+//           unitPrice: Number(b.unitPrice) || 0,
+//           // `availableQuantity` is modal-specific; not needed in form data for submission
+//       }));
+
+//       updatedItems[modalItemIndex] = targetItem;
+//       return { ...prev, items: updatedItems };
+//     });
+//   }, [modalItemIndex]);
+
+
+//   // Function to open the Batch Allocation Modal
+//   const openBatchModal = useCallback(async (index) => {
+//     const currentItem = formData.items[index];
+//     // Pre-checks for opening modal
+//     if (!currentItem.item || !currentItem.warehouse) {
+//       toast.warn("Please select an Item and a Warehouse for this line item before allocating batches.");
+//       return;
+//     }
+//     if (!currentItem.managedBy || currentItem.managedBy.toLowerCase() !== 'batch') {
+//       toast.warn(`Item '${currentItem.itemName || 'selected item'}' is not managed by batch. Cannot allocate batches.`);
+//       return;
+//     }
+//     if (currentItem.quantity <= 0) {
+//         toast.warn(`Please enter a quantity greater than 0 for '${currentItem.itemName}' before allocating batches.`);
+//         return;
+//     }
+
+//     console.log("Opening Batch Allocation Modal for item index:", index, "with item ID:", currentItem.item, "warehouse ID:", currentItem.warehouse);
+
+//     try {
+//         const token = localStorage.getItem("token");
+//         if (!token) {
+//             toast.error("Authentication required to fetch inventory batches.");
+//             return;
+//         }
+//         const res = await axios.get(
+//             `/api/inventory-batch/${currentItem.item}/${currentItem.warehouse}`,
+//             { headers: { 'Authorization': `Bearer ${token}` } } // Add token
+//         );
+
+//         if (res.data.success) {
+//             setBatchModalOptions(res.data.data.batches || []); // Set the fetched batches
+//             setModalItemIndex(index); // Open modal after successful fetch
+//         } else {
+//             toast.error(res.data.message || "Failed to fetch available batches.");
+//         }
+//     } catch (error) {
+//         console.error("Error fetching available batches:", error.response?.data?.message || error.message);
+//         toast.error(`Error loading available batches: ${error.response?.data?.message || error.message}`);
+//     }
+//   }, [formData.items]); // Dependency on formData.items is fine, ensures latest item data
+
+
+//   // Submit handler for Sales Invoice
+//   const handleSubmit = async () => {
+//     try {
+//       const token = localStorage.getItem("token");
+//       if (!token) {
+//         toast.error("Authentication required. Please log in.");
+//         router.push("/login");
+//         return;
+//       }
+
+//       // Basic form validation
+//       if (!formData.customerName || !formData.refNumber || formData.items.length === 0) {
+//         toast.error("Please fill in Customer Name, Invoice Number, and add at least one item.");
+//         return;
+//       }
+//       for (const item of formData.items) {
+//         if (!item.item || !item.warehouse) { // Ensure item and warehouse IDs are selected
+//           toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item and Warehouse selection.`);
+//           return;
+//         }
+//         if (!item.itemCode || !item.itemName || item.quantity <= 0 || item.unitPrice <= 0) {
+//           toast.error(`Item '${item.itemName || item.itemCode || "Unnamed Item"}' requires a valid Item Code, Item Name, Quantity (>0), and Unit Price (>0).`);
+//           return;
+//         }
+//         // Validate batch allocation for batch-managed items
+//         if (item.managedByBatch) {
+//             const allocatedTotal = item.batches.reduce((sum, batch) => sum + (Number(batch.allocatedQuantity) || 0), 0);
+//             if (allocatedTotal !== item.quantity) {
+//                 toast.error(`Item '${item.itemName}' requires total allocated batch quantity (${allocatedTotal}) to match item quantity (${item.quantity}). Please re-allocate batches.`);
+//                 return;
+//             }
+//             if (item.batches.length === 0 && item.quantity > 0) {
+//                 toast.error(`Item '${item.itemName}' is batch-managed but no batches are allocated.`);
+//                 return;
+//             }
+//         }
+//       }
+
+//       const dataToSend = new FormData();
+
+//       const formDataForApi = { ...formData };
+//       delete formDataForApi.attachments; // Exclude attachments from main JSON payload
+
+//       dataToSend.append("invoiceData", JSON.stringify(formDataForApi));
+
+//       attachments.forEach((file) => {
+//         dataToSend.append("newAttachments", file); // Key matches backend expectation
+//       });
+
+//       // Filter out files that were marked for removal
+//       const retainedExistingFiles = existingFiles.filter(
+//         (file) => !removedFiles.some(removed => removed.publicId === file.publicId || removed.fileUrl === file.fileUrl)
+//       );
+//       if (retainedExistingFiles.length > 0) {
+//         dataToSend.append("existingFiles", JSON.stringify(retainedExistingFiles));
+//       }
+
+//       if (removedFiles.length > 0) {
+//         dataToSend.append("removedAttachmentIds", JSON.stringify(removedFiles.map(f => f.publicId || f.fileUrl))); // Backend expects publicId or fileUrl for deletion
+//       }
+
+//       const url = editId ? `/api/sales-invoice/${editId}` : "/api/sales-invoice";
+//       const method = editId ? "put" : "post";
+
+//       const response = await axios({
+//         method,
+//         url,
+//         data: dataToSend,
+//         headers: {
+//           Authorization: `Bearer ${token}`,
+//           "Content-Type": "multipart/form-data", // Essential for FormData
+//         },
+//       });
+
+//       if (response.data.success) {
+//           toast.success(editId ? "Sales Invoice updated successfully" : "Sales Invoice added successfully");
+//           if (!editId) {
+//             // Reset form for new entry after successful creation
+//             setFormData(initialInvoiceState);
+//             setAttachments([]);
+//             setExistingFiles([]);
+//             setRemovedFiles([]);
+//           } else {
+//             // Update existing files state with the fresh list from the backend response
+//             // (Assuming backend returns the updated document with new attachment info)
+//             setExistingFiles(response.data.salesInvoice?.attachments || []);
+//             setRemovedFiles([]);
+//             setAttachments([]);
+//           }
+//           router.push("/admin/sales-invoice-view"); // Redirect to view page
+//       } else {
+//           toast.error(response.data.message || "Operation failed.");
+//       }
+
+//     } catch (error) {
+//       console.error("Error saving sales invoice:", error);
+//       const errorMessage = error.response?.data?.message || "An unexpected error occurred.";
+//       toast.error(`Failed to save Sales Invoice: ${errorMessage}`);
+//     }
+//   };
+
+//   return (
+//     <div className="m-11 p-5 shadow-xl">
+//       <h1 className="text-2xl font-bold mb-4">
+//         {editId ? "Edit Sales Invoice" : "Create Sales Invoice"}
+//       </h1>
+
+//       {/* Customer Section */}
+//       <div className="flex flex-wrap justify-between m-10 p-5 border rounded-lg shadow-lg">
+//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+//           <div>
+//             <label className="block mb-2 font-medium">Customer Name</label>
+//             {isCopied || editId ? (
+//               <input
+//                 type="text"
+//                 name="customerName"
+//                 value={formData.customerName || ""}
+//                 readOnly={Boolean(isCopied || editId)}
+//                 className={`w-full p-2 border rounded ${Boolean(isCopied || editId) ? 'bg-gray-100' : ''}`}
+//               />
+//             ) : (
+//               <CustomerSearch onSelectCustomer={handleCustomerSelect} />
+//             )}
+//           </div>
+//           <div>
+//             <label className="block mb-2 font-medium">Customer Code</label>
+//             <input
+//               type="text"
+//               name="customerCode"
+//               value={formData.customerCode || ""}
+//               readOnly
+//               className="w-full p-2 border rounded bg-gray-100"
+//             />
+//           </div>
+//           <div>
+//             <label className="block mb-2 font-medium">Contact Person</label>
+//             <input
+//               type="text"
+//               name="contactPerson"
+//               value={formData.contactPerson || ""}
+//               readOnly
+//               className="w-full p-2 border rounded bg-gray-100"
+//             />
+//           </div>
+//           <div>
+//             <label className="block mb-2 font-medium">Invoice Number</label>
+//             <input
+//               type="text"
+//               name="refNumber"
+//               value={formData.refNumber || ""}
+//               onChange={handleInputChange}
+//               className="w-full p-2 border rounded"
+//             />
+//           </div>
+//         </div>
+//         {/* Additional Invoice Info */}
+//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-4 md:mt-0">
+//           <div>
+//             <label className="block mb-2 font-medium">Status</label>
+//             <select
+//               name="status"
+//               value={formData.status || "Pending"}
+//               onChange={handleInputChange}
+//               className="w-full p-2 border rounded"
+//             >
+//               <option value="Pending">Pending</option>
+//               <option value="Confirmed">Confirmed</option>
+//               <option value="Paid">Paid</option>
+//             </select>
+//           </div>
+//           <div>
+//             <label className="block mb-2 font-medium">Invoice Date</label>
+//             <input
+//               type="date"
+//               name="orderDate"
+//               value={formData.orderDate || ""}
+//               onChange={handleInputChange}
+//               className="w-full p-2 border rounded"
+//             />
+//           </div>
+//           <div>
+//             <label className="block mb-2 font-medium">Expected Payment Date</label>
+//             <input
+//               type="date"
+//               name="expectedDeliveryDate"
+//               value={formData.expectedDeliveryDate || ""}
+//               onChange={handleInputChange}
+//               className="w-full p-2 border rounded"
+//             />
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* Items Section */}
+//       <h2 className="text-xl font-semibold mt-6">Items</h2>
+//       <div className="flex flex-col m-10 p-5 border rounded-lg shadow-lg">
+//         <ItemSection
+//           items={formData.items}
+//           onItemChange={handleItemChange}
+//           onAddItem={addItemRow}
+//           onRemoveItem={removeItemRow}
+//           setFormData={setFormData}
+//           onItemSelect={handleItemSelect}
+//         />
+//       </div>
+
+//       {/* Batch Allocation Summary Section (for items managed by batch) */}
+//       <div className="mb-6">
+//         <h2 className="text-xl font-semibold">Batch Allocation Summary</h2>
+//         {formData.items.map((item, index) => {
+//           if (!item.managedBy || item.managedBy.toLowerCase() !== 'batch') {
+//             return null;
+//           }
+
+//           const totalAllocatedForCurrentItem = (item.batches || []).reduce(
+//             (sum, b) => sum + (Number(b.allocatedQuantity) || 0),
+//             0
+//           );
+
+//           return (
+//             <div key={index} className="border p-4 my-2 rounded-lg bg-white shadow-sm">
+//               <div className="flex items-center justify-between mb-2">
+//                 <span className="font-semibold text-lg">{item.itemName || `Item ${index + 1}`} (Required: {item.quantity})</span>
+//                 <button
+//                   onClick={() => openBatchModal(index)}
+//                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+//                   disabled={!item.item || !item.warehouse || item.quantity <= 0}
+//                 >
+//                   Allocate Batches
+//                 </button>
+//               </div>
+
+//               {/* Display currently allocated batches for this item */}
+//               {item.batches && item.batches.length > 0 ? (
+//                 <div className="mt-2 pl-4 text-sm">
+//                   <p className="font-medium mb-1">Current Allocations:</p>
+//                   <ul className="list-disc list-inside">
+//                     {item.batches.map((batch, idx) => (
+//                       <li key={idx} className="text-gray-700">
+//                         Batch: **{batch.batchCode || 'N/A'}** &mdash; Allocated: **{Number(batch.allocatedQuantity) || 0}**
+//                       </li>
+//                     ))}
+//                   </ul>
+//                   <p className={`mt-2 font-bold ${totalAllocatedForCurrentItem !== item.quantity ? "text-red-600" : "text-green-600"}`}>
+//                     Total Allocated: {totalAllocatedForCurrentItem} / {item.quantity}
+//                   </p>
+//                 </div>
+//               ) : (
+//                 <p className="text-sm text-gray-500 italic pl-4">No batches currently allocated for this item.</p>
+//               )}
+//             </div>
+//           );
+//         })}
+//       </div>
+
+//       {/* Remarks & Sales Employee */}
+//       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-8 m-8 border rounded-lg shadow-lg">
+//         <div>
+//           <label className="block mb-2 font-medium">Sales Employee</label>
+//           <input
+//             type="text"
+//             name="salesEmployee"
+//             value={formData.salesEmployee || ""}
+//             onChange={handleInputChange}
+//             className="w-full p-2 border rounded"
+//           />
+//         </div>
+//         <div>
+//           <label className="block mb-2 font-medium">Remarks</label>
+//           <textarea
+//             name="remarks"
+//             value={formData.remarks || ""}
+//             onChange={handleInputChange}
+//             className="w-full p-2 border rounded"
+//           ></textarea>
+//         </div>
+//       </div>
+
+//       {/* Summary Section */}
+//       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-8 m-8 border rounded-lg shadow-lg">
+//         <div>
+//           <label className="block mb-2 font-medium">Taxable Amount</label>
+//           <input
+//             type="number"
+//             name="totalBeforeDiscount"
+//             value={formData.totalBeforeDiscount.toFixed(2)}
+//             readOnly
+//             className="w-full p-2 border rounded bg-gray-100"
+//           />
+//         </div>
+//         <div>
+//           <label className="block mb-2 font-medium">Rounding</label>
+//           <input
+//             type="number"
+//             name="rounding"
+//             value={formData.rounding || 0}
+//             onChange={handleInputChange}
+//             className="w-full p-2 border rounded"
+//           />
+//         </div>
+//         <div>
+//           <label className="block mb-2 font-medium">GST Total</label>
+//           <input
+//             type="number"
+//             name="gstTotal"
+//             value={formData.gstTotal.toFixed(2)}
+//             readOnly
+//             className="w-full p-2 border rounded bg-gray-100"
+//           />
+//         </div>
+//         <div>
+//           <label className="block mb-2 font-medium">Grand Total</label>
+//           <input
+//             type="number"
+//             name="grandTotal"
+//             value={formData.grandTotal.toFixed(2)}
+//             readOnly
+//             className="w-full p-2 border rounded bg-gray-100"
+//           />
+//         </div>
+//       </div>
+
+//       {/* Attachments Section */}
+//       <div className="mt-6 p-8 m-8 border rounded-lg shadow-lg">
+//         <label className="font-medium block mb-2">Attachments</label>
+
+//         {existingFiles && existingFiles.length > 0 ? (
+//           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4 bg-gray-50 p-3 rounded border">
+//             {existingFiles.map((file, idx) => {
+//               const url = file.fileUrl;
+//               const name = file.fileName;
+//               const isPDF = file.fileType === "application/pdf" || url.toLowerCase().endsWith(".pdf");
+
+//               return (
+//                 <div key={idx} className="relative border rounded p-2 text-center bg-slate-200">
+//                   {isPDF ? (
+//                     <object data={url} type="application/pdf" className="h-24 w-full rounded" />
+//                   ) : (
+//                     <img src={url} alt={name} className="h-24 w-full object-cover rounded" />
+//                   )}
+//                   <a
+//                     href={url}
+//                     target="_blank"
+//                     rel="noopener noreferrer"
+//                     className="block text-blue-600 text-xs mt-1 truncate"
+//                   >
+//                     {name}
+//                   </a>
+//                   {!isReadOnly && (
+//                     <button
+//                       onClick={() => {
+//                         setExistingFiles((prev) => prev.filter((_, i) => i !== idx));
+//                         setRemovedFiles((prev) => [...(prev || []), file]);
+//                         toast.info(`Marked ${name} for removal.`);
+//                       }}
+//                       className="absolute top-1 right-1 bg-red-600 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs"
+//                     >
+//                       ×
+//                     </button>
+//                   )}
+//                 </div>
+//               );
+//             })}
+//           </div>
+//         ) : (
+//           <div className="p-3 text-center text-gray-500 bg-gray-100 rounded border">
+//             No attachments available
+//           </div>
+//         )}
+
+//         {/* File Upload Input for New Attachments (only if not read-only) */}
+//         {!isReadOnly && (
+//           <>
+//             <input
+//               type="file"
+//               multiple
+//               accept="image/*,application/pdf"
+//               onChange={(e) => {
+//                 const files = Array.from(e.target.files);
+//                 setAttachments((prev) => {
+//                   const uniqueMap = new Map(prev.map((f) => [f.name + f.size, f]));
+//                   files.forEach((f) => uniqueMap.set(f.name + f.size, f));
+//                   return [...uniqueMap.values()];
+//                 });
+//                 e.target.value = "";
+//               }}
+//               className="border px-3 py-2 w-full mt-2 rounded"
+//             />
+//             {renderNewFilesPreview()}
+//           </>
+//         )}
+//       </div>
+
+//       {/* Action Buttons */}
+//       <div className="flex flex-wrap gap-4 p-8 m-8 border rounded-lg shadow-lg">
+//         <button
+//           onClick={handleSubmit}
+//           className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
+//         >
+//           {editId ? "Update Sales Invoice" : "Add Sales Invoice"}
+//         </button>
+//         <button
+//           onClick={() => router.push("/admin/sales-invoice-view")}
+//           className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
+//         >
+//           Cancel
+//         </button>
+//         <button
+//           onClick={() => {
+//             // Corrected: Include existingFiles in the data copied to sessionStorage
+//             sessionStorage.setItem(
+//               "SalesInvoiceData",
+//               JSON.stringify({ ...formData, attachments: existingFiles })
+//             );
+//             toast.success("Current form data copied to session storage!");
+//           }}
+//           className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-400"
+//         >
+//           Copy Current Form
+//         </button>
+//       </div>
+
+//       {/* Render the Batch Allocation Modal if an item is selected for batch editing */}
+//       {modalItemIndex !== null && (
+//         <BatchAllocationModal // Correctly using the imported BatchAllocationModal
+//           itemsbatch={{
+//             itemId: formData.items[modalItemIndex].item,
+//             sourceWarehouse: formData.items[modalItemIndex].warehouse,
+//             itemName: formData.items[modalItemIndex].itemName,
+//             qty: formData.items[modalItemIndex].quantity,
+//             currentAllocations: formData.items[modalItemIndex].batches,
+//           }}
+//           batchOptions={batchModalOptions} // Passing the fetched batch options
+//           onClose={() => setModalItemIndex(null)}
+//           onUpdateBatch={handleUpdateBatch}
+//         />
+//       )}
+
+//       <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+//     </div>
+//   );
+// }
+
+// export default SalesInvoiceFormWrapper;
 
 
 // "use client";

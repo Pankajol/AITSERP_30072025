@@ -38,6 +38,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from './schema';
 import connectDb from '../../../lib/db';
+import {jwtDecode} from 'jwt-decode';
 
 export async function POST(req) {
   await connectDb();
@@ -59,8 +60,26 @@ export async function POST(req) {
     //   return new Response(JSON.stringify({ message: 'Invalid password' }), { status: 400 });
     // }
 
-    const token = jwt.sign({ id: user._id, role: user.role,mo }, process.env.JWT_SECRET, { expiresIn: '1h' });
+const token = jwt.sign(
+  {
+    id: user._id,
+    name: user.name,
+    email: user.email,
 
+    role: user.role,          // "Admin" | "Sales Manager"
+    type: "user",             // important
+
+    companyId: user.companyId, // VERY IMPORTANT
+
+    modules: user.modules || {},
+
+    permissions: user.permissions || []
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" }
+);
+  console.log(jwtDecode(token));
+      console.log(JSON.stringify(user.modules, null, 2));
     return new Response(JSON.stringify({ token }), { status: 200 });
   } catch (error) {
     console.error('Server Error:', error);

@@ -6,8 +6,8 @@ import bcrypt from "bcryptjs";
 
 const SECRET = process.env.JWT_SECRET;
 
-// ─── Helper ───
-function verifyCompany(req) {
+// ─── Helper — company aur admin user dono allow ───
+function verifyToken(req) {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader) throw new Error("Missing authorization header");
@@ -16,7 +16,12 @@ function verifyCompany(req) {
     if (!token) throw new Error("Unauthorized");
 
     const decoded = jwt.verify(token, SECRET);
-    if (!decoded || decoded.type !== "company") throw new Error("Forbidden");
+    if (!decoded) throw new Error("Unauthorized");
+
+    // ✅ company ya user — dono allowed
+    if (decoded.type !== "company" && decoded.type !== "user") {
+      throw new Error("Forbidden");
+    }
 
     return decoded;
   } catch (err) {
@@ -27,16 +32,20 @@ function verifyCompany(req) {
 // ─── PUT /api/company/users/[id] ───
 export async function PUT(req, { params }) {
   try {
-    const company = verifyCompany(req);
+    const decoded = verifyToken(req);
     const { id } = params;
     const body = await req.json();
 
     await dbConnect();
 
+    // ✅ companyId dono types mein available hai
+    const companyId = decoded.companyId;
+    if (!companyId) throw new Error("Unauthorized");
+
     const updateData = {
-      name: body.name,
-      email: body.email,
-      roles: Array.isArray(body.roles) ? body.roles : [],
+      name:    body.name,
+      email:   body.email,
+      roles:   Array.isArray(body.roles) ? body.roles : [],
       modules: body.modules || {},
     };
 
@@ -45,7 +54,7 @@ export async function PUT(req, { params }) {
     }
 
     const user = await CompanyUser.findOneAndUpdate(
-      { _id: id, companyId: company.companyId },
+      { _id: id, companyId },
       updateData,
       { new: true }
     ).select("-password");
@@ -56,6 +65,7 @@ export async function PUT(req, { params }) {
 
     return NextResponse.json({ success: true, message: "User updated successfully", user });
   } catch (e) {
+    console.error("PUT /api/company/users/[id] error:", e);
     const status = /Unauthorized|Forbidden|Missing/.test(e.message) ? 401 : 500;
     return NextResponse.json({ success: false, message: e.message }, { status });
   }
@@ -64,15 +74,15 @@ export async function PUT(req, { params }) {
 // ─── DELETE /api/company/users/[id] ───
 export async function DELETE(req, { params }) {
   try {
-    const company = verifyCompany(req);
+    const decoded = verifyToken(req);
     const { id } = params;
 
     await dbConnect();
 
-    const deleted = await CompanyUser.findOneAndDelete({
-      _id: id,
-      companyId: company.companyId,
-    });
+    const companyId = decoded.companyId;
+    if (!companyId) throw new Error("Unauthorized");
+
+    const deleted = await CompanyUser.findOneAndDelete({ _id: id, companyId });
 
     if (!deleted) {
       return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
@@ -80,6 +90,7 @@ export async function DELETE(req, { params }) {
 
     return NextResponse.json({ success: true, message: "User deleted successfully" });
   } catch (e) {
+    console.error("DELETE /api/company/users/[id] error:", e);
     const status = /Unauthorized|Forbidden|Missing/.test(e.message) ? 401 : 500;
     return NextResponse.json({ success: false, message: e.message }, { status });
   }

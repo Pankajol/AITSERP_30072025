@@ -166,7 +166,7 @@ export async function PUT(req, { params }) {
 
 export async function GET(request, { params }) {
   await dbConnect();
-  const { id } = params;               // ← no await here!
+    const { id } = await params; // ✅ Await params
 
   try {
     // Make sure id is a valid ObjectId

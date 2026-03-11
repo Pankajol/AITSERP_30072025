@@ -23,7 +23,12 @@ export function signToken(user) {
 
 /** decode → returns payload or throws */
 export function verifyJWT(token) {
-  return jwt.verify(token, SECRET); // sync is fine in App Router
+  try {
+    return jwt.verify(token, SECRET);
+  } catch (error) {
+    console.error("JWT verify error:", error.message);
+    return null;
+  }
 }
 
 /** Bearer XX helper */
@@ -32,4 +37,15 @@ export function getTokenFromHeader(req) {
   if (!auth.startsWith("Bearer ")) return null;
   return auth.split(" ")[1];
   
+}
+export function hasPermission(user, moduleName, action) {
+  if (!user) return false;
+  if (user.role === "Admin") return true; // full access
+
+  const modulePermissions =
+    user.permissions?.[moduleName] || user.permissions?.[moduleName.toLowerCase()];
+
+  if (!modulePermissions) return false;
+
+  return modulePermissions.includes(action);
 }
