@@ -11,19 +11,28 @@ export async function GET(req) {
     let target = searchParams.get("url");
 
     if (!target) {
-      console.error("Missing target URL in tracking");
-      return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
+      console.error("❌ Missing target URL");
+      return Response.redirect(new URL("/", process.env.NEXT_PUBLIC_BASE_URL).href, 302);
     }
 
-    // --- CRITICAL FIX START ---
-    // Agar target sirf "pankajal.in" hai, toh browser use relative path samajhta hai.
-    // Use absolute banane ke liye https:// check karna zaroori hai.
-    let finalRedirectUrl = target;
-    if (!finalRedirectUrl.startsWith("http://") && !finalRedirectUrl.startsWith("https://")) {
-        finalRedirectUrl = "https://" + finalRedirectUrl;
+    // --- FORCE EXTERNAL REDIRECT LOGIC ---
+    let finalRedirectUrl;
+    try {
+      // Agar target "pankajal.in" hai, toh use "https://" ke saath jodo
+      let cleanTarget = target.trim();
+      if (!cleanTarget.startsWith("http")) {
+        cleanTarget = "https://" + cleanTarget;
+      }
+      
+      // URL object validate karega ki link sahi hai
+      const validUrl = new URL(cleanTarget);
+      finalRedirectUrl = validUrl.href;
+    } catch (e) {
+      console.error("❌ Invalid Target URL:", target);
+      return Response.redirect(new URL("/", process.env.NEXT_PUBLIC_BASE_URL).href, 302);
     }
-    // --- CRITICAL FIX END ---
 
+    // --- DB UPDATE ---
     if (logId) {
       try {
         await EmailLog.findByIdAndUpdate(logId, {
@@ -31,24 +40,31 @@ export async function GET(req) {
           $set: { 
             linkClicked: true, 
             clickedAt: new Date(), 
-            lastClickUrl: finalRedirectUrl // Updated URL save karein
+            lastClickUrl: finalRedirectUrl 
           }
         });
         console.log("✅ Click Logged for:", logId);
-      } catch (err) {
-        console.error("❌ DB Update Error:", err);
+      } catch (dbErr) {
+        console.error("❌ DB Update Error:", dbErr.message);
       }
     }
 
-    // Ab ye pakka pankajal.in par jayega, aapke Vercel domain par nahi.
-    return Response.redirect(finalRedirectUrl, 302);
+    // --- FINAL REDIRECT ---
+    // Header add kar rahe hain cache clear karne ke liye
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: finalRedirectUrl,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
+    });
 
   } catch (err) {
-    console.error("Fatal Tracking Error:", err);
-    return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
+    console.error("❌ Fatal Tracking Error:", err);
+    const fallback = process.env.NEXT_PUBLIC_BASE_URL || "https://aitserp-30072025.vercel.app";
+    return Response.redirect(fallback, 302);
   }
 }
-
 
 // export const runtime = "nodejs";
 
