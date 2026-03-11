@@ -157,12 +157,12 @@ export async function POST(req, context) {
         // 1. CTA Link Setup
         let targetUrl = campaign.ctaLink || "";
         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
-
-        const trackedLink = campaign.ctaText 
-          ? `<a href="${BASE_URL}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}" 
-                style="display:inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-                ${campaign.ctaText}
-             </a>` : "";
+        const trackingBase = BASE_URL.replace(/\/$/, "");
+     const trackedLink = campaign.ctaText 
+  ? `<a href="${trackingBase}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}" 
+        style="display:inline-block; background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+        ${campaign.ctaText}
+     </a>` : "";
 
         const openPixel = `<img src="${BASE_URL}/api/track/email-open?id=${log._id}" width="1" height="1" style="display:none;" />`;
 
@@ -175,10 +175,15 @@ export async function POST(req, context) {
             subject: campaign.emailSubject || "(no subject)",
             html: finalHtml,
             // 2. Attachments Fix
-            attachments: (campaign.attachments || []).map(p => ({
-              filename: p.split('/').pop(),
-              path: p
-            })),
+         // transporter.sendMail ke andar
+attachments: (campaign.attachments || []).map((p) => {
+    // Agar p ek full URL hai (http...) toh directly path use karein
+    // Agar p local file path hai toh path module use karke absolute path banayein
+    return {
+        filename: p.split('/').pop() || "attachment", // File ka asli naam
+        path: p, // Nodemailer URL ya absolute local path dono handle karta hai
+    };
+}),
           });
           log.status = "sent";
           log.sentAt = new Date();

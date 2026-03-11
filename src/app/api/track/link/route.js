@@ -1,53 +1,33 @@
 export const runtime = "nodejs";
-
 import dbConnect from "@/lib/db";
 import EmailLog from "@/models/EmailLog";
 
 export async function GET(req) {
   try {
     await dbConnect();
-
-    const url = new URL(req.url);
-    // 'id' ya 'logId' jo bhi aapne URL mein bheja ho
-    const id = url.searchParams.get("logId") || url.searchParams.get("id");
-    const target = url.searchParams.get("url");
+    const { searchParams } = new URL(req.url);
+    
+    // Donon parameters check karein (logId backup ke liye)
+    const logId = searchParams.get("logId") || searchParams.get("id");
+    const target = searchParams.get("url");
 
     if (!target) {
-      return new Response("Missing target URL", { status: 400 });
+      console.error("Missing target URL in tracking");
+      return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
     }
 
-    if (id) {
-      try {
-        // Log click: Timestamp set karega aur click count badhayega
-        await EmailLog.findByIdAndUpdate(
-          id,
-          {
-            $set: { 
-              clickedAt: new Date(), 
-              lastClickUrl: target,
-              status: "clicked" // Status update karna reporting ke liye acha hota hai
-            },
-            $inc: { clickCount: 1 },
-          }
-        );
-        console.log(`✅ Click tracked for log: ${id}`);
-      } catch (err) {
-        console.error("❌ Link track DB update error:", err.message);
-        // DB error aane par bhi user ka experience kharab nahi hona chahiye, isliye redirect chalne denge
-      }
+    if (logId) {
+      await EmailLog.findByIdAndUpdate(logId, {
+        $inc: { clickCount: 1 },
+        $set: { linkClicked: true, clickedAt: new Date(), lastClickUrl: target }
+      }).catch(err => console.error("DB Update Error:", err));
     }
 
-    // Redirect to target URL
-    // Hamesha 302 (Found/Temporary) use karein tracking ke liye
     return Response.redirect(target, 302);
-
   } catch (err) {
-    console.error("❌ Track/link handler error:", err);
-    // Agar sab fail ho jaye toh kam se kam home page par redirect kar dein
-    return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
+    return Response.redirect("/", 302);
   }
 }
-
 
 
 
