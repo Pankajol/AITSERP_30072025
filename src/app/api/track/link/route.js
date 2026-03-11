@@ -7,28 +7,47 @@ export async function GET(req) {
     await dbConnect();
     const { searchParams } = new URL(req.url);
     
-    // Donon parameters check karein (logId backup ke liye)
     const logId = searchParams.get("logId") || searchParams.get("id");
-    const target = searchParams.get("url");
+    let target = searchParams.get("url");
 
     if (!target) {
       console.error("Missing target URL in tracking");
       return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
     }
 
+    // --- CRITICAL FIX START ---
+    // Agar target sirf "pankajal.in" hai, toh browser use relative path samajhta hai.
+    // Use absolute banane ke liye https:// check karna zaroori hai.
+    let finalRedirectUrl = target;
+    if (!finalRedirectUrl.startsWith("http://") && !finalRedirectUrl.startsWith("https://")) {
+        finalRedirectUrl = "https://" + finalRedirectUrl;
+    }
+    // --- CRITICAL FIX END ---
+
     if (logId) {
-      await EmailLog.findByIdAndUpdate(logId, {
-        $inc: { clickCount: 1 },
-        $set: { linkClicked: true, clickedAt: new Date(), lastClickUrl: target }
-      }).catch(err => console.error("DB Update Error:", err));
+      try {
+        await EmailLog.findByIdAndUpdate(logId, {
+          $inc: { clickCount: 1 },
+          $set: { 
+            linkClicked: true, 
+            clickedAt: new Date(), 
+            lastClickUrl: finalRedirectUrl // Updated URL save karein
+          }
+        });
+        console.log("✅ Click Logged for:", logId);
+      } catch (err) {
+        console.error("❌ DB Update Error:", err);
+      }
     }
 
-    return Response.redirect(target, 302);
+    // Ab ye pakka pankajal.in par jayega, aapke Vercel domain par nahi.
+    return Response.redirect(finalRedirectUrl, 302);
+
   } catch (err) {
-    return Response.redirect("/", 302);
+    console.error("Fatal Tracking Error:", err);
+    return Response.redirect(process.env.NEXT_PUBLIC_BASE_URL || "/", 302);
   }
 }
-
 
 
 // export const runtime = "nodejs";
