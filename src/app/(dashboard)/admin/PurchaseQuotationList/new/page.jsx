@@ -5,40 +5,34 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import ItemSection from "@/components/ItemSection";
 import SupplierSearch from "@/components/SupplierSearch";
-import { toast } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import {
   FaArrowLeft, FaCheck, FaUser, FaCalendarAlt,
-  FaBoxOpen, FaCalculator, FaPaperclip, FaTimes, FaUserTie
+  FaBoxOpen, FaCalculator, FaPaperclip, FaTimes
 } from "react-icons/fa";
 
-// ============================================================
-// ── HELPERS & SUB-COMPONENTS (Defined OUTSIDE to prevent focus loss) ──
-// ============================================================
-
-const round = (num, decimals = 2) => {
+// --- Helpers ---
+const round = (num, d = 2) => {
   const n = Number(num);
-  return isNaN(n) ? 0 : Number(n.toFixed(decimals));
+  return isNaN(n) ? 0 : Number(n.toFixed(d));
 };
 
 const computeItemValues = (item) => {
-  const quantity = parseFloat(item.quantity) || 0;
-  const unitPrice = parseFloat(item.unitPrice) || 0;
-  const discount = parseFloat(item.discount) || 0;
-  const freight = parseFloat(item.freight) || 0;
-  const pad = round(unitPrice - discount);
-  const total = round(quantity * pad + freight);
+  const qty = parseFloat(item.quantity) || 0;
+  const price = parseFloat(item.unitPrice) || 0;
+  const disc = parseFloat(item.discount) || 0;
+  const fr = parseFloat(item.freight) || 0;
+  const pad = round(price - disc);
+  const total = round(qty * pad + fr);
 
   if (item.taxOption === "GST") {
     const gstRate = parseFloat(item.gstRate) || 0;
     const cgst = round(total * (gstRate / 200));
     return { priceAfterDiscount: pad, totalAmount: total, gstAmount: cgst * 2, cgstAmount: cgst, sgstAmount: cgst, igstAmount: 0 };
   }
-  if (item.taxOption === "IGST") {
-    const igstRate = parseFloat(item.igstRate) || parseFloat(item.gstRate) || 0;
-    const igstAmount = round(total * (igstRate / 100));
-    return { priceAfterDiscount: pad, totalAmount: total, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount };
-  }
-  return { priceAfterDiscount: pad, totalAmount: total, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0 };
+  const igst = round(total * ((parseFloat(item.igstRate) || parseFloat(item.gstRate) || 0) / 100));
+  return { priceAfterDiscount: pad, totalAmount: total, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: igst };
 };
 
 const Lbl = ({ text, req }) => (
@@ -47,9 +41,7 @@ const Lbl = ({ text, req }) => (
   </label>
 );
 
-const fi = (readOnly = false) =>
-  `w-full px-3 py-2.5 rounded-lg border text-sm font-medium transition-all outline-none
-   ${readOnly ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed" : "border-gray-200 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300"}`;
+const fi = "w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300";
 
 const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
@@ -65,120 +57,74 @@ const ReadField = ({ label, value }) => (
   <div>
     <Lbl text={label} />
     <div className="px-3 py-2.5 rounded-lg border border-gray-100 bg-gray-50 text-sm font-semibold text-gray-400">
-      {value || <span className="italic font-normal text-gray-300">Auto-filled</span>}
+      {value || <span className="italic font-normal text-gray-300 font-mono text-[11px]">AUTO</span>}
     </div>
   </div>
 );
 
 const initialState = {
-  sourceQuotationId: "", supplier: "", supplierCode: "", supplierName: "", contactPerson: "", refNumber: "",
-  status: "Open", postingDate: "", validUntil: "", documentDate: "",
+  supplier: "", supplierCode: "", supplierName: "", contactPerson: "",
+  status: "Open", postingDate: new Date().toISOString().split('T')[0], validUntil: "", documentDate: "",
   items: [{
-    item: "", itemCode: "", itemName: "", itemDescription: "", quantity: 0, orderedQuantity: 0, unitPrice: 0, discount: 0, freight: 0,
-    gstRate: 0, taxOption: "GST", priceAfterDiscount: 0, totalAmount: 0, gstAmount: 0, cgstAmount: 0, sgstAmount: 0, igstRate: 0, igstAmount: 0,
-    tdsAmount: 0, warehouse: "", warehouseCode: "", warehouseName: "", stockAdded: false, managedBy: "", batches: [],
+    item: "", itemCode: "", itemName: "", quantity: 1, unitPrice: 0, discount: 0, freight: 0,
+    gstRate: 0, taxOption: "GST", totalAmount: 0, gstAmount: 0
   }],
-  salesEmployee: "", remarks: "", freight: 0, rounding: 0, totalBeforeDiscount: 0, totalDownPayment: 0, appliedAmounts: 0,
-  gstTotal: 0, grandTotal: 0, openBalance: 0, invoiceType: "Normal",
+  remarks: "", freight: 0, rounding: 0, totalBeforeDiscount: 0, gstTotal: 0, grandTotal: 0
 };
 
-function formatDateForInput(date) {
-  if (!date) return "";
-  const d = new Date(date);
-  return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
-}
-
-// ============================================================
-// ── MAIN FORM COMPONENT ──
-// ============================================================
-
+// --- Form Logic ---
 function PurchaseQuotationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
 
-  const [attachments, setAttachments] = useState([]);
   const [formData, setFormData] = useState(initialState);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [attachments, setAttachments] = useState([]);
   const [existingFiles, setExistingFiles] = useState([]);
   const [removedFiles, setRemovedFiles] = useState([]);
-  const [originalPQItems, setOriginalPQItems] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Fetch Original PQ items if conversion
   useEffect(() => {
-    const fetchOriginalPQ = async () => {
-      if (formData.sourceQuotationId) {
-        try {
-          const token = localStorage.getItem("token");
-          const res = await axios.get(`/api/purchase-quotation/${formData.sourceQuotationId}`, { headers: { Authorization: `Bearer ${token}` } });
-          if (res.data.success) setOriginalPQItems(res.data.data.items || []);
-        } catch (error) { console.error(error); }
-      }
-    };
-    fetchOriginalPQ();
-  }, [formData.sourceQuotationId]);
-
-  // Load existing for edit
-  useEffect(() => {
-    if (editId && /^[0-9a-fA-F]{24}$/.test(editId)) {
+    if (editId) {
       setLoading(true);
       const token = localStorage.getItem("token");
       axios.get(`/api/purchase-quotation/${editId}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => {
+        .then(res => {
           const record = res.data.data;
+          setFormData({ ...initialState, ...record, supplier: record.supplier?._id || record.supplier });
           setExistingFiles(record.attachments || []);
-          setFormData({
-            ...initialState,
-            ...record,
-            sourceQuotationId: record._id || "",
-            supplier: record.supplier?._id || record.supplier || "",
-            postingDate: formatDateForInput(record.postingDate),
-            validUntil: formatDateForInput(record.validUntil),
-            documentDate: formatDateForInput(record.documentDate),
-            items: record.items.map(item => ({ ...item, ...computeItemValues(item) }))
-          });
         })
         .finally(() => setLoading(false));
     }
   }, [editId]);
 
-  const handleSupplierSelect = useCallback((s) => {
-    setFormData((prev) => ({
-      ...prev,
-      supplier: s._id || "",
-      supplierCode: s.supplierCode || "",
-      supplierName: s.supplierName || "",
-      contactPerson: s.contactPersonName || "",
-    }));
-  }, []);
-
-  const handleInputChange = useCallback((e) => {
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  }, []);
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
-  const handleItemChange = useCallback((index, e) => {
+  const handleItemChange = (index, e) => {
     const { name, value } = e.target;
-    setFormData((prev) => {
+    setFormData(prev => {
       const updatedItems = [...prev.items];
       updatedItems[index] = { ...updatedItems[index], [name]: value };
       updatedItems[index] = { ...updatedItems[index], ...computeItemValues(updatedItems[index]) };
       return { ...prev, items: updatedItems };
     });
-  }, []);
+  };
 
-  // Compute Totals
+  // Live Calculation
   useEffect(() => {
-    const items = Array.isArray(formData.items) ? formData.items : [];
-    const totalBeforeDiscount = round(items.reduce((acc, it) => acc + (it.unitPrice - it.discount) * it.quantity, 0));
-    const gstTotal = round(items.reduce((acc, it) => acc + (it.taxOption === "IGST" ? it.igstAmount : it.gstAmount), 0));
-    const grandTotal = round(items.reduce((acc, it) => acc + it.totalAmount, 0) + gstTotal + Number(formData.freight) + Number(formData.rounding));
-    setFormData(prev => ({ ...prev, totalBeforeDiscount, gstTotal, grandTotal }));
+    const totalBefore = round(formData.items.reduce((s, i) => s + (Number(i.unitPrice) - Number(i.discount)) * Number(i.quantity), 0));
+    const gstTotal = round(formData.items.reduce((s, i) => s + (i.taxOption === "IGST" ? Number(i.igstAmount) : Number(i.gstAmount)), 0));
+    const grand = round(totalBefore + gstTotal + Number(formData.freight) + Number(formData.rounding));
+    setFormData(prev => ({ ...prev, totalBeforeDiscount: totalBefore, gstTotal, grandTotal: grand }));
   }, [formData.items, formData.freight, formData.rounding]);
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    if (!formData.supplier) return toast.error("Please select a Supplier");
+    if (formData.items.some(it => !it.item)) return toast.error("Select items properly.");
+
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
@@ -189,85 +135,97 @@ function PurchaseQuotationForm() {
       const url = editId ? `/api/purchase-quotation/${editId}` : `/api/purchase-quotation`;
       await axios[editId ? "put" : "post"](url, fd, { headers: { Authorization: `Bearer ${token}` } });
       
-      toast.success("Quotation saved successfully!");
+      toast.success("Quotation Saved!");
       router.push("/admin/PurchaseQuotationList");
-    } catch (error) {
-      toast.error(error.response?.data?.error || error.message);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Save Failed");
     } finally { setLoading(false); }
   };
 
-  if (loading && !formData.supplierName) return <div className="p-10 text-center">Loading form...</div>;
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-        <button onClick={() => router.push("/admin/PurchaseQuotationList")} className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4">
-          <FaArrowLeft className="text-xs" /> Back to List
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
+      <ToastContainer />
+      <div className="max-w-5xl mx-auto">
+        <button onClick={() => router.push("/admin/PurchaseQuotationList")} className="flex items-center gap-1.5 text-indigo-600 font-bold text-xs uppercase tracking-widest mb-4 hover:text-indigo-800">
+          <FaArrowLeft /> Back to List
         </button>
 
-        <SectionCard icon={FaUser} title="Supplier Details" color="indigo">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <h1 className="text-2xl font-black text-gray-900 mb-8">{editId ? "Edit Quotation" : "New Purchase Quotation"}</h1>
+
+        <SectionCard icon={FaUser} title="Supplier Identity" color="indigo">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="sm:col-span-2">
-              <SupplierSearch onSelectSupplier={handleSupplierSelect} initialSupplier={editId && formData.supplier ? { _id: formData.supplier, supplierName: formData.supplierName } : undefined} />
+              <Lbl text="Search Supplier" req />
+              <SupplierSearch 
+                onSelectCustomer={s => setFormData(p => ({ 
+                  ...p, 
+                  supplier: s._id, 
+                  supplierName: s.supplierName, 
+                  supplierCode: s.supplierCode, 
+                  contactPerson: s.contactPersonName 
+                }))} 
+                initialSupplier={formData.supplier ? { _id: formData.supplier, supplierName: formData.supplierName } : undefined} 
+              />
             </div>
             <ReadField label="Supplier Name" value={formData.supplierName} />
             <ReadField label="Supplier Code" value={formData.supplierCode} />
             <ReadField label="Contact Person" value={formData.contactPerson} />
             <div>
+              <Lbl text="Validity Date" />
+              <input className={fi} type="date" name="validUntil" value={formData.validUntil} onChange={handleInputChange} />
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard icon={FaCalendarAlt} title="Planning Dates" color="blue">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div><Lbl text="Posting Date" /><input className={fi} type="date" name="postingDate" value={formData.postingDate} onChange={handleInputChange} /></div>
+            <div><Lbl text="Delivery Date" /><input className={fi} type="date" name="documentDate" value={formData.documentDate} onChange={handleInputChange} /></div>
+            <div>
               <Lbl text="Status" />
-              <select className={fi()} name="status" value={formData.status} onChange={handleInputChange}>
+              <select className={fi} name="status" value={formData.status} onChange={handleInputChange}>
                 <option value="Open">Open</option><option value="Pending">Pending</option><option value="Closed">Closed</option>
               </select>
             </div>
           </div>
         </SectionCard>
 
-        <SectionCard icon={FaCalendarAlt} title="Dates" color="blue">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div><Lbl text="Posting Date" /><input className={fi()} type="date" name="postingDate" value={formData.postingDate} onChange={handleInputChange} /></div>
-            <div><Lbl text="Valid Until" /><input className={fi()} type="date" name="validUntil" value={formData.validUntil} onChange={handleInputChange} /></div>
-            <div><Lbl text="Delivery Date" /><input className={fi()} type="date" name="documentDate" value={formData.documentDate} onChange={handleInputChange} /></div>
-          </div>
-        </SectionCard>
-
-        <div className="bg-white rounded-2xl shadow-sm border mb-5 overflow-hidden">
-          <div className="px-6 py-4 border-b bg-emerald-50/40 font-bold">Quotation Items</div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/40 font-bold flex items-center gap-2"><FaBoxOpen className="text-emerald-500" /> Quotation Line Items</div>
           <div className="p-4 overflow-x-auto">
             <ItemSection items={formData.items} onItemChange={handleItemChange} onAddItem={() => setFormData(p => ({ ...p, items: [...p.items, { ...initialState.items[0] }] }))} onRemoveItem={(i) => setFormData(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }))} computeItemValues={computeItemValues} />
           </div>
         </div>
 
         <SectionCard icon={FaCalculator} title="Financial Summary" color="amber">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             <ReadField label="Taxable Amount" value={formData.totalBeforeDiscount} />
             <ReadField label="GST Total" value={formData.gstTotal} />
-            <div><Lbl text="Rounding" /><input className={fi()} type="number" name="rounding" value={formData.rounding} onChange={handleInputChange} /></div>
-            <div><Lbl text="Grand Total" /><div className="px-3 py-2.5 rounded-lg border-2 border-indigo-200 bg-indigo-50 font-extrabold text-indigo-700">₹ {formData.grandTotal}</div></div>
+            <div><Lbl text="Rounding" /><input className={fi} type="number" name="rounding" value={formData.rounding} onChange={handleInputChange} /></div>
+            <div><Lbl text="Grand Total" /><div className="px-3 py-2.5 rounded-lg border-2 border-indigo-200 bg-indigo-50 font-black text-indigo-700 text-lg">₹ {formData.grandTotal.toLocaleString()}</div></div>
           </div>
-          <div className="mt-4"><Lbl text="Remarks" /><textarea className={`${fi()} resize-none`} name="remarks" rows={2} value={formData.remarks} onChange={handleInputChange} /></div>
+          <div className="mt-5"><Lbl text="Internal Remarks" /><textarea className={`${fi} resize-none`} name="remarks" rows={2} value={formData.remarks} onChange={handleInputChange} placeholder="Add any special instructions..." /></div>
         </SectionCard>
 
-        <SectionCard icon={FaPaperclip} title="Attachments" color="gray">
+        <SectionCard icon={FaPaperclip} title="Document Attachments" color="gray">
           <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             {existingFiles.map((file, idx) => (
               <div key={idx} className="relative border rounded-xl p-2 bg-gray-50">
-                <div className="h-20 flex items-center justify-center overflow-hidden">
-                  {file.fileUrl?.toLowerCase().endsWith(".pdf") ? <object data={file.fileUrl} type="application/pdf" className="h-full w-full pointer-events-none" /> : <img src={file.fileUrl} className="h-full object-cover" />}
-                </div>
-                <button onClick={() => { setExistingFiles(prev => prev.filter((_, i) => i !== idx)); setRemovedFiles(prev => [...prev, file]); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-lg"><FaTimes /></button>
+                <div className="h-20 flex items-center justify-center overflow-hidden italic text-[10px] text-gray-400">File attached</div>
+                <button onClick={() => { setExistingFiles(prev => prev.filter((_, i) => i !== idx)); setRemovedFiles(prev => [...prev, file]); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"><FaTimes size={10} /></button>
               </div>
             ))}
           </div>
-          <label className="flex items-center justify-center gap-3 px-4 py-4 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-indigo-50 transition-all">
-            <FaPaperclip className="text-gray-300" /><span className="text-sm font-medium text-gray-400">Click to upload files</span>
+          <label className="flex items-center justify-center gap-3 px-4 py-6 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-indigo-50 transition-all group">
+            <FaPaperclip className="text-gray-300 group-hover:text-indigo-400" /><span className="text-sm font-bold text-gray-400 group-hover:text-indigo-600">Click or Drag to Upload Files</span>
             <input type="file" multiple accept="image/*,application/pdf" hidden onChange={(e) => setAttachments([...attachments, ...Array.from(e.target.files)])} />
           </label>
         </SectionCard>
 
-        <div className="flex items-center justify-between pt-4 pb-10">
-          <button onClick={() => router.push("/admin/PurchaseQuotationList")} className="px-6 py-2.5 rounded-xl bg-white border border-gray-200 font-bold text-sm">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} className={`px-8 py-2.5 rounded-xl text-white font-bold text-sm shadow-lg ${loading ? "bg-gray-300" : "bg-indigo-600 hover:bg-indigo-700"}`}>
-            {loading ? "Processing..." : editId ? "Update Quotation" : "Submit Quotation"}
+        <div className="flex items-center justify-end gap-3 pt-6 pb-12">
+          <button onClick={() => router.push("/admin/PurchaseQuotationList")} className="px-8 py-2.5 rounded-xl bg-white border border-gray-200 font-bold text-sm text-gray-500 hover:bg-gray-50 transition-colors">Discard</button>
+          <button onClick={handleSubmit} disabled={loading} className={`px-10 py-2.5 rounded-xl text-white font-black text-sm shadow-lg shadow-indigo-100 transition-all ${loading ? "bg-gray-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 active:scale-95"}`}>
+            {loading ? "PROCESSING..." : editId ? "UPDATE QUOTATION" : "SUBMIT QUOTATION"}
           </button>
         </div>
       </div>
@@ -277,12 +235,11 @@ function PurchaseQuotationForm() {
 
 export default function PurchaseQuotationFormWrapper() {
   return (
-    <Suspense fallback={<div className="p-10 text-center">Loading form data...</div>}>
+    <Suspense fallback={<div className="p-20 text-center text-gray-400 italic">Loading Quotation Workspace...</div>}>
       <PurchaseQuotationForm />
     </Suspense>
   );
 }
-
 
 // "use client";
 
