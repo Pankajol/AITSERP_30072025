@@ -391,7 +391,8 @@ export default function Layout({ children }) {
         <div className="h-16 flex items-center justify-between px-4 lg:px-6 bg-[#0f172a] border-b border-gray-700 shrink-0">
           <span className="font-bold text-base lg:text-lg flex items-center gap-2 tracking-wider">
             <HiHome className="text-blue-400 shrink-0" />
-            <span className="truncate">ERP SYSTEM</span>
+            {/* <span className="truncate">ERP SYSTEM</span> */}
+            <Link href="/admin" className="truncate">ERP SYSTEM</Link>
           </span>
           <button
             onClick={closeSidebar}
@@ -425,8 +426,8 @@ export default function Layout({ children }) {
                 <Item href="/admin/customer-view"          icon={<HiUsers />}             label="Customer View"                onClick={closeSidebar} isActive={isActive("/admin/customer-view")} />
                 <Item href="/admin/supplier"               icon={<HiUserGroup />}         label="Supplier View"                onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
                 <Item href="/admin/item"                   icon={<HiCube />}              label="Item View"                    onClick={closeSidebar} isActive={isActive("/admin/item")} />
-                <Item href="/admin/account-head-view"      icon={<HiOutlineLibrary />}    label="Account Head View"            onClick={closeSidebar} isActive={isActive("/admin/account-head-view")} />
-                <Item href="/admin/bank-head-details-view" icon={<HiCurrencyDollar />}    label="General Ledger View"          onClick={closeSidebar} isActive={isActive("/admin/bank-head-details-view")} />
+                <Item href="/admin/account-bankhead"      icon={<HiOutlineLibrary />}    label="Account Head View"            onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+                <Item href="/admin/bank-head-details" icon={<HiCurrencyDollar />}    label="General Ledger View"          onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
                 <Item href="/admin/email-templates"        icon={<HiDocumentText />}      label="Email Templates"              onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
                 <Item href="/admin/email-masters"          icon={<HiOutlineCreditCard />} label="Email & App Password Master"  onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
                 <Item href="/admin/price-list"             icon={<HiOutlineOfficeBuilding />} label="Price List"               onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
@@ -610,7 +611,7 @@ export default function Layout({ children }) {
 
       {/* CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 bg-white border-b px-4 md:px-6 flex justify-between items-center shadow-sm sticky top-0 z-30 shrink-0">
+        <header className="h-16 bg-black border-b px-4 md:px-6 flex justify-between items-center shadow-sm sticky top-0 z-30 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setIsSidebarOpen(true)}
@@ -619,7 +620,7 @@ export default function Layout({ children }) {
             >
               <HiMenu size={24} />
             </button>
-            <h1 className="text-sm md:text-base font-semibold text-gray-700 truncate">
+            <h1 className="text-sm md:text-base font-semibold text-gray-100 truncate">
               {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
             </h1>
           </div>
