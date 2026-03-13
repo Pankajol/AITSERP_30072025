@@ -92,10 +92,10 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-            <ShortcutBtn href="/admin/sales-order-/new" icon={<FiPlus />} label="New Sale" color="bg-indigo-600" />
-            <ShortcutBtn href="/admin/purchase-order/new" icon={<FiShoppingCart />} label="Purchase" color="bg-emerald-600" />
-            <ShortcutBtn href="/admin/sales-invoice/new" icon={<FiFileText />} label="Invoice" color="bg-violet-600" />
-            <ShortcutBtn href="/admin/delivery/new" icon={<FiTruck />} label="Dispatch" color="bg-amber-600" />
+            <ShortcutBtn href="/admin/sales-order-view/new" icon={<FiPlus />} label="New Sale" color="bg-indigo-600" />
+            <ShortcutBtn href="/admin/purchase-order-view/new" icon={<FiShoppingCart />} label="Purchase" color="bg-emerald-600" />
+            <ShortcutBtn href="/admin/sales-invoice-view/new" icon={<FiFileText />} label="Invoice" color="bg-violet-600" />
+            <ShortcutBtn href="/admin/delivery-view/new" icon={<FiTruck />} label="Dispatch" color="bg-amber-600" />
         </div>
       </div>
 
@@ -148,17 +148,41 @@ export default function AdminDashboard() {
         <div className="bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
             <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6 flex items-center gap-2"><FiClock className="text-indigo-500" /> Recent Activity</h2>
             <div className="space-y-4">
-                {recentOrders.map((o, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-white/10">
-                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                        <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-white truncate uppercase">{o.customerName || o.supplierName}</p>
-                            <p className="text-[8px] font-bold text-slate-500 uppercase">{o.documentNumberOrder || o.refNumber}</p>
-                        </div>
-                        <FiArrowRight className="text-slate-700" />
-                    </div>
-                ))}
+    {recentOrders.map((o) => {
+        const isSalesOrder = !!o.documentNumberOrder;
+        
+        // Base path configuration
+        const basePath = isSalesOrder 
+            ? '/admin/sales-order-view/view' 
+            : '/admin/purchase-order-view/view';
+
+        const docNumber = o.documentNumberOrder || o.documentNumberPurchaseOrder || "N/A";
+        const name = o.customerName || o.supplierName || "Unknown";
+
+        return (
+            <div key={o._id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-white/10 transition-colors group">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                
+                <div className="flex-1 min-w-0">
+                    <Link 
+                        href={`${basePath}/${o._id}`} 
+                        className="text-[10px] font-bold text-slate-300 uppercase truncate block hover:text-white transition-colors"
+                    >
+                        {name} - {docNumber}
+                    </Link>
+                    
+                    <p className="text-[8px] font-bold text-slate-500 uppercase mt-0.5">
+                        {new Date(o.createdAt).toLocaleString()}
+                    </p>
+                </div>
+
+                {/* 'group-hover' use kiya hai taaki arrow hover par highlight ho */}
+                <FiArrowRight className="text-slate-700 shrink-0 group-hover:text-slate-300 transition-colors" />
             </div>
+        );
+    })}
+</div>
+
         </div>
 
         {/* STOCK ALERTS WIDGET */}
