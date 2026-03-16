@@ -138,6 +138,8 @@ export default function ItemManagement() {
 
   // ── Submit ──
   const handleSubmit = async () => {
+    // Final validation before submit
+    
     const allE = VALIDATORS[1](id);
     if (Object.keys(allE).length) { setErrs(allE); toast.error("Fix required fields"); return; }
 
