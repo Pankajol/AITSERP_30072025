@@ -613,8 +613,9 @@ export default function Layout({ children }) {
 
       {/* CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full h-16 bg-[#0a0a0a] border-b border-gray-800 px-4 flex justify-between items-center shadow-lg">
+        <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
   {/* Left Section: Menu + Title */}
+  <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
   <div className="flex items-center gap-3 min-w-0">
     <button
       onClick={() => setIsSidebarOpen(true)}
