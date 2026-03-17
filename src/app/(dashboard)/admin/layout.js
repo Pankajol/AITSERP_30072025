@@ -368,7 +368,7 @@ export default function Layout({ children }) {
   const isActive = (path) => pathname === path;
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
+    <div className="flex h-screen bg-gray-100 overflow-hidden pt-[safe-area-inset-top] sm:pt-0 font-sans">
 
       {/* Overlay */}
       {isSidebarOpen && (
@@ -631,6 +631,9 @@ export default function Layout({ children }) {
 
   {/* Right Section: Profile Icon */}
   <div className="flex items-center gap-3 shrink-0">
+    <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
+      <span>{session.name || session.email}</span>
+    </div>
     <div
       className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
       title={session.email}

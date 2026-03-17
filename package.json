@@ -12,6 +12,7 @@
     "@capacitor/android": "^7.4.0",
     "@capacitor/cli": "^2.5.0",
     "@capacitor/core": "^7.4.0",
+    "@capacitor/status-bar": "^8.0.1",
     "@fullcalendar/core": "^6.1.19",
     "@fullcalendar/daygrid": "^6.1.19",
     "@fullcalendar/interaction": "^6.1.19",
