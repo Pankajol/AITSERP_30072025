@@ -285,6 +285,11 @@
   dependencies:
     tslib "^2.1.0"
 
+"@capacitor/status-bar@^8.0.1":
+  version "8.0.1"
+  resolved "https://registry.npmjs.org/@capacitor/status-bar/-/status-bar-8.0.1.tgz"
+  integrity sha512-OR59dlbwvmrV5dKsC9lvwv48QaGbqcbSTBpk+9/WXWxXYSdXXdzJZU9p8oyNPAkuJhCdnSa3XmU43fZRPBJJ5w==
+
 "@emotion/babel-plugin@^11.13.5":
   version "11.13.5"
   resolved "https://registry.npmjs.org/@emotion/babel-plugin/-/babel-plugin-11.13.5.tgz"

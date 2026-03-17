@@ -368,7 +368,7 @@ export default function Layout({ children }) {
   const isActive = (path) => pathname === path;
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
+    <div className="flex h-screen bg-gray-100 overflow-hidden pt-[safe-area-inset-top] sm:pt-0 font-sans">
 
       {/* Overlay */}
       {isSidebarOpen && (
@@ -613,8 +613,9 @@ export default function Layout({ children }) {
 
       {/* CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full h-16 bg-[#0a0a0a] border-b border-gray-800 px-4 flex justify-between items-center shadow-lg">
+        <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
   {/* Left Section: Menu + Title */}
+  <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
   <div className="flex items-center gap-3 min-w-0">
     <button
       onClick={() => setIsSidebarOpen(true)}
@@ -631,6 +632,9 @@ export default function Layout({ children }) {
 
   {/* Right Section: Profile Icon */}
   <div className="flex items-center gap-3 shrink-0">
+    <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
+      <span>{session.name || session.email}</span>
+    </div>
     <div
       className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
       title={session.email}
