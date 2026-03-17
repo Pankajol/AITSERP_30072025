@@ -469,6 +469,8 @@ export default function Layout({ children }) {
                 <Item href="/admin/leads-view"     icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/leads-view")} />
                 <Item href="/admin/opportunities"  icon={<HiPuzzle />}    label="Opportunity"     onClick={closeSidebar} isActive={isActive("/admin/opportunities")} />
                 <Item href="/admin/crm/campaign"   icon={<HiPuzzle />}    label="Campaign"        onClick={closeSidebar} isActive={isActive("/admin/crm/campaign")} />
+                <Item href="/admin/crm/calls"      icon={<HiPuzzle />}    label="Calls"           onClick={closeSidebar} isActive={isActive("/admin/crm/calls")} />
+                
               </Section>
 
               <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
@@ -611,32 +613,32 @@ export default function Layout({ children }) {
 
       {/* CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 bg-black border-b px-4 md:px-6 flex justify-between items-center shadow-sm sticky top-0 z-30 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden text-gray-700 p-1 rounded hover:bg-gray-100 transition-colors shrink-0"
-              aria-label="Open sidebar"
-            >
-              <HiMenu size={24} />
-            </button>
-            <h1 className="text-sm md:text-base font-semibold text-gray-100 truncate">
-              {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
-            </h1>
-          </div>
+        <header className="sticky top-0 z-50 w-full h-16 bg-[#0a0a0a] border-b border-gray-800 px-4 flex justify-between items-center shadow-lg">
+  {/* Left Section: Menu + Title */}
+  <div className="flex items-center gap-3 min-w-0">
+    <button
+      onClick={() => setIsSidebarOpen(true)}
+      className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+      aria-label="Open sidebar"
+    >
+      <HiMenu size={24} />
+    </button>
+    
+    <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
+      {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
+    </h1>
+  </div>
 
-          <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <span className="hidden sm:inline text-xs font-medium text-gray-500 uppercase tracking-widest max-w-[160px] truncate">
-              {session.email}
-            </span>
-            <div
-              className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shrink-0 cursor-default"
-              title={session.email}
-            >
-              {session.email?.charAt(0).toUpperCase()}
-            </div>
-          </div>
-        </header>
+  {/* Right Section: Profile Icon */}
+  <div className="flex items-center gap-3 shrink-0">
+    <div
+      className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
+      title={session.email}
+    >
+      {session.email?.charAt(0).toUpperCase()}
+    </div>
+  </div>
+</header>
 
         <main className="flex-1 overflow-y-auto   bg-[#f8fafc]">
           {children}
