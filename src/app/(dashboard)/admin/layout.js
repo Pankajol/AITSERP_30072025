@@ -394,13 +394,14 @@ export default function Layout({ children }) {
             {/* <span className="truncate">ERP SYSTEM</span> */}
             <Link href="/admin" className="truncate">ERP SYSTEM</Link>
           </span>
-          <button
-            onClick={closeSidebar}
-            className="md:hidden p-1 rounded hover:bg-gray-700 transition-colors"
-            aria-label="Close sidebar"
-          >
-            <HiX size={22} />
-          </button>
+          {isSidebarOpen && (
+  <button
+    onClick={closeSidebar}
+    className="p-2 rounded hover:bg-gray-700 transition-colors"
+  >
+    <HiX size={24} />
+  </button>
+)}
         </div>
 
         {/* Nav */}
@@ -612,42 +613,54 @@ export default function Layout({ children }) {
       </aside>
 
       {/* CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
-  {/* Left Section: Menu + Title */}
-  <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
-  <div className="flex items-center gap-3 min-w-0">
-    <button
-      onClick={() => setIsSidebarOpen(true)}
-      className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
-      aria-label="Open sidebar"
-    >
-      <HiMenu size={24} />
-    </button>
+   <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+  <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
     
-    <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
-      {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
-    </h1>
-  </div>
+    {/* Safe area (mobile notch ke liye) */}
+    <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
 
-  {/* Right Section: Profile Icon */}
-  <div className="flex items-center gap-3 shrink-0">
-    <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
-      <span>{session.name || session.email}</span>
-    </div>
-    <div
-      className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
-      title={session.email}
-    >
-      {session.email?.charAt(0).toUpperCase()}
-    </div>
-  </div>
-</header>
+    {/* Main Header Content */}
+    <div className="flex items-center justify-between px-4 h-14">
+      
+      {/* Left Section */}
+      <div className="flex items-center gap-3 min-w-0">
+       <button
+  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+  className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+>
+  {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
+</button>
 
-        <main className="flex-1 overflow-y-auto   bg-[#f8fafc]">
-          {children}
-        </main>
+        <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
+          {isCompany
+            ? "Company Administrator"
+            : isAdmin
+            ? "Admin Dashboard"
+            : "Dashboard"}
+        </h1>
       </div>
+
+      {/* Right Section */}
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
+          <span>{session.name || session.email}</span>
+        </div>
+
+        <div
+          className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
+          title={session.email}
+        >
+          {session.email?.charAt(0).toUpperCase()}
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <main className="flex-1 overflow-y-auto bg-[#f8fafc]">
+    {children}
+  </main>
+</div>
     </div>
   );
 }
