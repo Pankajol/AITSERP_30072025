@@ -1,77 +1,35 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
+import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
 import Designation from "@/models/hr/Designation";
-import { withAuth, hasRole } from "@/lib/rbac";
 
-/* ================= GET Designations ================= */
 export async function GET(req) {
   try {
     await connectDB();
+    const user = verifyJWT(getTokenFromHeader(req));
+    if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
-    const auth = await withAuth(req);
-    if (auth.error) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
-      );
-    }
-
-    const { user } = auth;
-
-    const data = await Designation.find({
-      companyId: user.companyId,
-    }).sort({ title: 1 });
-
-    return NextResponse.json({ data });
-
-  } catch (error) {
-    console.error("GET Designations Error:", error.message);
-
-    return NextResponse.json(
-      { error: "Failed to fetch designations" },
-      { status: 500 }
-    );
+    const designations = await Designation.find({ companyId: user.companyId }).sort({ level: 1 });
+    return NextResponse.json({ success: true, data: designations });
+  } catch (err) {
+    console.error("GET /api/hr/designations error:", err);
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-/* ================= CREATE Designation ================= */
 export async function POST(req) {
   try {
     await connectDB();
+    const user = verifyJWT(getTokenFromHeader(req));
+    if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(user, "designations", "create"))
+      return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
 
-    const auth = await withAuth(req);
-    if (auth.error) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
-      );
-    }
-
-    const { user } = auth;
-
-    // ✅ Only Admin / HR / Manager can create designation
-    if (!hasRole(user, ["Admin", "HR", "Manager"])) {
-      return NextResponse.json(
-        { error: "You do not have permission" },
-        { status: 403 }
-      );
-    }
-
-    const body = await req.json();
-
-    const data = await Designation.create({
-      companyId: user.companyId,
-      ...body,
-    });
-
-    return NextResponse.json({ data });
-
-  } catch (error) {
-    console.error("POST Designation Error:", error.message);
-
-    return NextResponse.json(
-      { error: "Failed to create designation" },
-      { status: 500 }
-    );
+    const body        = await req.json();
+    const designation = await Designation.create({ ...body, companyId: user.companyId });
+    return NextResponse.json({ success: true, data: designation }, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/hr/designations error:", err);
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

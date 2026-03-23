@@ -8,6 +8,8 @@ const EmployeeSchema = new mongoose.Schema({
 
   fullName: { type: String, required: true },
   email: { type: String, unique: true },
+
+
   phone: String,
   gender: { type: String, enum: ["Male","Female","Other"] },
   dob: Date,

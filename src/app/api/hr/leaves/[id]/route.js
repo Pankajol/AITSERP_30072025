@@ -1,146 +1,143 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Leave from "@/models/hr/Leave";
-import { withAuth, hasRole } from "@/lib/rbac";
+import Notification from "@/models/Notification";
+import CompanyUser from "@/models/CompanyUser";
+import LeaveBalance from "@/models/hr/LeaveBalance"; // ✅ NEW
+import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
 
-/* ============================
-   PUT → Update Leave (Edit)
-============================ */
-export async function PUT(req, { params }) {
+/* =========================
+   PATCH → Approve / Reject
+========================= */
+export async function PATCH(req, context) {
   try {
     await connectDB();
 
-    const auth = await withAuth(req);
-    if (auth.error) {
+    const { id } = context.params; // ✅ FIX (Next.js)
+
+    const user = verifyJWT(getTokenFromHeader(req));
+
+    if (!user) {
       return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const { user } = auth;
-    const { id } = params;
-
-    const leave = await Leave.findById(id);
-    if (!leave) {
+    // 🔐 Permission check
+    if (!hasPermission(user, "leaves", "approve")) {
       return NextResponse.json(
-        { error: "Leave not found" },
-        { status: 404 }
-      );
-    }
-
-    // 🔐 Permission rules
-    const isCompany = user.type === "company";
-    const isPrivileged = hasRole(user, ["Admin", "HR", "Manager"]);
-    const isOwner =
-      leave.employeeId.toString() === user.employeeId?.toString();
-
-    // Employee → only own Pending leave
-    if (!isCompany && !isPrivileged) {
-      if (!isOwner || leave.status !== "Pending") {
-        return NextResponse.json(
-          { error: "You are not allowed to edit this leave" },
-          { status: 403 }
-        );
-      }
-    }
-
-    const body = await req.json();
-
-    // Allowed fields only
-    const allowed = [
-      "fromDate",
-      "toDate",
-      "leaveType",
-      "reason",
-      "attachmentUrl",
-    ];
-
-    allowed.forEach((field) => {
-      if (body[field] !== undefined) {
-        leave[field] = body[field];
-      }
-    });
-
-    await leave.save();
-
-    return NextResponse.json({
-      message: "Leave updated successfully",
-      data: leave,
-    });
-  } catch (error) {
-    console.error("PUT /api/hr/leaves/:id error:", error);
-
-    return NextResponse.json(
-      { error: "Failed to update leave" },
-      { status: 500 }
-    );
-  }
-}
-
-/* ============================
-   PATCH → Update Status
-============================ */
-export async function PATCH(req, { params }) {
-  try {
-    await connectDB();
-
-    const auth = await withAuth(req);
-    if (auth.error) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
-      );
-    }
-
-    const { user } = auth;
-    const { id } = params;
-
-    // Only Admin / HR / Manager / Company
-    const isCompany = user.type === "company";
-    const isPrivileged = hasRole(user, ["Admin", "HR", "Manager"]);
-
-    if (!isCompany && !isPrivileged) {
-      return NextResponse.json(
-        { error: "Not allowed to change status" },
+        { success: false, message: "Forbidden" },
         { status: 403 }
       );
     }
 
-    const { status } = await req.json();
+    const { status, reason } = await req.json();
 
-    if (!["Approved", "Rejected", "Pending"].includes(status)) {
+    if (!["Approved", "Rejected"].includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status" },
+        { success: false, message: "Invalid status" },
         { status: 400 }
       );
     }
 
-    const leave = await Leave.findByIdAndUpdate(
-      id,
-      {
-        status,
-        approvedBy: user.employeeId || null,
-      },
-      { new: true }
-    );
+    // 🔍 Find leave
+    const leave = await Leave.findById(id);
 
     if (!leave) {
       return NextResponse.json(
-        { error: "Leave not found" },
+        { success: false, message: "Leave not found" },
         { status: 404 }
       );
     }
 
+    // ❌ Already processed
+    if (leave.status !== "Pending") {
+      return NextResponse.json(
+        { success: false, message: "Already processed" },
+        { status: 400 }
+      );
+    }
+
+    // 🔄 Update leave
+    leave.status = status;
+    leave.rejectionReason = reason || "";
+    leave.approvedBy = user.id;
+
+    await leave.save();
+
+    // =========================
+    // 🎯 1. LEAVE BALANCE (FIXED)
+    // =========================
+    if (status === "Approved") {
+      const balance = await LeaveBalance.findOne({
+        employeeId: leave.employeeId,
+      });
+
+      if (balance) {
+        const days =
+          Math.ceil(
+            (new Date(leave.toDate) - new Date(leave.fromDate)) /
+              (1000 * 60 * 60 * 24)
+          ) + 1;
+
+        if (leave.leaveType === "Casual") {
+          balance.casual -= days;
+        }
+
+        if (leave.leaveType === "Sick") {
+          balance.sick -= days;
+        }
+
+        if (leave.leaveType === "Paid") {
+          balance.paid -= days;
+        }
+
+        if (leave.leaveType === "Unpaid") {
+          balance.unpaid += days;
+        }
+
+        await balance.save();
+      }
+    }
+
+    // =========================
+    // 🔔 2. NOTIFICATION
+    // =========================
+    const empUser = await CompanyUser.findOne({
+      employeeId: leave.employeeId,
+    });
+
+    if (empUser) {
+      await Notification.create({
+        companyId: user.companyId,
+        userId: empUser._id,
+
+        title: "Leave Update",
+
+        message:
+          status === "Approved"
+            ? `Your leave has been approved ✅`
+            : `Your leave has been rejected ❌ ${
+                reason ? `- ${reason}` : ""
+              }`,
+
+        type: "leave",
+        referenceId: leave._id,
+        referenceModel: "Leave",
+      });
+    }
+
     return NextResponse.json({
-      message: "Leave status updated",
+      success: true,
       data: leave,
     });
-  } catch (error) {
-    console.error("PATCH /api/hr/leaves/:id/status error:", error);
+
+  } catch (err) {
+    console.error("PATCH /api/hr/leaves ERROR:", err);
 
     return NextResponse.json(
-      { error: "Failed to update status" },
+      { success: false, message: err.message },
       { status: 500 }
     );
   }

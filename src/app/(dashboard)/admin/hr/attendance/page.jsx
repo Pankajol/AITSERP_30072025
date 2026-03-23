@@ -1,350 +1,251 @@
+// src/app/(dashboard)/admin/hr/attendance/page.jsx
 "use client";
-
 import { useEffect, useState } from "react";
-import axios from "axios";
-import { jwtDecode } from "jwt-decode";
+
+function useAuth() {
+  const [user, setUser] = useState(null);
+  useEffect(() => { const u=localStorage.getItem("user"); if(u) setUser(JSON.parse(u)); }, []);
+  const token = () => typeof window!=="undefined" ? localStorage.getItem("token") : "";
+  const can = (action) => {
+    if (!user) return false;
+    if (user.role === "Admin" || user.type === "company") return true;
+    return user.permissions?.attendance?.includes(action);
+  };
+  return { user, token, can };
+}
+
+const STATUS_COLORS = { Present:"#22c55e", "Half Day":"#f59e0b", Absent:"#ef4444", "Geo-Violation":"#8b5cf6" };
 
 export default function AttendancePage() {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [records, setRecords] = useState([]);
+  const { token, can } = useAuth();
+  const [records, setRecords]     = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [date, setDate]           = useState(new Date().toISOString().slice(0,10));
+  const [empFilter, setEmpFilter] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [editRec, setEditRec]     = useState(null);
+  const [form, setForm]           = useState({});
+  const [saving, setSaving]       = useState(false);
 
-  const [roles, setRoles] = useState([]);
-  const [userId, setUserId] = useState("");
+  useEffect(() => { loadData(); }, [date]);
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-  const isAdmin = roles.includes("Admin");
-  const isHR = roles.includes("HR");
-  const isManager = roles.includes("Manager");
-  const isManagement = isAdmin || isHR || isManager; // ✅ shortcut
-
-  /* ================ LOAD USER FROM TOKEN ================ */
-  useEffect(() => {
-    if (!token) return;
-
-    const decoded = jwtDecode(token);
-    setRoles(decoded.roles || []);
-    setUserId(decoded.id);
-  }, [token]);
-
-  /* ================ FETCH EMPLOYEES (ADMIN / HR / MANAGER) ================ */
-  async function fetchEmployees() {
-    if (!isManagement) return;
-
+  async function loadData() {
+    setLoading(true);
     try {
-      const res = await axios.get("/api/company/users", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setEmployees(res.data?.users || []);
-    } catch (err) {
-      console.error("Employee fetch error:", err);
-    }
+      const [aRes, eRes] = await Promise.all([
+        fetch(`/api/hr/attendance?date=${date}`, { headers:{ Authorization:`Bearer ${token()}` } }),
+        fetch(`/api/hr/employees?status=Active`,  { headers:{ Authorization:`Bearer ${token()}` } }),
+      ]);
+      const [a, e] = await Promise.all([aRes.json(), eRes.json()]);
+      setRecords(a.data || []);
+      setEmployees(e.data || []);
+    } finally { setLoading(false); }
   }
 
-  /* ================ FETCH ATTENDANCE ================ */
-  async function fetchAttendance() {
-    if (!token) return;
-
-    try {
-      setLoading(true);
-
-      // Admin / HR / Manager → all employees; Employee → only self
-      const url = isManagement
-        ? `/api/hr/attendance?date=${date}`
-        : `/api/hr/attendance/my?date=${date}`;
-
-      const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setRecords(res.data.data || []);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to fetch attendance");
-    } finally {
-      setLoading(false);
-    }
+  function openCreate() {
+    setEditRec(null);
+    setForm({ date, status:"Present" });
+    setShowModal(true);
   }
 
-  useEffect(() => {
-    if (token) {
-      fetchAttendance();
-      fetchEmployees();
-    }
-  }, [date, token, isManagement]);
-
-  /* ================ SELECT EMPLOYEES (ADMIN UI) ================ */
-  const toggleEmployee = (id) => {
-    setSelectedEmployees((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
-
-  const selectAllEmployees = () => {
-    setSelectedEmployees(employees.map((e) => e._id));
-  };
-
-  const clearSelection = () => setSelectedEmployees([]);
-
-  /* ================ GEOLOCATION HELPER ================ */
-  function getCurrentLocation() {
-    return new Promise((resolve, reject) => {
-      if (!("geolocation" in navigator)) {
-        alert("Location permission not supported in this browser");
-        return reject(new Error("No geolocation"));
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          resolve({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          });
-        },
-        (err) => {
-          console.error("Geo error:", err);
-          alert("Location permission required for punch in/out");
-          reject(err);
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
+  function openEdit(rec) {
+    setEditRec(rec);
+    setForm({
+      employeeId: rec.employeeId?._id || rec.employeeId,
+      date: rec.date, status: rec.status,
+      "punchIn.time": rec.punchIn?.time, "punchOut.time": rec.punchOut?.time,
+      totalHours: rec.totalHours,
     });
+    setShowModal(true);
   }
 
-  /* ================ BULK STATUS UPDATE (ADMIN / HR) ================ */
-  async function bulkUpdate(status) {
-    if (selectedEmployees.length === 0)
-      return alert("Select employees first");
-
+  async function save() {
+    setSaving(true);
     try {
-      await axios.patch(
-        "/api/hr/attendance/bulk",
-        { employees: selectedEmployees, date, status },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      clearSelection();
-      fetchAttendance();
-      alert("Updated successfully");
-    } catch (err) {
-      console.error(err);
-      alert("Bulk update failed");
-    }
+      const body = {
+        employeeId: form.employeeId, date: form.date, status: form.status,
+        totalHours: Number(form.totalHours)||0,
+        punchIn: { time: form["punchIn.time"] },
+        punchOut: { time: form["punchOut.time"] },
+      };
+      const url    = editRec ? `/api/hr/attendance/${editRec._id}` : "/api/hr/attendance";
+      const method = editRec ? "PUT" : "POST";
+      const res    = await fetch(url,{ method, headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`}, body:JSON.stringify(body) });
+      const data   = await res.json();
+      if (data.success) { setShowModal(false); loadData(); }
+      else alert(data.message);
+    } finally { setSaving(false); }
   }
 
-  /* ================ SELF PUNCH (ADMIN + EMPLOYEE DONO) ================ */
-  async function punchIn() {
-    try {
-      const { latitude, longitude } = await getCurrentLocation();
-
-      await axios.post(
-        "/api/hr/attendance/punch-in",
-        { date, latitude, longitude },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      fetchAttendance();
-    } catch (err) {
-      // error already handled in getCurrentLocation or response
-      if (err?.response?.data?.error) {
-        alert(err.response.data.error);
-      }
-    }
+  async function del(id) {
+    if(!confirm("Delete record?")) return;
+    await fetch(`/api/hr/attendance/${id}`,{ method:"DELETE", headers:{ Authorization:`Bearer ${token()}` } });
+    loadData();
   }
 
-  async function punchOut() {
-    try {
-      const { latitude, longitude } = await getCurrentLocation();
+  const filtered = records.filter(r => {
+    const name = r.employeeId?.fullName || "";
+    return !empFilter || name.toLowerCase().includes(empFilter.toLowerCase());
+  });
 
-      await axios.post(
-        "/api/hr/attendance/punch-out",
-        { date, latitude, longitude },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      fetchAttendance();
-    } catch (err) {
-      if (err?.response?.data?.error) {
-        alert(err.response.data.error);
-      }
-    }
-  }
-
-  const badge = (status) => {
-    if (status === "Present") return "bg-green-100 text-green-700";
-    if (status === "Absent") return "bg-red-100 text-red-700";
-    if (status === "Half Day") return "bg-yellow-100 text-yellow-700";
-    if (status === "Geo-Violation") return "bg-purple-100 text-purple-700";
-    return "bg-gray-100 text-gray-700";
-  };
+  // Summary counts
+  const summary = { Present:0, "Half Day":0, Absent:0, "Geo-Violation":0 };
+  records.forEach(r => { if(summary[r.status]!==undefined) summary[r.status]++; });
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-
-      {/* HEADER */}
-      <div>
-        <h1 className="text-2xl font-bold">Attendance Management</h1>
-        <p className="text-sm text-gray-500">
-          {isManagement ? "Admin / HR / Manager Panel" : "Employee Panel"}
-        </p>
+    <div style={S.page}>
+      <div style={S.topBar}>
+        <div>
+          <p style={S.breadcrumb}>HR / Attendance</p>
+          <h1 style={S.title}>Attendance</h1>
+        </div>
+        <div style={S.actions}>
+          <input type="date" style={S.input} value={date} onChange={e=>setDate(e.target.value)} />
+          <input style={S.search} placeholder="Filter by employee…" value={empFilter} onChange={e=>setEmpFilter(e.target.value)} />
+          {can("create") && <button style={S.btn} onClick={openCreate}>+ Add Record</button>}
+        </div>
       </div>
 
-      {/* DATE + REFRESH */}
-      <div className="flex gap-2 bg-white p-4 rounded-lg shadow">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="border px-3 py-2 rounded"
-        />
-        <button
-          onClick={fetchAttendance}
-          className="bg-black text-white px-4 py-2 rounded"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {/* SELF PUNCH (SAB KO DIKHEGA – ADMIN + HR + EMPLOYEE) */}
-      <div className="bg-white p-4 rounded-lg shadow flex gap-3">
-        <button
-          onClick={punchIn}
-          className="bg-blue-600 text-white px-5 py-2 rounded"
-        >
-          Punch In (GPS)
-        </button>
-
-        <button
-          onClick={punchOut}
-          className="bg-gray-900 text-white px-5 py-2 rounded"
-        >
-          Punch Out (GPS)
-        </button>
-      </div>
-
-      {/* ADMIN CONTROLS – SIRF ADMIN / HR / MANAGER */}
-      {isManagement && (
-        <div className="bg-white p-4 rounded-lg shadow space-y-3">
-          <h2 className="font-semibold">Bulk Attendance – Select Employees</h2>
-
-          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-            {employees.map((emp) => (
-              <label
-                key={emp._id}
-                className="flex items-center gap-2 border px-3 py-1 rounded cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedEmployees.includes(emp._id)}
-                  onChange={() => toggleEmployee(emp._id)}
-                />
-                {emp.fullName} ({emp.email})
-              </label>
-            ))}
+      {/* Summary Cards */}
+      <div style={S.summaryBar}>
+        {Object.entries(summary).map(([status,count])=>(
+          <div key={status} style={{...S.summaryCard, borderColor: STATUS_COLORS[status]+"44"}}>
+            <div style={{...S.summaryDot, background: STATUS_COLORS[status]}} />
+            <div>
+              <div style={{fontSize:"1.5rem",fontWeight:700,color:"#f1f5f9"}}>{count}</div>
+              <div style={{fontSize:"0.75rem",color:"#64748b"}}>{status}</div>
+            </div>
           </div>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={selectAllEmployees}
-              className="border px-3 py-1 rounded"
-            >
-              Select All
-            </button>
-
-            <button
-              onClick={clearSelection}
-              className="border px-3 py-1 rounded"
-            >
-              Clear
-            </button>
-
-            <button
-              onClick={() => bulkUpdate("Present")}
-              className="bg-green-600 text-white px-3 py-1 rounded"
-            >
-              Mark Present
-            </button>
-
-            <button
-              onClick={() => bulkUpdate("Half Day")}
-              className="bg-yellow-500 text-white px-3 py-1 rounded"
-            >
-              Mark Half Day
-            </button>
-
-            <button
-              onClick={() => bulkUpdate("Absent")}
-              className="bg-red-600 text-white px-3 py-1 rounded"
-            >
-              Mark Absent
-            </button>
+        ))}
+        <div style={{...S.summaryCard, borderColor:"#334155"}}>
+          <div style={{...S.summaryDot, background:"#64748b"}} />
+          <div>
+            <div style={{fontSize:"1.5rem",fontWeight:700,color:"#f1f5f9"}}>{records.length}</div>
+            <div style={{fontSize:"0.75rem",color:"#64748b"}}>Total Marked</div>
           </div>
+        </div>
+      </div>
+
+      {loading ? <Loader /> : (
+        <div style={S.tableWrap}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                {["Employee","Date","Punch In","Punch Out","Hours","Status","Geofence","Actions"].map(h=>(
+                  <th key={h} style={S.th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(rec=>(
+                <tr key={rec._id} style={S.tr}>
+                  <td style={S.td}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.6rem"}}>
+                      <div style={{...S.avatar,background:stringColor(rec.employeeId?.fullName)}}>{rec.employeeId?.fullName?.[0]}</div>
+                      <span style={{color:"#f1f5f9",fontWeight:500}}>{rec.employeeId?.fullName||"—"}</span>
+                    </div>
+                  </td>
+                  <td style={S.td}>{rec.date}</td>
+                  <td style={S.td}>{rec.punchIn?.time||"—"}</td>
+                  <td style={S.td}>{rec.punchOut?.time||"—"}</td>
+                  <td style={S.td}>{rec.totalHours ? `${rec.totalHours}h` : "—"}</td>
+                  <td style={S.td}><span style={{...S.badge, background:STATUS_COLORS[rec.status]+"22", color:STATUS_COLORS[rec.status]}}>{rec.status}</span></td>
+                  <td style={S.td}>
+                    <span style={{fontSize:"1rem"}}>{rec.punchIn?.withinGeofence===false||rec.punchOut?.withinGeofence===false?"⚠️":"✅"}</span>
+                  </td>
+                  <td style={S.td}>
+                    <div style={{display:"flex",gap:"0.5rem"}}>
+                      {can("update") && <button style={S.iconBtn} onClick={()=>openEdit(rec)}>✏️</button>}
+                      {can("delete") && <button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>del(rec._id)}>🗑</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!filtered.length && <tr><td colSpan={8} style={{textAlign:"center",padding:"3rem",color:"#64748b"}}>No attendance records for this date</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* TABLE – COMMON FOR SAB */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="px-4 py-3 text-left">Employee</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">In</th>
-              <th className="px-4 py-3">Out</th>
-              <th className="px-4 py-3">Hours</th>
-              <th className="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan="6" className="text-center py-6 text-gray-400">
-                  Loading...
-                </td>
-              </tr>
-            ) : records.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="text-center py-6 text-gray-400">
-                  No records found
-                </td>
-              </tr>
-            ) : (
-              records.map((r) => (
-                <tr key={r._id} className="border-t">
-                  <td className="px-4 py-2 font-medium">
-                    {r.employeeId?.fullName || "You"}
-                  </td>
-                  <td className="px-4 py-2 text-center">{r.date}</td>
-                  <td className="px-4 py-2 text-center">
-                    {r.punchIn?.time || "-"}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {r.punchOut?.time || "-"}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {r.totalHours || 0}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs ${badge(
-                        r.status
-                      )}`}
-                    >
-                      {r.status}
-                    </span>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {showModal && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={S.modalHead}>
+              <h2 style={{margin:0,color:"#f1f5f9"}}>{editRec?"Edit Record":"Add Attendance"}</h2>
+              <button style={S.closeBtn} onClick={()=>setShowModal(false)}>✕</button>
+            </div>
+            <div style={{padding:"1.5rem",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem"}}>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={S.label}>Employee *</label>
+                <select style={S.sinput} value={form.employeeId||""} onChange={e=>setForm({...form,employeeId:e.target.value})}>
+                  <option value="">-- Select Employee --</option>
+                  {employees.map(e=><option key={e._id} value={e._id}>{e.fullName} ({e.employeeCode})</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Date *</label>
+                <input type="date" style={S.sinput} value={form.date||""} onChange={e=>setForm({...form,date:e.target.value})} />
+              </div>
+              <div>
+                <label style={S.label}>Status</label>
+                <select style={S.sinput} value={form.status||""} onChange={e=>setForm({...form,status:e.target.value})}>
+                  {["Present","Half Day","Absent","Geo-Violation"].map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Punch In Time</label>
+                <input type="time" style={S.sinput} value={form["punchIn.time"]||""} onChange={e=>setForm({...form,"punchIn.time":e.target.value})} />
+              </div>
+              <div>
+                <label style={S.label}>Punch Out Time</label>
+                <input type="time" style={S.sinput} value={form["punchOut.time"]||""} onChange={e=>setForm({...form,"punchOut.time":e.target.value})} />
+              </div>
+              <div>
+                <label style={S.label}>Total Hours</label>
+                <input type="number" step="0.5" style={S.sinput} value={form.totalHours||""} onChange={e=>setForm({...form,totalHours:e.target.value})} />
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:"0.75rem",padding:"0 1.5rem 1.5rem"}}>
+              <button style={S.cancelBtn} onClick={()=>setShowModal(false)}>Cancel</button>
+              <button style={S.saveBtn} onClick={save} disabled={saving}>{saving?"Saving…":"Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+function Loader() { return <div style={{textAlign:"center",padding:"4rem",color:"#64748b"}}>Loading…</div>; }
+function stringColor(str="") { let h=0; for(let i=0;i<str.length;i++) h=str.charCodeAt(i)+((h<<5)-h); return `hsl(${h%360},60%,40%)`; }
+
+const S = {
+  page:       { padding:"2rem",background:"#0f172a",minHeight:"100vh",fontFamily:"'DM Sans',sans-serif",color:"#e2e8f0" },
+  topBar:     { display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.5rem",flexWrap:"wrap",gap:"1rem" },
+  breadcrumb: { fontSize:"0.72rem",color:"#64748b",textTransform:"uppercase",letterSpacing:"0.08em" },
+  title:      { fontSize:"1.75rem",fontWeight:800,color:"#f1f5f9",margin:0 },
+  actions:    { display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center" },
+  input:      { background:"#1e293b",border:"1px solid #334155",color:"#e2e8f0",borderRadius:"8px",padding:"0.5rem 0.75rem",fontSize:"0.85rem",outline:"none" },
+  search:     { background:"#1e293b",border:"1px solid #334155",color:"#e2e8f0",borderRadius:"8px",padding:"0.5rem 0.75rem",fontSize:"0.85rem",outline:"none",width:220 },
+  btn:        { background:"#0ea5e9",color:"#fff",border:"none",borderRadius:"8px",padding:"0.5rem 1.25rem",fontWeight:600,cursor:"pointer",fontSize:"0.85rem" },
+  summaryBar: { display:"flex",gap:"1rem",marginBottom:"1.5rem",flexWrap:"wrap" },
+  summaryCard:{ flex:1,minWidth:130,background:"#1e293b",border:"1px solid",borderRadius:"12px",padding:"1rem",display:"flex",alignItems:"center",gap:"0.75rem" },
+  summaryDot: { width:10,height:10,borderRadius:"50%",flexShrink:0 },
+  tableWrap:  { background:"#1e293b",borderRadius:"16px",border:"1px solid #334155",overflow:"auto" },
+  table:      { width:"100%",borderCollapse:"collapse" },
+  th:         { padding:"0.9rem 1rem",textAlign:"left",fontSize:"0.72rem",color:"#64748b",textTransform:"uppercase",letterSpacing:"0.06em",background:"#1e293b",borderBottom:"1px solid #334155" },
+  tr:         { borderBottom:"1px solid #0f172a" },
+  td:         { padding:"0.85rem 1rem",fontSize:"0.875rem",color:"#cbd5e1" },
+  avatar:     { width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:"0.8rem",flexShrink:0 },
+  badge:      { borderRadius:"6px",padding:"0.2rem 0.6rem",fontSize:"0.75rem",fontWeight:600 },
+  iconBtn:    { background:"#0f172a",border:"1px solid #334155",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.85rem" },
+  overlay:    { position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 },
+  modal:      { background:"#1e293b",borderRadius:"16px",border:"1px solid #334155",width:"100%",maxWidth:560 },
+  modalHead:  { display:"flex",justifyContent:"space-between",alignItems:"center",padding:"1.25rem 1.5rem",borderBottom:"1px solid #334155" },
+  closeBtn:   { background:"transparent",border:"none",color:"#64748b",cursor:"pointer",fontSize:"1.2rem" },
+  label:      { display:"block",fontSize:"0.75rem",color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"0.35rem" },
+  sinput:     { width:"100%",background:"#0f172a",border:"1px solid #334155",color:"#e2e8f0",borderRadius:"8px",padding:"0.5rem 0.75rem",fontSize:"0.875rem",outline:"none",boxSizing:"border-box" },
+  cancelBtn:  { background:"transparent",border:"1px solid #334155",color:"#94a3b8",borderRadius:"8px",padding:"0.5rem 1.25rem",cursor:"pointer" },
+  saveBtn:    { background:"#0ea5e9",color:"#fff",border:"none",borderRadius:"8px",padding:"0.5rem 1.5rem",fontWeight:600,cursor:"pointer" },
+};

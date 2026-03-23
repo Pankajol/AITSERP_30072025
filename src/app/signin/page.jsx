@@ -6,6 +6,7 @@ import axios from 'axios';
 import { FiEye, FiEyeOff, FiMail, FiLock, FiChevronRight, FiLoader, FiShield, FiUser, FiBriefcase } from 'react-icons/fi';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
 const Link = ({ href, children, className }) => (
   <a href={href} className={className}>
     {children}
@@ -23,53 +24,108 @@ export default function LoginPage() {
 
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  // const submit = async (e) => {
+  //   e.preventDefault();
+  //   if (!form.email || !form.password) return toast.error("Credentials required");
+
+  //   setLoading(true);
+  //   try {
+  //     const urls = {
+  //       Company: "/api/company/login",
+  //       User: "/api/users/login",
+  //       Customer: "/api/customers/login",
+       
+  //     };
+
+  //     const res = await axios.post(urls[mode], form);
+  //     const { token, company, user, customer,employee } = res.data;
+  //     const finalUser = company || user || customer || employee;
+
+  //     if (!token || !finalUser) throw new Error("Authentication failed");
+
+  //     localStorage.setItem("token", token);
+  //     localStorage.setItem("user", JSON.stringify(finalUser));
+
+  //     toast.success(`Access Granted: ${finalUser.name || "User"}`);
+
+  //     const roleRedirectMap = {
+  //       admin: "/admin",
+  //       agent: "/admin",
+  //       employee: "/admin/hr/employee",
+  //       customer: "/customer-dashboard",
+  //     };
+
+  //     let redirect = "/admin";
+  //     if (mode === "Customer") {
+  //       redirect = "/customer-dashboard";
+  //     }
+  //      else if (mode === "User") {
+  //       const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+  //       const matchedRole = roles.find((r) => roleRedirectMap[r]);
+  //       redirect = roleRedirectMap[matchedRole] || "/admin";
+  //     }
+
+  //     setTimeout(() => router.push(redirect), 500);
+  //   } catch (error) {
+  //     toast.error(error?.response?.data?.message || "Verification Failed");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
   const submit = async (e) => {
-    e.preventDefault();
-    if (!form.email || !form.password) return toast.error("Credentials required");
+  e.preventDefault();
 
-    setLoading(true);
-    try {
-      const urls = {
-        Company: "/api/company/login",
-        User: "/api/users/login",
-        Customer: "/api/customers/login",
-      };
+  if (!form.email || !form.password) {
+    return toast.error("Credentials required");
+  }
 
-      const res = await axios.post(urls[mode], form);
-      const { token, company, user, customer } = res.data;
-      const finalUser = company || user || customer;
+  setLoading(true);
 
-      if (!token || !finalUser) throw new Error("Authentication failed");
+  try {
+    const urls = {
+      Company: "/api/company/login",
+      User: "/api/users/login",
+      Customer: "/api/customers/login",
+    };
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(finalUser));
+    const res = await axios.post(urls[mode], form);
 
-      toast.success(`Access Granted: ${finalUser.name || "User"}`);
+    const { token, company, user, customer } = res.data;
+    const finalUser = company || user || customer;
 
-      const roleRedirectMap = {
-        admin: "/admin",
-        agent: "/admin",
-        employee: "/admin",
-        customer: "/customer-dashboard",
-      };
+    if (!token || !finalUser) throw new Error("Authentication failed");
 
-      let redirect = "/admin";
-      if (mode === "Customer") {
-        redirect = "/customer-dashboard";
-      } else if (mode === "User") {
-        const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
-        const matchedRole = roles.find((r) => roleRedirectMap[r]);
-        redirect = roleRedirectMap[matchedRole] || "/admin";
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(finalUser));
+
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+    toast.success(`Access Granted: ${finalUser.name || "User"}`);
+
+    let redirect = "/admin";
+
+    if (mode === "Customer") {
+      redirect = "/customer-dashboard";
+    } else if (mode === "User") {
+      const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+
+      if (roles.includes("employee")) {
+        redirect = "/admin/hr/employees";
+      } else if (roles.includes("admin")) {
+        redirect = "/admin";
       }
-
-      setTimeout(() => router.push(redirect), 500);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || "Verification Failed");
-    } finally {
-      setLoading(false);
     }
-  };
 
+    router.push(redirect);
+
+  } catch (error) {
+    toast.error(error?.response?.data?.message || "Verification Failed");
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#0a0a0f] relative overflow-hidden font-sans">
       
@@ -100,7 +156,7 @@ export default function LoginPage() {
             {[
               { id: 'Company', icon: <FiBriefcase /> },
               { id: 'User', icon: <FiUser /> },
-              { id: 'Customer', icon: <FiMail /> }
+              { id: 'Customer', icon: <FiMail /> } // ✅ ADD THIS
             ].map((m) => (
               <button
                 key={m.id}

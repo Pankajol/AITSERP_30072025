@@ -1,75 +1,115 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import Department from "@/models/hr/Department";
-import { withAuth, hasRole } from "@/lib/rbac";
+import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
 
-/* ================= GET Departments ================= */
+/* =========================
+   GET → All Departments
+========================= */
 export async function GET(req) {
   try {
     await connectDB();
 
-    const auth = await withAuth(req);
-    if (auth.error) {
+    const user = verifyJWT(getTokenFromHeader(req));
+
+    if (!user) {
       return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const { user } = auth;
+    // 🔐 permission check
+    if (!hasPermission(user, "employees", "view")) {
+      return NextResponse.json(
+        { success: false, message: "Forbidden" },
+        { status: 403 }
+      );
+    }
 
-    const data = await Department.find({
-      companyId: user.companyId
-    }).sort({ name: 1 });
+    const departments = await Department.find({
+      companyId: user.companyId,
+    }).sort({ createdAt: -1 });
 
-    return NextResponse.json({ data });
+    return NextResponse.json({
+      success: true,
+      data: departments,
+    });
 
-  } catch (error) {
-    console.error("GET Departments Error:", error.message);
+  } catch (err) {
+    console.error("GET Departments Error:", err);
 
     return NextResponse.json(
-      { error: "Failed to fetch departments" },
+      { success: false, message: err.message },
       { status: 500 }
     );
   }
 }
 
-/* ================= CREATE Department ================= */
+/* =========================
+   POST → Create Department
+========================= */
 export async function POST(req) {
   try {
     await connectDB();
 
-    const auth = await withAuth(req);
-    if (auth.error) {
+    const user = verifyJWT(getTokenFromHeader(req));
+
+    if (!user) {
       return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const { user } = auth;
-
-    if (!hasRole(user, ["Admin", "HR", "Manager"])) {
+    // 🔐 permission check
+    if (!hasPermission(user, "employees", "create")) {
       return NextResponse.json(
-        { error: "You do not have permission" },
+        { success: false, message: "Forbidden" },
         { status: 403 }
       );
     }
 
     const body = await req.json();
+    const { name, description } = body;
 
-    const data = await Department.create({
+    if (!name) {
+      return NextResponse.json(
+        { success: false, message: "Department name is required" },
+        { status: 400 }
+      );
+    }
+
+    // ❌ Duplicate check
+    const exists = await Department.findOne({
       companyId: user.companyId,
-      ...body,
+      name,
     });
 
-    return NextResponse.json({ data });
+    if (exists) {
+      return NextResponse.json(
+        { success: false, message: "Department already exists" },
+        { status: 400 }
+      );
+    }
 
-  } catch (error) {
-    console.error("POST Department Error:", error.message);
+    // ✅ Create department
+    const department = await Department.create({
+      companyId: user.companyId,
+      name,
+      description,
+    });
 
     return NextResponse.json(
-      { error: "Failed to create department" },
+      { success: true, data: department },
+      { status: 201 }
+    );
+
+  } catch (err) {
+    console.error("POST Department Error:", err);
+
+    return NextResponse.json(
+      { success: false, message: err.message },
       { status: 500 }
     );
   }
