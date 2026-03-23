@@ -160,7 +160,7 @@ const MODULE_ROUTE_MAP = {
     { label: "Inventory View",     path: "/admin/InventoryView",              needsView: true },
     { label: "Inventory Entry",    path: "/admin/InventoryEntry",             needsCreate: true },
     { label: "Inventory Ledger",   path: "/admin/InventoryAdjustmentsView",   needsView: true },
-    { lable: "Gate Entry",         path: "/admin/GateEntry",                  needsCreate: true}
+    { lable: "Gate Entry",         path: "/admin/gate-entry",                  needsCreate: true}
   ],
 
   // ── Production ─────────────────────────────────────────────
@@ -439,7 +439,7 @@ export default function Layout({ children }) {
                 <Item href="/admin/InventoryView"            icon={<HiOutlineLibrary />} label="Inventory View"   onClick={closeSidebar} isActive={isActive("/admin/InventoryView")} />
                 <Item href="/admin/InventoryEntry"           icon={<HiOutlineLibrary />} label="Inventory Entry"  onClick={closeSidebar} isActive={isActive("/admin/InventoryEntry")} />
                 <Item href="/admin/InventoryAdjustmentsView" icon={<HiOutlineLibrary />} label="Inventory Ledger" onClick={closeSidebar} isActive={isActive("/admin/InventoryAdjustmentsView")} />
-                <Item href="/admin/GateEntry"               icon={<HiOutlineLibrary />} label="Gate Entry"       onClick={closeSidebar} isActive={isActive("/admin/GateEntry")} />
+                <Item href="/admin/GateEntry"               icon={<HiOutlineLibrary />} label="Gate Entry"       onClick={closeSidebar} isActive={isActive("/admin/gate-entry")} />
               </Section>
               <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
                 <Item href="/admin/Payment" icon={<HiCurrencyDollar />} label="Payment Form" onClick={closeSidebar} isActive={isActive("/admin/Payment")} />
