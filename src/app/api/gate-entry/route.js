@@ -33,7 +33,6 @@ export async function POST(req) {
   try {
     await connectDB();
     
-    // Verify Token
     const token = getTokenFromHeader(req);
     const decoded = verifyJWT(token);
     if (!decoded || !decoded.companyId) {
@@ -41,21 +40,52 @@ export async function POST(req) {
     }
 
     const body = await req.json();
+    const currentYear = new Date().getFullYear();
 
-    // Auto-generate Entry No (GE-YEAR-COUNT)
-    const count = await GateEntry.countDocuments({ companyId: decoded.companyId });
-    const entryNo = `GE-${new Date().getFullYear()}-${(count + 1).toString().padStart(4, '0')}`;
+    // 1. Find the LATEST entry SPECIFIC to this company only
+    const lastEntry = await GateEntry.findOne({ 
+      companyId: decoded.companyId 
+    })
+    .sort({ createdAt: -1 }) // Sirf is company ki sabse nayi entry
+    .select("entryNo");
 
+    let nextNumber = 1;
+
+    if (lastEntry && lastEntry.entryNo) {
+      // Format: GE-2026-0001
+      // Split karke aakhri part (0001) nikalenge
+      const parts = lastEntry.entryNo.split("-");
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      
+      if (!isNaN(lastNum)) {
+        nextNumber = lastNum + 1;
+      }
+    }
+
+    // 2. Generate New Entry Number (e.g., GE-2026-0001)
+    const entryNo = `GE-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+
+    // 3. Create entry with companyId linkage
     const newEntry = await GateEntry.create({
       ...body,
-      companyId: decoded.companyId, // Attach company ID from token
+      companyId: decoded.companyId, // Token se aya hua ID
       entryNo,
       purchaseOrders: body.purchaseOrders || []
     });
 
     return NextResponse.json({ success: true, data: newEntry });
+
   } catch (error) {
     console.error("Gate Entry POST Error:", error);
+
+    // Duplicate key handle karein (agar do guards ek sath enter karein)
+    if (error.code === 11000) {
+      return NextResponse.json({ 
+        success: false, 
+        error: "Sequence Conflict: Please save again to get the next number." 
+      }, { status: 409 });
+    }
+
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
