@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Company from '@/models/Company';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import {jwtDecode} from 'jwt-decode';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -40,6 +41,8 @@ export async function POST(req) {
       { expiresIn: '7d' }
     );
 
+    console.log(jwtDecode(token));
+        console.log(JSON.stringify(company.modules, null, 2));
     return NextResponse.json({ token, company }, { status: 200 });
 
   } catch (err) {

@@ -1,109 +1,76 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
+import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
 import Employee from "@/models/hr/Employee";
-import { withAuth, hasRole } from "@/lib/rbac";
-import Department from "@/models/hr/Department";
-import Designation from "@/models/hr/Designation";
 
-/* ================= UPDATE EMPLOYEE ================= */
-export async function PUT(req, context) {
+export async function GET(req, { params }) {
   try {
     await connectDB();
+    const user = verifyJWT(getTokenFromHeader(req));
+    if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(user, "employees", "read"))
+      return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
 
-    const auth = await withAuth(req);
-    if (auth.error) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
-      );
-    }
+    const employee = await Employee.findOne({ _id: params.id, companyId: user.companyId })
+      .populate("department", "name")
+      .populate("designation", "title");
 
-    const { user } = auth;
-
-    // ✅ Only Admin / HR / Manager can update employees
-    if (!hasRole(user, ["Admin", "HR", "Manager"])) {
-      return NextResponse.json(
-        { error: "You do not have permission" },
-        { status: 403 }
-      );
-    }
-
-    // ✅ VERY IMPORTANT CHANGE
-    const { id } = await context.params;
-
-    const body = await req.json();
-
-    const updated = await Employee.findOneAndUpdate(
-      { _id: id, companyId: user.companyId },
-      body,
-      { new: true }
-    );
-
-    if (!updated) {
-      return NextResponse.json(
-        { error: "Employee not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ data: updated });
-
-  } catch (error) {
-    console.error("UPDATE Employee Error:", error.message);
-
-    return NextResponse.json(
-      { error: "Failed to update employee" },
-      { status: 500 }
-    );
+    if (!employee) return NextResponse.json({ success: false, message: "Employee not found" }, { status: 404 });
+    return NextResponse.json({ success: true, data: employee });
+  } catch (err) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-/* ================= DELETE EMPLOYEE ================= */
-export async function DELETE(req, context) {
+export async function PUT(req, { params }) {
   try {
     await connectDB();
+    const user = verifyJWT(getTokenFromHeader(req));
+    if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    
+    if (!hasPermission(user, "employees", "update"))
+      return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
 
-    const auth = await withAuth(req);
-    if (auth.error) {
-      return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status }
-      );
-    }
+    let body = await req.json();
 
-    const { user } = auth;
-
-    // ✅ Only Admin / HR
-    if (!hasRole(user, ["Admin", "HR"])) {
-      return NextResponse.json(
-        { error: "You do not have permission" },
-        { status: 403 }
-      );
-    }
-
-    // ✅ VERY IMPORTANT CHANGE
-    const { id } = await context.params;
-
-    const deleted = await Employee.findOneAndDelete({
-      _id: id,
-      companyId: user.companyId,
+    // 🛠 FIX: Conflict handle karne ke liye hum 'body' ko sanitize karenge
+    // Agar body mein dotted strings hain (like "salary.basic"), unhe remove kar denge
+    // Kyunki hum nested objects (like salary: { basic: ... }) bhej rahe hain.
+    const sanitizedBody = { ...body };
+    Object.keys(sanitizedBody).forEach(key => {
+      if (key.includes('.')) {
+        delete sanitizedBody[key];
+      }
     });
 
-    if (!deleted) {
-      return NextResponse.json(
-        { error: "Employee not found" },
-        { status: 404 }
-      );
-    }
+    const employee = await Employee.findOneAndUpdate(
+      { _id: params.id, companyId: user.companyId },
+      { $set: sanitizedBody }, // $set use karna safe hota hai
+      { new: true, runValidators: true }
+    )
+    .populate("department", "name")
+    .populate("designation", "title");
 
-    return NextResponse.json({ message: "Employee deleted" });
+    if (!employee) return NextResponse.json({ success: false, message: "Employee not found" }, { status: 404 });
+    
+    return NextResponse.json({ success: true, data: employee });
+  } catch (err) {
+    console.error("Update Error:", err.message);
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  }
+}
 
-  } catch (error) {
-    console.error("DELETE Employee Error:", error.message);
+export async function DELETE(req, { params }) {
+  try {
+    await connectDB();
+    const user = verifyJWT(getTokenFromHeader(req));
+    if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    if (!hasPermission(user, "employees", "delete"))
+      return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
 
-    return NextResponse.json(
-      { error: "Failed to delete employee" },
-      { status: 500 }
-    );
+    await Employee.findOneAndDelete({ _id: params.id, companyId: user.companyId });
+    return NextResponse.json({ success: true, message: "Employee deleted" });
+  } catch (err) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

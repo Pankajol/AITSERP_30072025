@@ -1,39 +1,71 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
-import { FaSpinner } from 'react-icons/fa';
+import { 
+  FaArrowLeft, FaUser, FaCalendarAlt, FaBoxOpen, 
+  FaCalculator, FaPaperclip, FaInfoCircle, FaFilePdf, 
+  FaWarehouse, FaHistory, FaSpinner, FaShoppingCart, FaPrint
+} from 'react-icons/fa';
+
+// --- UI Helpers ---
+const formatDate = (dateString) => {
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency', currency: 'INR', minimumFractionDigits: 2
+  }).format(value || 0);
+};
+
+const Lbl = ({ text }) => (
+  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">{text}</p>
+);
+
+const DetailField = ({ label, value, color = "text-gray-900" }) => (
+  <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+    <Lbl text={label} />
+    <p className={`text-sm font-bold ${color}`}>{value || "—"}</p>
+  </div>
+);
+
+const SectionHeader = ({ icon: Icon, title, color = "indigo" }) => (
+  <div className={`flex items-center gap-2 px-6 py-4 border-b border-gray-100 bg-${color}-50/30`}>
+    <div className={`w-8 h-8 rounded-xl bg-${color}-100 flex items-center justify-center text-${color}-600 text-sm`}>
+      <Icon />
+    </div>
+    <h3 className="text-sm font-black text-gray-800 uppercase tracking-tight">{title}</h3>
+  </div>
+);
 
 export default function PurchaseOrderView() {
   const { id } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
 
- useEffect(() => {
+  useEffect(() => {
     if (!id || !/^[0-9a-fA-F]{24}$/.test(id)) {
       setError("Invalid or missing Purchase Order ID.");
       setLoading(false);
       return;
     }
 
-    const source = axios.CancelToken.source(); // ✅ For cleanup
+    const source = axios.CancelToken.source();
 
     const fetchOrder = async () => {
       try {
+        setLoading(true);
         const token = localStorage.getItem("token");
-        if (!token) {
-          setError("Unauthorized: No token found.");
-          setLoading(false);
-          return;
-        }
+        if (!token) throw new Error("Unauthorized: Please log in");
 
         const res = await axios.get(`/api/purchase-order/${id}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
           cancelToken: source.token,
         });
 
@@ -44,8 +76,7 @@ export default function PurchaseOrderView() {
           setError(res.data.error || "Failed to fetch purchase order.");
         }
       } catch (err) {
-        if (axios.isCancel(err)) return; // ✅ Ignore if request was canceled
-        console.error("Fetch error:", err);
+        if (axios.isCancel(err)) return;
         setError(err.response?.data?.error || err.message);
       } finally {
         setLoading(false);
@@ -53,301 +84,205 @@ export default function PurchaseOrderView() {
     };
 
     fetchOrder();
-
-    return () => {
-      source.cancel("Request canceled due to component unmount.");
-    };
+    return () => source.cancel("Unmount cleanup");
   }, [id]);
-  const formatCurrency = (v) =>
-    new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-    }).format(v || 0);
 
-  const formatDate = (d) => {
-    if (!d) return '-';
-    const dt = new Date(d);
-    return isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString('en-IN');
-  };
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <FaSpinner className="animate-spin text-4xl text-indigo-600 mb-4" />
+      <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">Loading Order Details...</p>
+    </div>
+  );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <FaSpinner className="animate-spin text-4xl text-orange-400" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto p-6 text-center text-red-600">
-        <h2 className="text-2xl font-bold mb-4">Error</h2>
-        <p>{error}</p>
-        <button
-          onClick={() => router.push('/admin/purchase-order')}
-          className="mt-4 px-4 py-2 bg-orange-400 text-white rounded"
-        >
-          Back to Orders
+  if (error || !order) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-red-50 text-center">
+        <FaInfoCircle className="text-red-500 text-5xl mx-auto mb-4" />
+        <h2 className="text-xl font-black text-gray-900 mb-2 uppercase">Error</h2>
+        <p className="text-gray-500 mb-6 font-medium">{error || "Data not available"}</p>
+        <button onClick={() => router.back()} className="w-full py-3 bg-indigo-600 text-white rounded-2xl font-bold transition-all hover:bg-indigo-700">
+          Go Back
         </button>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="print-area container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <h1 className="text-4xl font-bold">Purchase Order #{order?.documentNumber || "N/A"}</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-400"
-          >
-            Download / Print
-          </button>
-          <button
-            onClick={() => router.push("/admin/purchase-order")}
-            className="px-4 py-2 bg-orange-400 text-white rounded hover:bg-orange-300"
-          >
-            Back to Orders
-          </button>
-        </div>
-      </div>
-
-      {/* Supplier & Order Info */}
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Supplier Information</h2>
-            <div className="space-y-2">
-              <p className="text-lg">
-                <span className="font-bold">Supplier Code:</span> {order?.supplierCode || "-"}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Supplier Name:</span>{" "}
-                {order?.supplierName || order?.supplierName || "-"}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Contact Person:</span>{" "}
-                {order?.contactPerson || order?.contactPerson || "-"}
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Order Information</h2>
-            <div className="space-y-2">
-              <p className="text-lg">
-                <span className="font-bold">documentNumber:</span> {order?.documentNumber || "-"}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Status:</span>
-                <span
-                  className={`ml-2 px-2 py-1 rounded text-sm ${
-                    order?.orderStatus === "Open"
-                      ? "bg-green-100 text-green-800"
-                      : order?.status === "Closed"
-                      ? "bg-red-100 text-red-800"
-                      : order?.status === "Pending"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {order?.orderStatus || "-"}
-                </span>
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Invoice Type:</span> {order?.invoiceType || "Normal"}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Posting Date:</span> {formatDate(order?.postingDate)}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Valid Until:</span> {formatDate(order?.validUntil)}
-              </p>
-              <p className="text-lg">
-                <span className="font-bold">Document Date:</span> {formatDate(order?.documentDate)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Sales Employee and Remarks */}
-        <div className="mt-6 pt-4 border-t">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-lg">
-                <span className="font-bold">Sales Employee:</span> {order?.salesEmployee || "-"}
-              </p>
-            </div>
-            <div>
-              {order?.remarks && (
-                <div>
-                  <p className="font-bold text-lg">Remarks:</p>
-                  <p className="text-gray-700">{order?.remarks}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Items Section */}
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <h2 className="text-2xl font-semibold mb-4">Items</h2>
-        {order?.items && order?.items.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {[
-                    "Item Code",
-                    "Item Name",
-                    "Description",
-                    "Warehouse",
-                    "Qty",
-                    "Unit Price",
-                    "Discount",
-                    "Tax",
-                    "Total",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {order.items.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {item.itemCode || item.item?.itemCode || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {item.itemName || item.item?.itemName || "N/A"}
-                    </td>
-                    <td className="px-6 py-4">{item.itemDescription || "N/A"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {item.warehouseCode
-                        ? `${item.warehouseCode} - ${item.warehouseName || ""}`
-                        : "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span>Ordered: {item.quantity || 0}</span>
-                        {item.orderedQuantity > 0 && (
-                          <span className="text-sm text-green-600">
-                            Ordered: {item.orderedQuantity}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatCurrency(item.unitPrice || item.item?.unitPrice || 0)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatCurrency(item.discount || 0)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span>
-                          {item.taxOption || "GST"}: {item.gstRate || 0}%
-                        </span>
-                        <span>
-                          {formatCurrency(
-                            item.taxOption === "IGST"
-                              ? item.igstAmount || 0
-                              : item.gstAmount || 0
-                          )}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium">
-                      {formatCurrency(item.totalAmount || 0)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-center text-gray-500 py-4">No items found.</p>
-        )}
-      </div>
-      {/* attechems */}
-     {/* ✅ Attachments Section */}
-      {order?.attachments && order?.attachments.length > 0 && (
-        <div className="bg-white shadow-md rounded-lg p-6">
-          <h2 className="text-2xl font-semibold mb-4">Attachments</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {order?.attachments.map((file, idx) => {
-              const url = file.fileUrl || file.url || file.path || "";
-              const isPDF = file.fileType === "application/pdf" || url.endsWith(".pdf");
-              return (
-                <div key={idx} className="border rounded p-2 text-center">
-                  {isPDF ? (
-                    <object data={url} type="application/pdf" className="h-24 w-full rounded" />
-                  ) : (
-                    <img src={url} alt="Attachment" className="h-24 w-full object-cover rounded" />
-                  )}
-                  <a href={url} target="_blank" rel="noopener noreferrer" className="block text-blue-600 text-xs mt-1 truncate">
-                    {file.fileName || `Attachment-${idx}`}
-                  </a>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6">
+      <div className="max-w-6xl mx-auto">
         
-
-      {/* Financial Summary */}
-      <div className="bg-white shadow-md rounded-lg p-6">
-        <h2 className="text-2xl font-semibold mb-4">Financial Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">Total Before Discount:</span>
-              <span>{formatCurrency(order?.totalBeforeDiscount)}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">Freight:</span>
-              <span>{formatCurrency(order?.freight)}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">Rounding:</span>
-              <span>{formatCurrency(order?.rounding)}</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">Total Down Payment:</span>
-              <span>{formatCurrency(order?.totalDownPayment)}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">Applied Amounts:</span>
-              <span>{formatCurrency(order?.appliedAmounts)}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="font-semibold">GST Total:</span>
-              <span>{formatCurrency(order?.gstTotal)}</span>
-            </div>
+        {/* --- Top Navigation --- */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <button onClick={() => router.push("/admin/purchase-order")} 
+            className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest hover:text-indigo-800 transition-all">
+            <FaArrowLeft /> Back to List
+          </button>
+          
+          <div className="flex items-center gap-3">
+             <button onClick={() => window.print()} className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 flex items-center gap-2">
+                <FaPrint /> Print
+             </button>
+             <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border-2 ${
+                order.orderStatus === 'Open' 
+                ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                : 'bg-amber-50 text-amber-600 border-amber-100'
+             }`}>
+               {order.orderStatus}
+             </span>
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t">
-          <div className="flex justify-between">
-            <div>
-              <p className="text-lg font-semibold">Open Balance:</p>
-              <p className="text-xl">{formatCurrency(order?.openBalance)}</p>
+        {/* --- Header Title --- */}
+        <div className="mb-10 text-center sm:text-left">
+          <p className="text-indigo-600 font-black text-[10px] tracking-[0.3em] uppercase mb-1 flex items-center gap-2 justify-center sm:justify-start">
+            <FaShoppingCart /> Purchase Order
+          </p>
+          <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">
+            {order.documentNumber || "Draft Order"}
+          </h1>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* --- LEFT COLUMN: CORE DETAILS --- */}
+          <div className="lg:col-span-8 space-y-8">
+            
+            {/* Supplier Information */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <SectionHeader icon={FaUser} title="Supplier Information" color="indigo" />
+              <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <DetailField label="Supplier Name" value={order.supplierName} />
+                <DetailField label="Supplier Code" value={order.supplierCode} />
+                <DetailField label="Contact Person" value={order.contactPerson} />
+                <DetailField label="Invoice Type" value={order.invoiceType} color="text-indigo-600" />
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-semibold">Grand Total:</p>
-              <p className="text-2xl font-bold">{formatCurrency(order?.grandTotal)}</p>
+
+            {/* Order Items Table */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <SectionHeader icon={FaBoxOpen} title="Ordered Items List" color="emerald" />
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead className="bg-gray-50/50">
+                    <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                      <th className="px-8 py-4 text-left">Item Detail</th>
+                      <th className="px-6 py-4 text-center">Qty / Warehouse</th>
+                      <th className="px-6 py-4 text-center">Tax %</th>
+                      <th className="px-8 py-4 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {order.items?.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/30 transition-colors">
+                        <td className="px-8 py-6">
+                          <p className="text-sm font-black text-gray-900">{item.itemName || item.item?.itemName}</p>
+                          <p className="text-[11px] text-indigo-500 font-mono font-bold mt-1">{item.itemCode || item.item?.itemCode}</p>
+                        </td>
+                        <td className="px-6 py-6 text-center">
+                          <p className="text-base font-black text-gray-800">{item.quantity}</p>
+                          <div className="flex items-center justify-center gap-1 mt-1 text-gray-400">
+                            <FaWarehouse size={10} />
+                            <span className="text-[10px] font-bold uppercase">{item.warehouseName || 'Default'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-6 text-center">
+                          <p className="text-[11px] font-black text-gray-700">{item.taxOption || 'GST'} {item.gstRate || 0}%</p>
+                        </td>
+                        <td className="px-8 py-6 text-right font-black text-gray-900">
+                          {formatCurrency(item.totalAmount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
+
+            {/* Remarks */}
+            {order.remarks && (
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+                <Lbl text="Internal Remarks / Notes" />
+                <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 p-4 rounded-2xl border border-gray-100 mt-2 italic font-medium">
+                  "{order.remarks}"
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* --- RIGHT COLUMN: SUMMARY & TRACEABILITY --- */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Financial Summary Card */}
+            <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl p-8 text-white relative overflow-hidden">
+              <div className="flex items-center gap-2 mb-8 opacity-50">
+                <FaCalculator />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Financial Totals</h3>
+              </div>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="opacity-50 font-bold uppercase">Subtotal</span>
+                  <span className="font-mono">{formatCurrency(order.totalBeforeDiscount)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="opacity-50 font-bold uppercase text-emerald-400">GST Amount</span>
+                  <span className="font-mono text-emerald-400">{formatCurrency(order.gstTotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs border-b border-white/10 pb-5">
+                  <span className="opacity-50 font-bold uppercase">Freight</span>
+                  <span className="font-mono">{formatCurrency(order.freight)}</span>
+                </div>
+                <div className="pt-4">
+                  <span className="text-[10px] font-black opacity-40 uppercase block mb-1">Grand Total (Net)</span>
+                  <span className="text-4xl font-black tracking-tighter text-indigo-400">{formatCurrency(order.grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Dates Card */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <SectionHeader icon={FaCalendarAlt} title="Logistics Timeline" color="blue" />
+              <div className="p-6 space-y-5">
+                <DetailField label="Posting Date" value={formatDate(order.postingDate)} />
+                <DetailField label="Valid Until" value={formatDate(order.validUntil)} color="text-rose-600" />
+                <DetailField label="Document Date" value={formatDate(order.documentDate)} />
+              </div>
+            </div>
+
+            {/* Attachments Section */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <SectionHeader icon={FaPaperclip} title="Stored Documents" color="purple" />
+              <div className="p-6">
+                {order.attachments?.length > 0 ? (
+                  <div className="space-y-3">
+                    {order.attachments.map((file, idx) => (
+                      <a key={idx} href={file.fileUrl || file.url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl hover:bg-indigo-50 border border-transparent hover:border-indigo-100 transition-all">
+                        <FaFilePdf className="text-red-500" size={18} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-gray-900 truncate">{file.fileName || 'Attachment'}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 tracking-tighter">View Source</p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                    <p className="text-[10px] text-gray-300 font-black tracking-widest uppercase">No proof files</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Audit Logs */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+              <SectionHeader icon={FaHistory} title="Traceability Audit" color="orange" />
+              <div className="p-6 space-y-4">
+                <DetailField label="Sales Employee" value={order.salesEmployee} />
+                <DetailField label="Entry Created" value={formatDate(order.createdAt)} />
+                <DetailField label="Last Modification" value={formatDate(order.updatedAt)} />
+              </div>
+            </div>
+
           </div>
         </div>
       </div>

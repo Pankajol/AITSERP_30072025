@@ -2,32 +2,36 @@ import mongoose from "mongoose";
 
 const AttendanceSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company" },
+
+  // 🔥 IMPORTANT: CompanyUser use kar raha hai tu → correct
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "CompanyUser" },
 
   date: { type: String, required: true }, // YYYY-MM-DD
 
   punchIn: {
     time: String,
+    timestamp: Number,
     latitude: Number,
-     timestamp: Number,
     longitude: Number,
-    withinGeofence: { type: Boolean, default: true }
+    withinGeofence: { type: Boolean, default: true },
   },
 
   punchOut: {
     time: String,
+    timestamp: Number,
     latitude: Number,
-     timestamp: Number,
     longitude: Number,
-    withinGeofence: { type: Boolean, default: true }
+    withinGeofence: { type: Boolean, default: true },
   },
 
   totalHours: { type: Number, default: 0 },
 
+  isLate: { type: Boolean, default: false },
+
   status: {
     type: String,
-    enum: ["Present","Half Day","Absent","Geo-Violation"],
-    default: "Present"
+    enum: ["Present", "Half Day", "Absent", "Geo-Violation"],
+    default: "Present",
   },
 
 }, { timestamps: true });

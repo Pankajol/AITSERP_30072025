@@ -2,41 +2,44 @@ export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-import mongoose from "mongoose";
-import Campaign from "@/models/EmailCampaign";
-import sendCampaignById from "@/lib/sendCampaignById"; // helper that actually sends campaign
+import EmailCampaign from "@/models/EmailCampaign";
 
-// small helpers for JSON responses
+// helper responses
 function jsonResponse(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
     headers: { "Content-Type": "application/json" },
   });
 }
-function unauthorized(msg = "Unauthorized") {
-  return jsonResponse({ success: false, error: msg }, 401);
+function badRequest(message) {
+  return jsonResponse({ success: false, error: message }, 400);
 }
-function notFound(msg = "Not found") {
-  return jsonResponse({ success: false, error: msg }, 404);
-}
-function badRequest(msg = "Bad Request") {
-  return jsonResponse({ success: false, error: msg }, 400);
+function unauthorized(message = "Unauthorized") {
+  return jsonResponse({ success: false, error: message }, 401);
 }
 
-// validate Mongo ObjectId
-function isValidObjectId(id) {
-  if (!id) return false;
-  return mongoose.Types.ObjectId.isValid(id);
+// small email validator
+const isValidEmail = (e) =>
+  typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+// sanitize excel emails: returns array of unique valid emails (lowercase)
+function sanitizeEmails(arr) {
+  if (!Array.isArray(arr)) return [];
+  const cleaned = arr
+    .map((x) => (typeof x === "string" ? x.trim().toLowerCase() : ""))
+    .filter(Boolean)
+    .filter((e) => isValidEmail(e));
+  return Array.from(new Set(cleaned));
 }
 
-// GET /api/campaigns/:id
-export async function GET(req, { params }) {
+// ==========================================================
+//  CREATE CAMPAIGN (POST)
+// ==========================================================
+export async function POST(req) {
   try {
     await dbConnect();
 
-    const id = params?.id;
-    if (!isValidObjectId(id)) return badRequest("Invalid campaign id");
-
+    // ---------------- AUTH CHECK ----------------
     const token = getTokenFromHeader(req);
     if (!token) return unauthorized("Missing token");
 
@@ -47,62 +50,120 @@ export async function GET(req, { params }) {
       console.warn("verifyJWT failed:", err && err.message);
       return unauthorized("Invalid token");
     }
-    if (!decoded?.companyId) return unauthorized("Invalid token (no company)");
 
-    const c = await Campaign.findOne({ _id: id, companyId: decoded.companyId }).lean();
-    if (!c) return notFound("Campaign not found");
-    return jsonResponse({ success: true, data: c }, 200);
-  } catch (err) {
-    console.error("GET /:id error:", err);
-    return jsonResponse({ success: false, error: err?.message || "Server error" }, 500);
-  }
-}
-
-// PUT /api/campaigns/:id
-export async function PUT(req, { params }) {
-  try {
-    await dbConnect();
-
-    const id = params?.id;
-    if (!isValidObjectId(id)) return badRequest("Invalid campaign id");
-
-    const token = getTokenFromHeader(req);
-    if (!token) return unauthorized("Missing token");
-
-    let decoded;
-    try {
-      decoded = verifyJWT(token);
-    } catch (err) {
-      console.warn("verifyJWT failed:", err && err.message);
-      return unauthorized("Invalid token");
-    }
-    if (!decoded?.companyId) return unauthorized("Invalid token (no company)");
+    if (!decoded || !decoded.companyId) return unauthorized("Invalid token (no company)");
 
     const body = await req.json().catch(() => null);
-    if (!body || typeof body !== "object") return badRequest("Missing or invalid request body");
+    if (!body) return badRequest("Missing request body");
 
-    // Only allow safe fields to be updated if you want - here we allow full body but you can whitelist
-    const updated = await Campaign.findOneAndUpdate(
-      { _id: id, companyId: decoded.companyId },
-      body,
-      { new: true, runValidators: true }
-    ).lean();
+    const {
+      campaignName,
+      scheduledTime,
+      channel,
+      sender,
+      content,
+      emailSubject,
+      ctaText,
+      recipientSource,
+      recipientList,
+      recipientManual,
+      recipientExcelEmails,
+      attachments,
+      templateId,
+      emailMasterId,
+    } = body;
 
-    if (!updated) return notFound("Campaign not found or not permitted");
-    return jsonResponse({ success: true, data: updated }, 200);
+    // basic validations
+    if (!campaignName || typeof campaignName !== "string") return badRequest("Campaign Name is required");
+    if (!scheduledTime) return badRequest("Scheduled time is required");
+    if (!channel || !["email", "whatsapp"].includes(channel)) return badRequest("Invalid channel type");
+    if (!sender || typeof sender !== "string") return badRequest("Sender is required");
+    if (!content) return badRequest("Content is required");
+
+    // Email specific validations
+    if (channel === "email") {
+      if (!emailSubject || typeof emailSubject !== "string") return badRequest("Email subject required");
+      if (!ctaText || typeof ctaText !== "string") return badRequest("CTA text required");
+    }
+
+    // Recipient source validations
+    if (!recipientSource || !["segment", "excel", "manual"].includes(recipientSource)) {
+      return badRequest("Invalid recipientSource type");
+    }
+    if (
+  recipientSource === "segment" &&
+  (!Array.isArray(recipientList) || recipientList.filter(Boolean).length === 0)
+) {
+  return badRequest("Recipient segment is required");
+}
+    if (recipientSource === "manual" && (!recipientManual || !String(recipientManual).trim())) return badRequest("Manual recipients required");
+
+    // Excel validation & sanitize
+    let cleanedExcelEmails = [];
+    if (recipientSource === "excel") {
+      cleanedExcelEmails = sanitizeEmails(recipientExcelEmails || []);
+      if (cleanedExcelEmails.length === 0) return badRequest("No valid emails found in Excel");
+    }
+
+    // Parse scheduledTime: expect iso string or date string
+    const parsedDate = new Date(scheduledTime);
+    if (isNaN(parsedDate.getTime())) {
+      return badRequest("Invalid scheduledTime format. Send a valid ISO datetime.");
+    }
+
+    // OPTIONAL: If you want to convert a timezone-less datetime (from <input type="datetime-local">)
+    // coming from client as "YYYY-MM-DDTHH:mm" (no timezone), and you *intend* it to be in IST,
+    // then add the IST offset here. But it's better if frontend sends ISO UTC or includes timezone.
+    //
+    // Example (uncomment only if your frontend sends timezone-less local IST and you want to store as UTC):
+    // const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    // const scheduledUtc = new Date(parsedDate.getTime() - istOffsetMs);
+    //
+    // For now we'll store the parsed date as-is (assumes client sends proper ISO/UTC or timezone-aware string).
+    const scheduledUtc = parsedDate;
+
+    // attachments default
+    const attachmentsSafe = Array.isArray(attachments) ? attachments : [];
+
+    // build campaign object
+    const campaignData = {
+      campaignName: campaignName.trim(),
+      scheduledTime,
+      channel,
+      sender: sender.trim(),
+      content,
+      emailSubject: channel === "email" ? (emailSubject || "").trim() : undefined,
+      ctaText: channel === "email" ? (ctaText || "").trim() : undefined,
+      recipientSource,
+      recipientList:
+  recipientSource === "segment" && Array.isArray(recipientList)
+    ? recipientList.filter(Boolean)
+    : [],
+      recipientManual: recipientSource === "manual" ? (recipientManual || "") : null,
+      recipientExcelEmails: recipientSource === "excel" ? cleanedExcelEmails : [],
+      attachments: attachmentsSafe,
+      templateId: templateId || null,
+      emailMasterId: emailMasterId || null,
+      companyId: decoded.companyId,
+      createdBy: decoded.id || null,
+      status: "Scheduled",
+    };
+
+    const campaign = await EmailCampaign.create(campaignData);
+
+    return jsonResponse({ success: true, data: campaign }, 201);
   } catch (err) {
-    console.error("PUT /:id error:", err);
+    console.error("CREATE CAMPAIGN ERROR:", err && err.message);
     return jsonResponse({ success: false, error: err?.message || "Server error" }, 500);
   }
 }
 
-// DELETE /api/campaigns/:id
-export async function DELETE(req, { params }) {
+// ==========================================================
+//  GET ALL CAMPAIGNS — COMPANY SPECIFIC
+// ==========================================================
+export async function GET(req) {
   try {
     await dbConnect();
-
-    const id = params?.id;
-    if (!isValidObjectId(id)) return badRequest("Invalid campaign id");
 
     const token = getTokenFromHeader(req);
     if (!token) return unauthorized("Missing token");
@@ -114,62 +175,18 @@ export async function DELETE(req, { params }) {
       console.warn("verifyJWT failed:", err && err.message);
       return unauthorized("Invalid token");
     }
-    if (!decoded?.companyId) return unauthorized("Invalid token (no company)");
 
-    const removed = await Campaign.findOneAndDelete({ _id: id, companyId: decoded.companyId }).lean();
-    if (!removed) return notFound("Campaign not found or not permitted");
-    return jsonResponse({ success: true }, 200);
+    if (!decoded || !decoded.companyId) return unauthorized("Invalid token (no company)");
+
+    const campaigns = await EmailCampaign.find({ companyId: decoded.companyId }).sort({ createdAt: -1 });
+
+    return jsonResponse({ success: true, data: campaigns }, 200);
   } catch (err) {
-    console.error("DELETE /:id error:", err);
+    console.error("GET CAMPAIGNS ERROR:", err && err.message);
     return jsonResponse({ success: false, error: err?.message || "Server error" }, 500);
   }
 }
 
-// POST /api/campaigns/:id  (custom action: send now)
-export async function POST(req, { params }) {
-  try {
-    await dbConnect();
-
-    const id = params?.id;
-    if (!isValidObjectId(id)) return badRequest("Invalid campaign id");
-
-    const token = getTokenFromHeader(req);
-    if (!token) return unauthorized("Missing token");
-
-    let decoded;
-    try {
-      decoded = verifyJWT(token);
-    } catch (err) {
-      console.warn("verifyJWT failed:", err && err.message);
-      return unauthorized("Invalid token");
-    }
-    if (!decoded?.companyId) return unauthorized("Invalid token (no company)");
-
-    // ensure campaign exists and belongs to company
-    const campaign = await Campaign.findOne({ _id: id, companyId: decoded.companyId });
-    if (!campaign) return notFound("Campaign not found or not permitted");
-
-    // call helper to send campaign (should update campaign.status, logs, etc.)
-    // sendCampaignById should return an object like { success: true } or { success: false, error: "msg" }
-    let result;
-    try {
-      result = await sendCampaignById(id, decoded.companyId);
-    } catch (sendErr) {
-      console.error("sendCampaignById threw:", sendErr);
-      return jsonResponse({ success: false, error: sendErr?.message || "Send helper error" }, 500);
-    }
-
-    if (result && result.success) {
-      return jsonResponse({ success: true, data: result.data || null }, 200);
-    } else {
-      const msg = (result && result.error) || "Failed to send campaign";
-      return jsonResponse({ success: false, error: msg }, 500);
-    }
-  } catch (err) {
-    console.error("POST /:id (send) error:", err);
-    return jsonResponse({ success: false, error: err?.message || "Server error" }, 500);
-  }
-}
 
 
 

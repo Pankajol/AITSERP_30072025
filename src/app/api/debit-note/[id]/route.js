@@ -28,24 +28,54 @@ export async function GET(req, { params }) {
 }
 
 // PUT /api/debit-note/[id]: Update a Debit Note by ID
+// Update the PUT function to handle FormData
 export async function PUT(req, { params }) {
   try {
     await dbConnect();
-    // Await the params promise
     const { id } = await params;
-    const data = await req.json();
+
+    const contentType = req.headers.get("content-type") || "";
+    let data;
+
+    // Check if the request is FormData (for files) or JSON
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      // Extract the 'debitNoteData' stringified JSON from FormData
+      const rawData = formData.get("debitNoteData");
+      if (!rawData) {
+        return new Response(JSON.stringify({ message: "No data found in FormData" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      data = JSON.parse(rawData);
+    } else {
+      // Standard JSON fallback
+      data = await req.json();
+    }
+
+    // Clean up IDs for items to prevent Mongoose errors
+    if (data.items && Array.isArray(data.items)) {
+      data.items = data.items.map(it => ({
+        ...it,
+        item: typeof it.item === 'object' ? it.item._id : it.item
+      }));
+    }
+
     const updatedNote = await DebitNote.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,
     });
+
     if (!updatedNote) {
       return new Response(JSON.stringify({ message: "Debit Note not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
     }
+
     return new Response(
-      JSON.stringify({ message: "Debit Note updated successfully", note: updatedNote }),
+      JSON.stringify({ message: "Debit Note updated successfully", success: true, data: updatedNote }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {

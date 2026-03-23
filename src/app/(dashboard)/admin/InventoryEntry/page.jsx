@@ -1,4 +1,3 @@
-// e.g., src/app/admin/inventory-adjustments/page.js
 "use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
@@ -6,39 +5,64 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { 
+  FaArrowLeft, FaCheck, FaCalendarAlt, FaHistory, 
+  FaBoxOpen, FaTags, FaInfoCircle, FaPlus, FaMinusCircle, FaBarcode 
+} from "react-icons/fa";
 
 import ItemSection from "@/components/ItemSection"; 
 import BatchAllocationModal from "@/components/MultiBatchModalbtach";
 
-// --- Helper Functions ---
+// --- Helper Functions (Logic remains identical) ---
 const generateUniqueId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
 const ArrayOf = (arr) => (Array.isArray(arr) ? arr : []);
 const formatDateForInput = (dateStr) => dateStr ? new Date(dateStr).toISOString().slice(0, 10) : "";
 
-// --- Internal Modal for "Increase Stock" ---
+// --- Internal Modal for "Increase Stock" (Updated UI) ---
 function IncreaseStockBatchModal({ batches, onBatchEntryChange, onAddBatchEntry, onClose, itemCode, itemName }) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold mb-2">Enter New Batch Details for {itemCode}</h2>
-        <p className="mb-4 text-sm text-gray-600">Item: {itemName}</p>
-        <table className="w-full table-auto border-collapse mb-4">
-          <thead>
-            <tr className="bg-gray-200"><th className="p-2 border text-left">Batch Number</th><th className="p-2 border text-left">Expiry Date</th><th className="p-2 border text-left">Quantity</th><th className="p-2 border text-center">Action</th></tr>
-          </thead>
-          <tbody>
-            {ArrayOf(batches).map((batch, idx) => (
-              <tr key={batch.id}>
-                <td className="p-1 border"><input type="text" value={batch.batchNumber || ""} onChange={(e) => onBatchEntryChange(idx, "batchNumber", e.target.value)} className="w-full p-1 border rounded" /></td>
-                <td className="p-1 border"><input type="date" value={formatDateForInput(batch.expiryDate)} onChange={(e) => onBatchEntryChange(idx, "expiryDate", e.target.value)} className="w-full p-1 border rounded" /></td>
-                <td className="p-1 border"><input type="number" value={batch.batchQuantity || ""} onChange={(e) => onBatchEntryChange(idx, "batchQuantity", Number(e.target.value))} className="w-full p-1 border rounded" min="0" /></td>
-                <td className="p-1 border text-center"><button type="button" onClick={() => onBatchEntryChange(idx, 'remove', null)} className="text-red-500 font-bold text-xl">&times;</button></td>
+    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/50">
+          <h2 className="text-lg font-bold text-gray-900">New Batch Entry</h2>
+          <p className="text-xs text-emerald-600 font-medium uppercase tracking-wider">{itemCode} — {itemName}</p>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                <th className="pb-2 text-left">Batch Number</th>
+                <th className="pb-2 text-left">Expiry</th>
+                <th className="pb-2 text-right w-24">Qty</th>
+                <th className="pb-2 text-center w-12"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <button type="button" onClick={onAddBatchEntry} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Add Batch</button>
-        <div className="flex justify-end mt-4"><button type="button" onClick={onClose} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Done</button></div>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {ArrayOf(batches).map((batch, idx) => (
+                <tr key={batch.id}>
+                  <td className="py-2 pr-2">
+                    <input type="text" value={batch.batchNumber || ""} onChange={(e) => onBatchEntryChange(idx, "batchNumber", e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:border-emerald-500" placeholder="Batch#" />
+                  </td>
+                  <td className="py-2 pr-2">
+                    <input type="date" value={formatDateForInput(batch.expiryDate)} onChange={(e) => onBatchEntryChange(idx, "expiryDate", e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none" />
+                  </td>
+                  <td className="py-2">
+                    <input type="number" value={batch.batchQuantity || ""} onChange={(e) => onBatchEntryChange(idx, "batchQuantity", Number(e.target.value))} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-right outline-none" min="0" />
+                  </td>
+                  <td className="py-2 text-center">
+                    <button onClick={() => onBatchEntryChange(idx, 'remove', null)} className="text-red-400 hover:text-red-600 transition-colors"><FaMinusCircle /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button onClick={onAddBatchEntry} className="mt-4 flex items-center gap-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors uppercase tracking-widest">
+            <FaPlus /> Add Another Batch
+          </button>
+        </div>
+        <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+          <button onClick={onClose} className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Confirm Batches</button>
+        </div>
       </div>
     </div>
   );
@@ -73,6 +97,7 @@ function InventoryAdjustmentForm() {
   const [activeItemIndex, setActiveItemIndex] = useState(null);
   const [availableBatches, setAvailableBatches] = useState([]);
 
+  // ... (Logic for totals and handlers remains exactly as in your provided code)
   useEffect(() => {
     let newGrandTotal = 0;
     const updatedItems = adjustmentData.items.map(item => {
@@ -195,347 +220,650 @@ function InventoryAdjustmentForm() {
     handleItemDataChange(activeItemIndex, 'batches', transformedBatches);
   }, [activeItemIndex, handleItemDataChange]);
 
-  // const handleSubmit = useCallback(async () => {
-  //   console.log("Submitting Payload:", adjustmentData);
-  //   toast.success("Form is ready for submission!");
-  // }, [adjustmentData]);
+  const handleSubmitAdjustment = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
+      if (!token) { toast.error("Unauthorized: Please log in"); setLoading(false); return; }
 
+      const itemsForSubmission = ArrayOf(adjustmentData.items).map(it => ({
+        item: it.item,
+        warehouse: it.warehouse,
+        quantity: Number(it.quantity),
+        managedBy: it.managedBy,
+        selectedBin: it.selectedBin?._id || null,
+        batches: ArrayOf(it.batches)
+          .filter(b => b.batchNumber && b.batchNumber.trim() !== "" && Number(b.batchQuantity) > 0)
+          .map(({ id, ...rest }) => rest),
+      }));
 
+      const payload = {
+        adjustmentDate: adjustmentData.adjustmentDate,
+        adjustmentType: adjustmentData.adjustmentType,
+        reason: adjustmentData.reason,
+        remarks: adjustmentData.remarks,
+        items: itemsForSubmission,
+      };
 
-const handleSubmitAdjustment = useCallback(async () => {
-  try {
-    setLoading(true);
+      const url = isEdit ? `/api/inventory-adjustments/${editId}` : "/api/inventory-adjustments";
+      const method = isEdit ? "put" : "post";
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast.error("Unauthorized: Please log in");
-      setLoading(false);
-      return;
-    }
+      const response = await axios({ method, url, data: payload, headers: { Authorization: `Bearer ${token}` } });
 
-    // Basic validation
-    if (!adjustmentData.adjustmentDate) {
-      toast.error("Please select an adjustment date.");
-      setLoading(false);
-      return;
-    }
-    if (!adjustmentData.reason.trim()) {
-      toast.error("Please provide a reason for the adjustment.");
-      setLoading(false);
-      return;
-    }
-    if (
-      !adjustmentData.items.length ||
-      adjustmentData.items.some(it => !it.item || !it.warehouse || Number(it.quantity) <= 0)
-    ) {
-      toast.error("Please add at least one valid item with Item, Warehouse, and Quantity greater than 0.");
-      setLoading(false);
-      return;
-    }
-
-    // Validate batch-managed items
-    for (const [idx, item] of adjustmentData.items.entries()) {
-      if (item.managedBy?.toLowerCase() === "batch") {
-        const totalAllocatedBatchQty = ArrayOf(item.batches).reduce(
-          (sum, b) => sum + (Number(b.batchQuantity) || 0),
-          0
-        );
-        if (totalAllocatedBatchQty !== Number(item.quantity)) {
-          toast.error(
-            `Item ${item.itemName} (Row ${idx + 1}): Total batch quantity (${totalAllocatedBatchQty}) does not match item quantity (${item.quantity}). Please adjust batch details.`
-          );
-          setLoading(false);
-          return;
-        }
-
-        const invalidBatchEntry = ArrayOf(item.batches).some(
-          b => !b.batchNumber || b.batchNumber.trim() === "" || Number(b.batchQuantity) <= 0
-        );
-        if (invalidBatchEntry) {
-          toast.error(
-            `Item ${item.itemName} (Row ${idx + 1}): Contains an invalid batch entry. Batch Number and Quantity must be provided and Quantity must be greater than 0.`
-          );
-          setLoading(false);
-          return;
-        }
+      if (response.data.success) {
+        toast.success(isEdit ? "Update Successful" : "Adjustment Saved");
+        router.push("/admin/InventoryAdjustmentsView");
       }
-    }
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Save Failed");
+    } finally { setLoading(false); }
+  }, [adjustmentData, isEdit, editId, router]);
 
-    // Map items for submission
-    const itemsForSubmission = ArrayOf(adjustmentData.items).map(it => ({
-      item: it.item,
-      warehouse: it.warehouse,
-      quantity: Number(it.quantity),
-      managedBy: it.managedBy,
-      selectedBin: it.selectedBin?._id || null, // <-- send selected bin
-      batches: ArrayOf(it.batches)
-        .filter(b => b.batchNumber && b.batchNumber.trim() !== "" && Number(b.batchQuantity) > 0)
-        .map(({ id, ...rest }) => rest),
-    }));
+  // --- UI Helper Components ---
+  const Lbl = ({ text, req }) => (
+    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+      {text}{req && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
 
-    const payload = {
-      adjustmentDate: adjustmentData.adjustmentDate,
-      adjustmentType: adjustmentData.adjustmentType,
-      reason: adjustmentData.reason,
-      remarks: adjustmentData.remarks,
-      items: itemsForSubmission,
-    };
+  const fi = () => "w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300";
 
-    const url = isEdit
-      ? `/api/inventory-adjustments/${editId}`
-      : "/api/inventory-adjustments";
-    const method = isEdit ? "put" : "post";
-
-    const response = await axios({
-      method,
-      url,
-      data: payload,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (response.data.success) {
-      toast.success(
-        isEdit
-          ? "Inventory Adjustment updated successfully"
-          : "Inventory Adjustment saved successfully"
-      );
-      router.push("/admin/InventoryAdjustmentsView");
-    } else {
-      toast.error(response.data.error || "Failed to save Inventory Adjustment");
-    }
-  } catch (err) {
-    console.error("Error saving Inventory Adjustment:", err);
-    toast.error(err.response?.data?.error || err.message || "Failed to save Inventory Adjustment");
-  } finally {
-    setLoading(false);
-  }
-}, [adjustmentData, isEdit, editId, router]);
-
-
-
-
-  //   const handleSubmitAdjustment = useCallback(async () => {
-  //   try {
-  //     setLoading(true);
-
-  //     const token = localStorage.getItem("token");
-  //     if (!token) {
-  //       toast.error("Unauthorized: Please log in");
-  //       setLoading(false);
-  //       return;
-  //     }
-
-  //     // Basic validation
-  //     if (!adjustmentData.adjustmentDate) {
-  //       toast.error("Please select an adjustment date.");
-  //       setLoading(false);
-  //       return;
-  //     }
-  //     if (!adjustmentData.reason.trim()) {
-  //       toast.error("Please provide a reason for the adjustment.");
-  //       setLoading(false);
-  //       return;
-  //     }
-  //     if (!adjustmentData.items.length || adjustmentData.items.some(it => !it.item || !it.warehouse || Number(it.quantity) <= 0)) {
-  //       toast.error("Please add at least one valid item with Item, Warehouse, and Quantity greater than 0.");
-  //       setLoading(false);
-  //       return;
-  //     }
-
-  //     // Validate batch-managed items: total batch quantity must match item quantity
-  //     for (const [idx, item] of adjustmentData.items.entries()) {
-  //       if (item.managedBy?.toLowerCase() === "batch") {
-  //         const totalAllocatedBatchQty = ArrayOf(item.batches).reduce( // Use ArrayOf for safety
-  //           (sum, b) => sum + (Number(b.batchQuantity) || 0),
-  //           0
-  //         );
-  //         if (totalAllocatedBatchQty !== Number(item.quantity)) {
-  //           toast.error(`Item ${item.itemName} (Row ${idx + 1}): Total batch quantity (${totalAllocatedBatchQty}) does not match item quantity (${item.quantity}). Please adjust batch details.`);
-  //           setLoading(false);
-  //           return;
-  //         }
-  //         if (totalAllocatedBatchQty === 0 && Number(item.quantity) > 0) {
-  //             toast.error(`Item ${item.itemName} (Row ${idx + 1}): Is batch-managed but no batches have been entered. Please set batch details.`);
-  //             setLoading(false);
-  //             return;
-  //         }
-  //         // Also ensure individual batch entries are valid (batch number and quantity > 0)
-  //         const invalidBatchEntry = ArrayOf(item.batches).some(b => // Use ArrayOf for safety
-  //             !b.batchNumber || b.batchNumber.trim() === "" || (Number(b.batchQuantity) || 0) <= 0
-  //         );
-  //         if (invalidBatchEntry) {
-  //             toast.error(`Item ${item.itemName} (Row ${idx + 1}): Contains an invalid batch entry. Batch Number and Quantity must be provided and Quantity must be greater than 0.`);
-  //             setLoading(false);
-  //             return;
-  //         }
-  //       }
-  //     }
-
-  //     const itemsForSubmission = ArrayOf(adjustmentData.items).map(it => ({ // Use ArrayOf for safety
-  //       // Remove frontend-only 'id' and 'unitPrice' if not needed by backend
-  //       item: it.item,
-  //       quantity: Number(it.quantity),
-  //       warehouse: it.warehouse,
-  //       managedBy: it.managedBy,
-  //       // Filter out incomplete/empty batch entries and remove client-side 'id'
-  //       batches: ArrayOf(it.batches).filter(b => b.batchNumber && b.batchNumber.trim() !== "" && Number(b.batchQuantity) > 0).map(({ id, ...rest }) => rest)
-  //     }));
-
-  //     const payload = {
-  //       adjustmentDate: adjustmentData.adjustmentDate,
-  //       adjustmentType: adjustmentData.adjustmentType,
-  //       reason: adjustmentData.reason,
-  //       remarks: adjustmentData.remarks,
-  //       items: itemsForSubmission,
-  //     };
-
-  //     const url = isEdit ? `/api/inventory-adjustments/${editId}` : "/api/inventory-adjustments"; // NEW API endpoint
-  //     const method = isEdit ? "put" : "post";
-
-  //     const response = await axios({
-  //       method,
-  //       url,
-  //       data: payload,
-  //       headers: {
-  //         Authorization: `Bearer ${token}`,
-  //         "Content-Type": "application/json",
-  //       },
-  //     });
-
-  //     if (response.data.success) {
-  //       toast.success(isEdit ? "Inventory Adjustment updated successfully" : "Inventory Adjustment saved successfully");
-  //       router.push("/admin/InventoryAdjustmentsView"); // Redirect to a view page
-  //     } else {
-  //       toast.error(response.data.error || "Failed to save Inventory Adjustment");
-  //     }
-  //   } catch (err) {
-  //     console.error("Error saving Inventory Adjustment:", err);
-  //     toast.error(err.response?.data?.error || err.message || "Failed to save Inventory Adjustment");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // }, [adjustmentData, isEdit, editId, router]);
-
-
+  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
+        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}>
+          <Icon className="text-sm" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-900">{title}</p>
+          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
 
   return (
-    <div className="m-4 md:m-10 p-4 md:p-8 shadow-xl bg-gray-50 rounded-lg">
-      <h1 className="text-3xl font-bold mb-6">{isEdit ? "Edit" : "New"} Inventory Adjustment</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 p-6 border rounded-lg shadow-md bg-white">
-        <div>
-          <label className="block mb-2 font-medium">Date</label>
-          <input type="date" name="adjustmentDate" value={adjustmentData.adjustmentDate} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" />
-        </div>
-        <div>
-          <label className="block mb-2 font-medium">Reference No.</label>
-          <input type="text" name="refNumber" value={adjustmentData.refNumber} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" placeholder="Internal Ref No."/>
-        </div>
-        <div className="md:col-span-2">
-          <label className="block mb-2 font-medium">Type</label>
-          <select name="adjustmentType" value={adjustmentData.adjustmentType} onChange={handleHeaderChange} className="w-full p-2 border rounded-md bg-white">
-            <option value="increase">Increase Stock (Stock In)</option>
-            <option value="decrease">Decrease Stock (Stock Out)</option>
-          </select>
-        </div>
-        <div className="md:col-span-2">
-          <label className="block mb-2 font-medium">Reason</label>
-          <textarea name="reason" value={adjustmentData.reason} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" rows="2" placeholder="e.g., Physical count correction, Damaged goods"/>
-        </div>
-         <div className="md:col-span-2">
-          <label className="block mb-2 font-medium">Remarks</label>
-          <textarea name="remarks" value={adjustmentData.remarks} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" rows="2" placeholder="Optional notes..."/>
-        </div>
-      </div>
-
-      <div className="p-6 border rounded-lg shadow-md bg-white mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Items</h2>
-        <ItemSection
-          items={adjustmentData.items}
-          onItemChange={(i, e) => handleItemDataChange(i, e.target.name, e.target.value)}
-          onItemSelect={handleItemSelect}
-          onWarehouseSelect={handleWarehouseSelect}
-          onAddItem={addItemRow}
-          onRemoveItem={removeItemRow}
-        />
-      </div>
-
-      <div className="p-6 border rounded-lg shadow-md bg-white mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Batch Details</h2>
-        {adjustmentData.items.map((item, index) => {
-          if (item.managedBy !== 'batch' || item.quantity <= 0) return null;
-          const totalAllocated = ArrayOf(item.batches).reduce((sum, b) => sum + (Number(b.batchQuantity) || 0), 0);
-          return (
-            <div key={item.id} className="border-t first:border-t-0 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <span className="font-semibold text-lg">{item.itemName || `Item ${index + 1}`} (Qty: {item.quantity})</span>
-                <button onClick={() => openBatchManager(index)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={!item.item || !item.warehouse}>
-                  {adjustmentData.adjustmentType === 'increase' ? 'Set New Batches' : 'Allocate from Stock'}
-                </button>
-              </div>
-              {item.batches.length > 0 && (
-                <div className="mt-2 pl-4 text-sm">
-                  <p className="font-medium mb-1">Allocations:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    {item.batches.map((batch) => (<li key={batch.id}>Batch: <strong>{batch.batchNumber}</strong>, Qty: <strong>{batch.batchQuantity}</strong></li>))}
-                  </ul>
-                  <p className={`mt-2 font-bold ${totalAllocated !== item.quantity ? "text-red-600" : "text-green-600"}`}>Total Allocated: {totalAllocated} / {item.quantity}</p>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      
-      <div className="flex justify-end p-6">
-          <div className="w-full md:w-1/3">
-              <div className="flex justify-between items-center text-xl font-bold">
-                  <span>Adjustment Value:</span>
-                  <span>₹{adjustmentData.grandTotal.toFixed(2)}</span>
-              </div>
-          </div>
-      </div>
-
-      {showIncreaseModal && activeItemIndex !== null && (
-        <IncreaseStockBatchModal
-          batches={adjustmentData.items[activeItemIndex].batches} onBatchEntryChange={handleIncreaseBatchChange}
-          onAddBatchEntry={addIncreaseBatchEntry} onClose={() => setShowIncreaseModal(false)}
-          itemCode={adjustmentData.items[activeItemIndex].itemCode} itemName={adjustmentData.items[activeItemIndex].itemName}
-        />
-      )}
-      {showDecreaseModal && activeItemIndex !== null && (
-        <BatchAllocationModal
-          onClose={() => setShowDecreaseModal(false)} onUpdateBatch={handleDecreaseBatchUpdate}
-          batchOptions={availableBatches}
-          itemsbatch={{
-            itemId: adjustmentData.items[activeItemIndex].item, warehouse: adjustmentData.items[activeItemIndex].warehouse,
-            itemName: adjustmentData.items[activeItemIndex].itemName, qty: adjustmentData.items[activeItemIndex].quantity,
-            currentAllocations: ArrayOf(adjustmentData.items[activeItemIndex].batches).map(b => ({ batchCode: b.batchNumber, allocatedQuantity: b.batchQuantity, ...b }))
-          }}
-        />
-      )}
-
-      <div className="flex flex-wrap gap-4 mt-8">
-        <button onClick={handleSubmitAdjustment} disabled={loading} className="px-6 py-3 rounded-lg bg-blue-700 text-white font-semibold text-lg hover:bg-blue-800 disabled:bg-gray-400">
-          {loading ? "Saving..." : "Submit Adjustment"}
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* --- Header --- */}
+        <button onClick={() => router.push("/admin/InventoryAdjustmentsView")} className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4 hover:text-indigo-800 transition-colors">
+          <FaArrowLeft className="text-xs" /> Back to List
         </button>
-        <button onClick={() => router.back()} className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-semibold text-lg">Cancel</button>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">{isEdit ? "Edit" : "New"} Inventory Adjustment</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Correct stock levels and manage batch allocations</p>
+          </div>
+          <div className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest border ${adjustmentData.adjustmentType === 'increase' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+            {adjustmentData.adjustmentType === 'increase' ? 'Stock In' : 'Stock Out'}
+          </div>
+        </div>
+
+        {/* --- Header Data Section --- */}
+        <SectionCard icon={FaCalendarAlt} title="Adjustment Header" subtitle="Date, Type and Reference info" color="indigo">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Lbl text="Adjustment Date" req />
+              <input type="date" name="adjustmentDate" value={adjustmentData.adjustmentDate} onChange={handleHeaderChange} className={fi()} />
+            </div>
+            <div>
+              <Lbl text="Reference Number" />
+              <input type="text" name="refNumber" value={adjustmentData.refNumber} onChange={handleHeaderChange} className={fi()} placeholder="e.g. ADJ-998" />
+            </div>
+            <div className="md:col-span-2">
+              <Lbl text="Movement Type" req />
+              <select name="adjustmentType" value={adjustmentData.adjustmentType} onChange={handleHeaderChange} className={fi()}>
+                <option value="increase">Increase Stock (Stock In)</option>
+                <option value="decrease">Decrease Stock (Stock Out)</option>
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <Lbl text="Adjustment Reason" req />
+              <textarea name="reason" value={adjustmentData.reason} onChange={handleHeaderChange} className={`${fi()} resize-none`} rows="2" placeholder="e.g., Damaged goods, Stock verification..."/>
+            </div>
+            <div className="md:col-span-2">
+              <Lbl text="General Remarks" />
+              <textarea name="remarks" value={adjustmentData.remarks} onChange={handleHeaderChange} className={`${fi()} resize-none`} rows="2" placeholder="Optional internal notes..."/>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* --- Item Section --- */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-emerald-50/40">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-500">
+              <FaBoxOpen className="text-sm" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Line Items</p>
+              <p className="text-xs text-gray-400">{adjustmentData.items.length} product(s) being adjusted</p>
+            </div>
+          </div>
+          <div className="p-4 overflow-x-auto">
+            <ItemSection
+              items={adjustmentData.items}
+              onItemChange={(i, e) => handleItemDataChange(i, e.target.name, e.target.value)}
+              onItemSelect={handleItemSelect}
+              onWarehouseSelect={handleWarehouseSelect}
+              onAddItem={addItemRow}
+              onRemoveItem={removeItemRow}
+            />
+          </div>
+        </div>
+
+        {/* --- Batch Management Section --- */}
+        <SectionCard icon={FaBarcode} title="Batch & Serialization" subtitle="Manage specific stock identifiers" color="amber">
+          <div className="space-y-4">
+            {adjustmentData.items.map((item, index) => {
+              if (item.managedBy !== 'batch' || item.quantity <= 0) return null;
+              const totalAllocated = ArrayOf(item.batches).reduce((sum, b) => sum + (Number(b.batchQuantity) || 0), 0);
+              const isMatch = totalAllocated === Number(item.quantity);
+
+              return (
+                <div key={item.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">{item.itemName || `Row ${index + 1}`}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">Required Allocation: {item.quantity}</p>
+                    </div>
+                    <button onClick={() => openBatchManager(index)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${isMatch ? 'bg-white text-gray-600 border border-gray-200' : 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-100'}`} disabled={!item.item || !item.warehouse}>
+                      {adjustmentData.adjustmentType === 'increase' ? 'Set New Batches' : 'Allocate from Stock'}
+                    </button>
+                  </div>
+                  
+                  {item.batches.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {item.batches.map((batch) => (
+                        <div key={batch.id} className="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-gray-100 text-xs">
+                          <span className="font-bold text-gray-600">Batch: {batch.batchNumber}</span>
+                          <span className="text-indigo-600 font-mono font-bold">{batch.batchQuantity}</span>
+                        </div>
+                      ))}
+                      <div className="col-span-full mt-2 flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isMatch ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+                        <span className={`text-[11px] font-bold ${isMatch ? 'text-emerald-600' : 'text-red-500 uppercase tracking-wider'}`}>
+                          {isMatch ? `Fully Allocated (${totalAllocated})` : `Mismatch: ${totalAllocated} allocated of ${item.quantity}`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {adjustmentData.items.every(i => i.managedBy !== 'batch') && (
+              <p className="text-center py-4 text-xs text-gray-300 font-medium italic">No batch-managed items found in this adjustment.</p>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* --- Footer Summary --- */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 py-6 border-t border-gray-100 mt-8">
+          <div className="bg-white px-6 py-4 rounded-2xl border border-gray-100 shadow-sm min-w-[240px]">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Total Adjustment Value</p>
+            <p className="text-2xl font-black text-indigo-700 font-mono">₹{adjustmentData.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+          </div>
+          
+          <div className="flex gap-4">
+            <button onClick={() => router.back()} className="px-6 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all">
+              Cancel
+            </button>
+            <button onClick={handleSubmitAdjustment} disabled={loading} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:bg-gray-300">
+              {loading ? "Processing..." : "Submit Adjustment"}
+            </button>
+          </div>
+        </div>
       </div>
-      <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} />
+      <ToastContainer position="bottom-right" autoClose={5000} theme="colored" />
     </div>
   );
 }
 
 export default function InventoryAdjustmentFormWrapper() {
   return (
-    <Suspense fallback={<div className="text-center py-20 text-lg">Loading Form...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400 text-sm font-medium">Loading Form Components...</div>}>
       <InventoryAdjustmentForm />
     </Suspense>
   );
 }
+
+
+// // e.g., src/app/admin/inventory-adjustments/page.js
+// "use client";
+
+// import React, { useState, useEffect, useCallback, Suspense } from "react";
+// import { useRouter, useSearchParams } from "next/navigation";
+// import axios from "axios";
+// import { toast, ToastContainer } from "react-toastify";
+// import "react-toastify/dist/ReactToastify.css";
+
+// import ItemSection from "@/components/ItemSection"; 
+// import BatchAllocationModal from "@/components/MultiBatchModalbtach";
+
+// // --- Helper Functions ---
+// const generateUniqueId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+// const ArrayOf = (arr) => (Array.isArray(arr) ? arr : []);
+// const formatDateForInput = (dateStr) => dateStr ? new Date(dateStr).toISOString().slice(0, 10) : "";
+
+// // --- Internal Modal for "Increase Stock" ---
+// function IncreaseStockBatchModal({ batches, onBatchEntryChange, onAddBatchEntry, onClose, itemCode, itemName }) {
+//   return (
+//     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+//       <div className="bg-white p-6 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+//         <h2 className="text-xl font-semibold mb-2">Enter New Batch Details for {itemCode}</h2>
+//         <p className="mb-4 text-sm text-gray-600">Item: {itemName}</p>
+//         <table className="w-full table-auto border-collapse mb-4">
+//           <thead>
+//             <tr className="bg-gray-200"><th className="p-2 border text-left">Batch Number</th><th className="p-2 border text-left">Expiry Date</th><th className="p-2 border text-left">Quantity</th><th className="p-2 border text-center">Action</th></tr>
+//           </thead>
+//           <tbody>
+//             {ArrayOf(batches).map((batch, idx) => (
+//               <tr key={batch.id}>
+//                 <td className="p-1 border"><input type="text" value={batch.batchNumber || ""} onChange={(e) => onBatchEntryChange(idx, "batchNumber", e.target.value)} className="w-full p-1 border rounded" /></td>
+//                 <td className="p-1 border"><input type="date" value={formatDateForInput(batch.expiryDate)} onChange={(e) => onBatchEntryChange(idx, "expiryDate", e.target.value)} className="w-full p-1 border rounded" /></td>
+//                 <td className="p-1 border"><input type="number" value={batch.batchQuantity || ""} onChange={(e) => onBatchEntryChange(idx, "batchQuantity", Number(e.target.value))} className="w-full p-1 border rounded" min="0" /></td>
+//                 <td className="p-1 border text-center"><button type="button" onClick={() => onBatchEntryChange(idx, 'remove', null)} className="text-red-500 font-bold text-xl">&times;</button></td>
+//               </tr>
+//             ))}
+//           </tbody>
+//         </table>
+//         <button type="button" onClick={onAddBatchEntry} className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Add Batch</button>
+//         <div className="flex justify-end mt-4"><button type="button" onClick={onClose} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Done</button></div>
+//       </div>
+//     </div>
+//   );
+// }
+
+// // --- Main Form Component ---
+// const initialAdjustmentState = {
+//   adjustmentDate: formatDateForInput(new Date()),
+//   adjustmentType: "increase",
+//   refNumber: "",
+//   reason: "",
+//   remarks: "",
+//   grandTotal: 0,
+//   items: [{
+//     id: generateUniqueId(),
+//     item: "", itemCode: "", itemName: "", itemDescription: "",
+//     unitPrice: 0, quantity: 0, totalAmount: 0,
+//     warehouse: "", managedBy: "none", batches: [],
+//   }],
+// };
+
+// function InventoryAdjustmentForm() {
+//   const router = useRouter();
+//   const search = useSearchParams();
+//   const editId = search.get("editId");
+//   const isEdit = Boolean(editId);
+
+//   const [adjustmentData, setAdjustmentData] = useState(initialAdjustmentState);
+//   const [loading, setLoading] = useState(false);
+//   const [showIncreaseModal, setShowIncreaseModal] = useState(false);
+//   const [showDecreaseModal, setShowDecreaseModal] = useState(false);
+//   const [activeItemIndex, setActiveItemIndex] = useState(null);
+//   const [availableBatches, setAvailableBatches] = useState([]);
+
+//   useEffect(() => {
+//     let newGrandTotal = 0;
+//     const updatedItems = adjustmentData.items.map(item => {
+//       let itemTotal;
+//       if (adjustmentData.adjustmentType === 'decrease' && item.batches.length > 0) {
+//         itemTotal = item.batches.reduce((sum, batch) => sum + ((Number(batch.unitPrice) || 0) * (Number(batch.batchQuantity) || 0)), 0);
+//       } else {
+//         itemTotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+//       }
+//       newGrandTotal += itemTotal;
+//       return { ...item, totalAmount: itemTotal };
+//     });
+
+//     if (newGrandTotal !== adjustmentData.grandTotal || JSON.stringify(updatedItems) !== JSON.stringify(adjustmentData.items)) {
+//         setAdjustmentData(prev => ({
+//           ...prev,
+//           items: updatedItems,
+//           grandTotal: newGrandTotal,
+//         }));
+//     }
+//   }, [adjustmentData.items, adjustmentData.adjustmentType]);
+
+//   const handleHeaderChange = useCallback((e) => {
+//     const { name, value } = e.target;
+//     if (name === 'adjustmentType') {
+//       toast.info("Type changed. Please re-verify batch details.");
+//       setAdjustmentData(p => ({ ...p, [name]: value, items: p.items.map(item => ({ ...item, batches: [] })) }));
+//     } else {
+//       setAdjustmentData(p => ({ ...p, [name]: value }));
+//     }
+//   }, []);
+
+//   const handleItemDataChange = useCallback((index, field, value) => {
+//     setAdjustmentData(p => {
+//       const newItems = [...p.items];
+//       const oldQuantity = newItems[index].quantity;
+//       newItems[index] = { ...newItems[index], [field]: value };
+//       if (field === 'quantity' && Number(value) !== oldQuantity) {
+//         newItems[index].batches = [];
+//       }
+//       return { ...p, items: newItems };
+//     });
+//   }, []);
+
+//   const handleItemSelect = useCallback((index, sku) => {
+//     setAdjustmentData(p => {
+//       const newItems = [...p.items];
+//       newItems[index] = {
+//         ...newItems[index],
+//         item: sku._id, itemCode: sku.itemCode, itemName: sku.itemName,
+//         managedBy: sku.managedBy || "none",
+//         itemDescription: sku.description || "",
+//         unitPrice: Number(sku.unitPrice) || 0,
+//         batches: [],
+//       };
+//       return { ...p, items: newItems };
+//     });
+//   }, []);
+
+//   const handleWarehouseSelect = useCallback((index, wh) => {
+//     setAdjustmentData(p => {
+//       const newItems = [...p.items];
+//       newItems[index] = { ...newItems[index], warehouse: wh._id, batches: [] };
+//       return { ...p, items: newItems };
+//     });
+//   }, []);
+
+//   const addItemRow = useCallback(() => setAdjustmentData(p => ({ ...p, items: [...p.items, { ...initialAdjustmentState.items[0], id: generateUniqueId() }] })), []);
+//   const removeItemRow = useCallback((index) => setAdjustmentData(p => ({ ...p, items: p.items.filter((_, i) => i !== index) })), []);
+
+//   const openBatchManager = useCallback(async (index) => {
+//     const currentItem = adjustmentData.items[index];
+//     if (!currentItem.item || !currentItem.warehouse || currentItem.managedBy !== 'batch') {
+//       toast.warn("Select a batch-managed Item and Warehouse first.");
+//       return;
+//     }
+//     setActiveItemIndex(index);
+//     if (adjustmentData.adjustmentType === 'increase') {
+//       setShowIncreaseModal(true);
+//     } else {
+//       try {
+//         setLoading(true);
+//         const res = await axios.get( `/api/inventory-batch/${currentItem.item}/${currentItem.warehouse}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+//         setAvailableBatches(res.data.success ? res.data.data.batches || [] : []);
+//         setShowDecreaseModal(true);
+//       } catch (err) {
+//         toast.error(err.response?.data?.error || "Error fetching batch stock.");
+//       } finally {
+//         setLoading(false);
+//       }
+//     }
+//   }, [adjustmentData]);
+
+//   const handleIncreaseBatchChange = useCallback((batchIndex, field, value) => {
+//     setAdjustmentData(p => {
+//       const newItems = [...p.items];
+//       const batches = ArrayOf(newItems[activeItemIndex].batches);
+//       if (field === 'remove') { batches.splice(batchIndex, 1); } 
+//       else { batches[batchIndex] = { ...batches[batchIndex], [field]: value }; }
+//       newItems[activeItemIndex].batches = batches;
+//       return { ...p, items: newItems };
+//     });
+//   }, [activeItemIndex]);
+  
+//   const addIncreaseBatchEntry = useCallback(() => {
+//     setAdjustmentData(p => {
+//       const newItems = [...p.items];
+//       const batches = ArrayOf(newItems[activeItemIndex].batches);
+//       batches.push({ id: generateUniqueId(), batchNumber: "", expiryDate: "", batchQuantity: 0 });
+//       newItems[activeItemIndex].batches = batches;
+//       return { ...p, items: newItems };
+//     });
+//   }, [activeItemIndex]);
+
+//   const handleDecreaseBatchUpdate = useCallback((allocations) => {
+//     const transformedBatches = allocations.map(alloc => ({
+//       id: generateUniqueId(), batchNumber: alloc.batchCode, batchQuantity: alloc.allocatedQuantity,
+//       expiryDate: alloc.expiryDate, manufacturer: alloc.manufacturer, unitPrice: alloc.unitPrice,
+//     }));
+//     handleItemDataChange(activeItemIndex, 'batches', transformedBatches);
+//   }, [activeItemIndex, handleItemDataChange]);
+
+//   // const handleSubmit = useCallback(async () => {
+//   //   console.log("Submitting Payload:", adjustmentData);
+//   //   toast.success("Form is ready for submission!");
+//   // }, [adjustmentData]);
+
+
+
+// const handleSubmitAdjustment = useCallback(async () => {
+//   try {
+//     setLoading(true);
+
+//     const token = localStorage.getItem("token");
+//     if (!token) {
+//       toast.error("Unauthorized: Please log in");
+//       setLoading(false);
+//       return;
+//     }
+
+//     // Basic validation
+//     if (!adjustmentData.adjustmentDate) {
+//       toast.error("Please select an adjustment date.");
+//       setLoading(false);
+//       return;
+//     }
+//     if (!adjustmentData.reason.trim()) {
+//       toast.error("Please provide a reason for the adjustment.");
+//       setLoading(false);
+//       return;
+//     }
+//     if (
+//       !adjustmentData.items.length ||
+//       adjustmentData.items.some(it => !it.item || !it.warehouse || Number(it.quantity) <= 0)
+//     ) {
+//       toast.error("Please add at least one valid item with Item, Warehouse, and Quantity greater than 0.");
+//       setLoading(false);
+//       return;
+//     }
+
+//     // Validate batch-managed items
+//     for (const [idx, item] of adjustmentData.items.entries()) {
+//       if (item.managedBy?.toLowerCase() === "batch") {
+//         const totalAllocatedBatchQty = ArrayOf(item.batches).reduce(
+//           (sum, b) => sum + (Number(b.batchQuantity) || 0),
+//           0
+//         );
+//         if (totalAllocatedBatchQty !== Number(item.quantity)) {
+//           toast.error(
+//             `Item ${item.itemName} (Row ${idx + 1}): Total batch quantity (${totalAllocatedBatchQty}) does not match item quantity (${item.quantity}). Please adjust batch details.`
+//           );
+//           setLoading(false);
+//           return;
+//         }
+
+//         const invalidBatchEntry = ArrayOf(item.batches).some(
+//           b => !b.batchNumber || b.batchNumber.trim() === "" || Number(b.batchQuantity) <= 0
+//         );
+//         if (invalidBatchEntry) {
+//           toast.error(
+//             `Item ${item.itemName} (Row ${idx + 1}): Contains an invalid batch entry. Batch Number and Quantity must be provided and Quantity must be greater than 0.`
+//           );
+//           setLoading(false);
+//           return;
+//         }
+//       }
+//     }
+
+//     // Map items for submission
+//     const itemsForSubmission = ArrayOf(adjustmentData.items).map(it => ({
+//       item: it.item,
+//       warehouse: it.warehouse,
+//       quantity: Number(it.quantity),
+//       managedBy: it.managedBy,
+//       selectedBin: it.selectedBin?._id || null, // <-- send selected bin
+//       batches: ArrayOf(it.batches)
+//         .filter(b => b.batchNumber && b.batchNumber.trim() !== "" && Number(b.batchQuantity) > 0)
+//         .map(({ id, ...rest }) => rest),
+//     }));
+
+//     const payload = {
+//       adjustmentDate: adjustmentData.adjustmentDate,
+//       adjustmentType: adjustmentData.adjustmentType,
+//       reason: adjustmentData.reason,
+//       remarks: adjustmentData.remarks,
+//       items: itemsForSubmission,
+//     };
+
+//     const url = isEdit
+//       ? `/api/inventory-adjustments/${editId}`
+//       : "/api/inventory-adjustments";
+//     const method = isEdit ? "put" : "post";
+
+//     const response = await axios({
+//       method,
+//       url,
+//       data: payload,
+//       headers: {
+//         Authorization: `Bearer ${token}`,
+//         "Content-Type": "application/json",
+//       },
+//     });
+
+//     if (response.data.success) {
+//       toast.success(
+//         isEdit
+//           ? "Inventory Adjustment updated successfully"
+//           : "Inventory Adjustment saved successfully"
+//       );
+//       router.push("/admin/InventoryAdjustmentsView");
+//     } else {
+//       toast.error(response.data.error || "Failed to save Inventory Adjustment");
+//     }
+//   } catch (err) {
+//     console.error("Error saving Inventory Adjustment:", err);
+//     toast.error(err.response?.data?.error || err.message || "Failed to save Inventory Adjustment");
+//   } finally {
+//     setLoading(false);
+//   }
+// }, [adjustmentData, isEdit, editId, router]);
+
+
+
+
+//   return (
+//     <div className="m-4 md:m-10 p-4 md:p-8 shadow-xl bg-gray-50 rounded-lg">
+//       <h1 className="text-3xl font-bold mb-6">{isEdit ? "Edit" : "New"} Inventory Adjustment</h1>
+      
+//       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 p-6 border rounded-lg shadow-md bg-white">
+//         <div>
+//           <label className="block mb-2 font-medium">Date</label>
+//           <input type="date" name="adjustmentDate" value={adjustmentData.adjustmentDate} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" />
+//         </div>
+//         <div>
+//           <label className="block mb-2 font-medium">Reference No.</label>
+//           <input type="text" name="refNumber" value={adjustmentData.refNumber} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" placeholder="Internal Ref No."/>
+//         </div>
+//         <div className="md:col-span-2">
+//           <label className="block mb-2 font-medium">Type</label>
+//           <select name="adjustmentType" value={adjustmentData.adjustmentType} onChange={handleHeaderChange} className="w-full p-2 border rounded-md bg-white">
+//             <option value="increase">Increase Stock (Stock In)</option>
+//             <option value="decrease">Decrease Stock (Stock Out)</option>
+//           </select>
+//         </div>
+//         <div className="md:col-span-2">
+//           <label className="block mb-2 font-medium">Reason</label>
+//           <textarea name="reason" value={adjustmentData.reason} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" rows="2" placeholder="e.g., Physical count correction, Damaged goods"/>
+//         </div>
+//          <div className="md:col-span-2">
+//           <label className="block mb-2 font-medium">Remarks</label>
+//           <textarea name="remarks" value={adjustmentData.remarks} onChange={handleHeaderChange} className="w-full p-2 border rounded-md" rows="2" placeholder="Optional notes..."/>
+//         </div>
+//       </div>
+
+//       <div className="p-6 border rounded-lg shadow-md bg-white mb-8">
+//         <h2 className="text-2xl font-semibold mb-4">Items</h2>
+//         <ItemSection
+//           items={adjustmentData.items}
+//           onItemChange={(i, e) => handleItemDataChange(i, e.target.name, e.target.value)}
+//           onItemSelect={handleItemSelect}
+//           onWarehouseSelect={handleWarehouseSelect}
+//           onAddItem={addItemRow}
+//           onRemoveItem={removeItemRow}
+//         />
+//       </div>
+
+//       <div className="p-6 border rounded-lg shadow-md bg-white mb-8">
+//         <h2 className="text-2xl font-semibold mb-4">Batch Details</h2>
+//         {adjustmentData.items.map((item, index) => {
+//           if (item.managedBy !== 'batch' || item.quantity <= 0) return null;
+//           const totalAllocated = ArrayOf(item.batches).reduce((sum, b) => sum + (Number(b.batchQuantity) || 0), 0);
+//           return (
+//             <div key={item.id} className="border-t first:border-t-0 py-4">
+//               <div className="flex flex-wrap items-center justify-between gap-4">
+//                 <span className="font-semibold text-lg">{item.itemName || `Item ${index + 1}`} (Qty: {item.quantity})</span>
+//                 <button onClick={() => openBatchManager(index)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={!item.item || !item.warehouse}>
+//                   {adjustmentData.adjustmentType === 'increase' ? 'Set New Batches' : 'Allocate from Stock'}
+//                 </button>
+//               </div>
+//               {item.batches.length > 0 && (
+//                 <div className="mt-2 pl-4 text-sm">
+//                   <p className="font-medium mb-1">Allocations:</p>
+//                   <ul className="list-disc list-inside space-y-1">
+//                     {item.batches.map((batch) => (<li key={batch.id}>Batch: <strong>{batch.batchNumber}</strong>, Qty: <strong>{batch.batchQuantity}</strong></li>))}
+//                   </ul>
+//                   <p className={`mt-2 font-bold ${totalAllocated !== item.quantity ? "text-red-600" : "text-green-600"}`}>Total Allocated: {totalAllocated} / {item.quantity}</p>
+//                 </div>
+//               )}
+//             </div>
+//           );
+//         })}
+//       </div>
+      
+//       <div className="flex justify-end p-6">
+//           <div className="w-full md:w-1/3">
+//               <div className="flex justify-between items-center text-xl font-bold">
+//                   <span>Adjustment Value:</span>
+//                   <span>₹{adjustmentData.grandTotal.toFixed(2)}</span>
+//               </div>
+//           </div>
+//       </div>
+
+//       {showIncreaseModal && activeItemIndex !== null && (
+//         <IncreaseStockBatchModal
+//           batches={adjustmentData.items[activeItemIndex].batches} onBatchEntryChange={handleIncreaseBatchChange}
+//           onAddBatchEntry={addIncreaseBatchEntry} onClose={() => setShowIncreaseModal(false)}
+//           itemCode={adjustmentData.items[activeItemIndex].itemCode} itemName={adjustmentData.items[activeItemIndex].itemName}
+//         />
+//       )}
+//       {showDecreaseModal && activeItemIndex !== null && (
+//         <BatchAllocationModal
+//           onClose={() => setShowDecreaseModal(false)} onUpdateBatch={handleDecreaseBatchUpdate}
+//           batchOptions={availableBatches}
+//           itemsbatch={{
+//             itemId: adjustmentData.items[activeItemIndex].item, warehouse: adjustmentData.items[activeItemIndex].warehouse,
+//             itemName: adjustmentData.items[activeItemIndex].itemName, qty: adjustmentData.items[activeItemIndex].quantity,
+//             currentAllocations: ArrayOf(adjustmentData.items[activeItemIndex].batches).map(b => ({ batchCode: b.batchNumber, allocatedQuantity: b.batchQuantity, ...b }))
+//           }}
+//         />
+//       )}
+
+//       <div className="flex flex-wrap gap-4 mt-8">
+//         <button onClick={handleSubmitAdjustment} disabled={loading} className="px-6 py-3 rounded-lg bg-blue-700 text-white font-semibold text-lg hover:bg-blue-800 disabled:bg-gray-400">
+//           {loading ? "Saving..." : "Submit Adjustment"}
+//         </button>
+//         <button onClick={() => router.back()} className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-semibold text-lg">Cancel</button>
+//       </div>
+//       <ToastContainer position="bottom-right" autoClose={5000} hideProgressBar={false} />
+//     </div>
+//   );
+// }
+
+// export default function InventoryAdjustmentFormWrapper() {
+//   return (
+//     <Suspense fallback={<div className="text-center py-20 text-lg">Loading Form...</div>}>
+//       <InventoryAdjustmentForm />
+//     </Suspense>
+//   );
+// }
 // "use client";
 
 // import { useState, useEffect, useCallback, useRef } from "react";

@@ -20,10 +20,21 @@ cloudinary.config({
 
 const { Types } = mongoose;
 
-function isAuthorized(user) {
-  if (user.type === 'company') return true;
-  if (user.role === 'Sales Manager' || user.role === 'Admin') return true;
-  return user.permissions?.includes('sales');
+function hasPermission(user, moduleName, action = "view") {
+
+  if (!user) return false;
+
+  // company full access
+  if (user.type === "company") return true;
+
+  // admin full access
+  if (user.roles?.includes("Admin")) return true;
+
+  const module = user.modules?.[moduleName];
+
+  if (!module || !module.selected) return false;
+
+  return module.permissions?.[action] === true;
 }
 
 async function toNodeReq(request) {
@@ -61,7 +72,9 @@ export async function POST(req) {
 
     const user =  verifyJWT(token);
     console.log("Decoded User:", user);
-    if (!user || !isAuthorized(user)) throw new Error('Forbidden');
+    if (!hasPermission(user, "Sales Order", "create")) {
+  throw new Error("Forbidden");
+}
 
     const { fields, files } = await parseMultipart(req);
     const orderData = JSON.parse(fields.orderData || "{}");
@@ -250,9 +263,12 @@ export async function GET(req) {
   try {
     const token = getTokenFromHeader(req);
     const user = await verifyJWT(token);
-    if (!user || (user.type === 'user' && !['Admin', 'Sales Manager'].includes(user.role))) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    }
+  if (!hasPermission(user, "Sales Order", "view")) {
+  return NextResponse.json(
+    { success: false, message: "Unauthorized" },
+    { status: 401 }
+  );
+}
     const salesOrders = await SalesOrder.find({ companyId: user.companyId });
     return NextResponse.json({ success: true, data: salesOrders }, { status: 200 });
   } catch (err) {

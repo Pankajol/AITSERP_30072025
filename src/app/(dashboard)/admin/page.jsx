@@ -2,231 +2,231 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from "recharts";
 import {
-  FaUser,
-  FaShoppingCart,
-  FaRupeeSign,
-  FaUserPlus,
-} from "react-icons/fa";
+  FiUsers, FiShoppingCart, FiPackage, FiZap, FiActivity, 
+  FiClock, FiPlus, FiFileText, FiTruck, FiAlertTriangle, FiArrowRight
+} from "react-icons/fi";
+import { HiOutlineSparkles } from "react-icons/hi2";
+import Link from "next/link";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalOrders: 0,
-    totalPurchaseOrders: 0,
-    revenue: 0,
-    newUsers: 0,
+    totalUsers: 0, totalOrders: 0, totalPurchaseOrders: 0, revenue: 0,
   });
   const [chartData, setChartData] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [topCustomers, setTopCustomers] = useState([]);
+  const [stockAlerts, setStockAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchDashboardData() {
       try {
         const token = localStorage.getItem("token");
-        const headers = {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        };
+        const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
-        const [usersRes, salesRes, purchaseRes] = await Promise.all([
+        const [usersRes, salesRes, purchaseRes, itemsRes] = await Promise.all([
           fetch("/api/suppliers", { headers }),
           fetch("/api/sales-order", { headers }),
           fetch("/api/purchase-order", { headers }),
+          fetch("/api/items", { headers }),
         ]);
 
-        const usersData = await usersRes.json();
-        const salesData = await salesRes.json();
-        const purchaseData = await purchaseRes.json();
+        const users = (await usersRes.json())?.data || [];
+        const sales = (await salesRes.json())?.data || [];
+        const purchases = (await purchaseRes.json())?.data || [];
+        const items = (await itemsRes.json())?.data || [];
 
-        const users = usersData?.data || [];
-        const sales = salesData?.data || [];
-        const purchases = purchaseData?.data || [];
-
-        const recent30Days = (date) =>
-          new Date(date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
+        // 1. Basic Stats
         setStats({
           totalUsers: users.length,
-          newUsers: users.filter((u) => recent30Days(u.createdAt)).length,
-          totalPurchaseOrders: purchases.length,
           totalOrders: sales.length,
-          revenue: [...sales, ...purchases].reduce(
-            (sum, item) => sum + (item.totalAmount || 0),
-            0
-          ),
+          totalPurchaseOrders: purchases.length,
+          revenue: sales.reduce((sum, item) => sum + (item.grandTotal || 0), 0),
         });
 
+        // 2. Stock Alerts (Mock logic: stock < 10)
+        setStockAlerts(items.filter(i => (i.stock || 0) < 10).slice(0, 4));
 
-        const ordersByMonth = {};
-
-        sales.forEach((order) => {
-          const date = new Date(order.createdAt);
-          const monthKey = `${date.toLocaleString("default", {
-            month: "short",
-          })} ${date.getFullYear()}`;
-          if (!ordersByMonth[monthKey]) {
-            ordersByMonth[monthKey] = { sales: 0, purchases: 0 };
-          }
-          ordersByMonth[monthKey].sales += 1;
+        // 3. Top Customers logic
+        const custMap = {};
+        sales.forEach(s => {
+            custMap[s.customerName] = (custMap[s.customerName] || 0) + (s.grandTotal || 0);
         });
+        setTopCustomers(Object.entries(custMap)
+            .map(([name, val]) => ({ name, val }))
+            .sort((a,b) => b.val - a.val).slice(0, 4));
 
-        purchases.forEach((order) => {
-          const date = new Date(order.createdAt);
-          const monthKey = `${date.toLocaleString("default", {
-            month: "short",
-          })} ${date.getFullYear()}`;
-          if (!ordersByMonth[monthKey]) {
-            ordersByMonth[monthKey] = { sales: 0, purchases: 0 };
-          }
-          ordersByMonth[monthKey].purchases += 1;
-        });
+        // 4. Chart Data
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        setChartData(months.map((m, i) => ({
+          name: m,
+          sales: sales.filter(o => new Date(o.createdAt).getMonth() === i).length,
+          purchases: purchases.filter(o => new Date(o.createdAt).getMonth() === i).length,
+        })));
 
-        const allMonths = Array.from({ length: 12 }, (_, i) => {
-          const d = new Date(new Date().getFullYear(), i);
-          return `${d.toLocaleString("default", {
-            month: "short",
-          })} ${d.getFullYear()}`;
-        });
+        setRecentOrders([...sales, ...purchases]
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5));
 
-        const updatedChartData = allMonths.map((month) => ({
-          month,
-          sales: ordersByMonth[month]?.sales || 0,
-          purchases: ordersByMonth[month]?.purchases || 0,
-        }));
-
-        setChartData(updatedChartData);
-
-        setRecentOrders(
-          [...sales, ...purchases]
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .slice(0, 5)
-            .map((order) => ({
-              id:
-                order.documentNumberPurchaseOrder ||
-                order.documentNumberOrder ||
-                "N/A",
-              user: order.customerName || order.supplierName || "N/A",
-              amount: order.grandTotal || 0,
-              status: order.status || order.orderStatus || "Processing",
-              date: new Date(order.createdAt).toLocaleDateString("en-GB"),
-            }))
-        );
-      } catch (error) {
-        console.error("Dashboard fetch error:", error);
-      } finally {
-        setLoading(false);
-      }
+      } catch (error) { console.error(error); } 
+      finally { setLoading(false); }
     }
-
     fetchDashboardData();
   }, []);
 
-  const statusClasses = (status) => {
-    switch (status) {
-      case "Delivered":
-        return "bg-green-100 text-green-800";
-      case "Shipped":
-        return "bg-blue-100 text-blue-800";
-      default:
-        return "bg-yellow-100 text-yellow-800";
-    }
-  };
-
-  const formatCurrency = (value) => `₹${value.toLocaleString("en-IN")}`;
-
-  const StatCard = ({ title, value, Icon, color }) => (
-    <div className={`p-4 rounded-lg shadow text-white ${color}`}>
-      <div className="flex items-center space-x-4">
-        <div className="text-3xl">
-          <Icon />
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="text-2xl font-bold">{value}</p>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <p className="text-xl font-medium text-gray-600">Loading dashboard...</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center text-indigo-500 font-black uppercase tracking-[0.3em] animate-pulse">Initializing System...</div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
-      <h1 className="text-2xl md:text-4xl font-bold text-gray-800">Dashboard</h1>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-        <StatCard title="Total Users" value={stats.totalUsers} Icon={FaUser} color="bg-indigo-500" />
-        <StatCard title="Total Orders" value={stats.totalOrders} Icon={FaShoppingCart} color="bg-pink-500" />
-        <StatCard title="Purchase Orders" value={stats.totalPurchaseOrders} Icon={FaShoppingCart} color="bg-red-500" />
-        {/* <StatCard title="Revenue" value={formatCurrency(stats.revenue)} Icon={FaRupeeSign} color="bg-green-500" /> */}
-        <StatCard title="New Users (30d)" value={stats.newUsers} Icon={FaUserPlus} color="bg-yellow-500" />
-      </div>
-
-      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Monthly Orders</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={chartData}>
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="sales" stroke="#4F46E5" strokeWidth={2} name="Sales" />
-            <Line type="monotone" dataKey="purchases" stroke="#22C55E" strokeWidth={2} name="Purchases" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Order ID</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">User</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Amount</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Status</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-500">Date</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {recentOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-sm text-gray-700">{order.id}</td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{order.user}</td>
-                  <td className="px-4 py-2 text-sm font-semibold text-gray-800">{formatCurrency(order.amount)}</td>
-                  <td className="px-4 py-2 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusClasses(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{order.date}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-300 p-4  md:p-8 font-sans selection:bg-indigo-500">
+      
+      {/* HEADER & QUICK SHORTCUTS */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-10">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <HiOutlineSparkles className="text-amber-400" />
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400">Command Center</span>
+          </div>
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Operations <span className="text-indigo-500">Live</span></h1>
         </div>
+
+        <div className="flex flex-wrap gap-3">
+            <ShortcutBtn href="/admin/sales-order-view/new" icon={<FiPlus />} label="New Sale" color="bg-indigo-600" />
+            <ShortcutBtn href="/admin/purchase-order-view/new" icon={<FiShoppingCart />} label="Purchase" color="bg-emerald-600" />
+            <ShortcutBtn href="/admin/sales-invoice-view/new" icon={<FiFileText />} label="Invoice" color="bg-violet-600" />
+            <ShortcutBtn href="/admin/delivery-view/new" icon={<FiTruck />} label="Dispatch" color="bg-amber-600" />
+        </div>
+      </div>
+
+      {/* STAT CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <StatCard title="Active Users" value={stats.totalUsers} icon={<FiUsers />} color="from-blue-600 to-indigo-700" />
+        <StatCard title="Sales Volume" value={stats.totalOrders} icon={<FiShoppingCart />} color="from-purple-600 to-violet-800" />
+        <StatCard title="Inventory In" value={stats.totalPurchaseOrders} icon={<FiPackage />} color="from-rose-600 to-pink-700" />
+        <StatCard title="Net Revenue" value={`₹${stats.revenue.toLocaleString()}`} icon={<FiZap />} color="from-amber-500 to-orange-600" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* MAIN CHART */}
+        <div className="lg:col-span-2 bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
+          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-8 flex items-center gap-2"><FiActivity className="text-indigo-500" /> Performance Analytics</h2>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="cS" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke="#ffffff05" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10}} />
+                <Tooltip contentStyle={{backgroundColor: '#11111d', borderRadius: '12px', border: 'none'}} />
+                <Area type="monotone" dataKey="sales" stroke="#6366f1" strokeWidth={3} fill="url(#cS)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* TOP CUSTOMERS WIDGET */}
+        <div className="bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
+            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6">Top Contributors</h2>
+            <div className="space-y-5">
+                {topCustomers.map((c, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-[10px] font-black text-indigo-400 border border-indigo-500/20">{i+1}</div>
+                            <span className="text-[11px] font-bold text-slate-300 uppercase truncate max-w-[120px]">{c.name}</span>
+                        </div>
+                        <span className="text-[11px] font-black text-white">₹{c.val.toLocaleString()}</span>
+                    </div>
+                ))}
+            </div>
+            <button className="w-full mt-8 py-3 rounded-xl border border-white/5 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:bg-white/5 transition-all">Full Leaderboard</button>
+        </div>
+
+        {/* RECENT ACTIVITY */}
+        <div className="bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
+            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6 flex items-center gap-2"><FiClock className="text-indigo-500" /> Recent Activity</h2>
+            <div className="space-y-4">
+    {recentOrders.map((o) => {
+        const isSalesOrder = !!o.documentNumberOrder;
+        
+        // Base path configuration
+        const basePath = isSalesOrder 
+            ? '/admin/sales-order-view/view' 
+            : '/admin/purchase-order-view/view';
+
+        const docNumber = o.documentNumberOrder || o.documentNumberPurchaseOrder || "N/A";
+        const name = o.customerName || o.supplierName || "Unknown";
+
+        return (
+            <div key={o._id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-white/10 transition-colors group">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                
+                <div className="flex-1 min-w-0">
+                    <Link 
+                        href={`${basePath}/${o._id}`} 
+                        className="text-[10px] font-bold text-slate-300 uppercase truncate block hover:text-white transition-colors"
+                    >
+                        {name} - {docNumber}
+                    </Link>
+                    
+                    <p className="text-[8px] font-bold text-slate-500 uppercase mt-0.5">
+                        {new Date(o.createdAt).toLocaleString()}
+                    </p>
+                </div>
+
+                {/* 'group-hover' use kiya hai taaki arrow hover par highlight ho */}
+                <FiArrowRight className="text-slate-700 shrink-0 group-hover:text-slate-300 transition-colors" />
+            </div>
+        );
+    })}
+</div>
+
+        </div>
+
+        {/* STOCK ALERTS WIDGET */}
+        <div className="lg:col-span-2 bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
+            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6 flex items-center gap-2"><FiAlertTriangle className="text-amber-500" /> Critical Stock Alerts</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {stockAlerts.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
+                        <div>
+                            <p className="text-[11px] font-black text-amber-500 uppercase">{item.itemName}</p>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase">Code: {item.itemCode}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs font-black text-white">{item.stock} Units</p>
+                            <span className="text-[8px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full uppercase">Low Stock</span>
+                        </div>
+                    </div>
+                ))}
+                {stockAlerts.length === 0 && <p className="text-[10px] text-slate-500 font-bold italic">Inventory levels are within safe limits.</p>}
+            </div>
+        </div>
+
       </div>
     </div>
   );
 }
 
+const ShortcutBtn = ({ href, icon, label, color }) => (
+    <Link href={href} className={`flex items-center gap-2 px-5 py-3 rounded-2xl ${color} text-white transition-all hover:scale-105 active:scale-95 shadow-lg`}>
+        <span className="text-lg">{icon}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    </Link>
+);
+
+const StatCard = ({ title, value, icon, color }) => (
+  <div className="relative group bg-[#11111d] border border-white/5 rounded-[32px] p-7 overflow-hidden transition-all hover:translate-y-[-4px]">
+    <div className="relative z-10 flex justify-between items-start mb-4">
+      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center text-white text-xl shadow-lg`}>{icon}</div>
+    </div>
+    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{title}</p>
+    <h3 className="text-2xl font-black text-white tracking-tight">{value}</h3>
+    <div className={`absolute -bottom-10 -right-10 w-24 h-24 bg-gradient-to-br ${color} blur-[50px] opacity-10`} />
+  </div>
+);
 
 
 // "use client";

@@ -7,7 +7,29 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
    ✅ Role-Based Access
 -------------------------------- */
 function isAuthorized(user) {
-  return user?.type === "company" || user?.role === "Admin" || user?.permissions?.includes("item");
+  if (!user) return false;
+
+  if (user.type === "company") return true;
+
+  const allowedRoles = [
+    "admin",
+    "sales manager",
+    "purchase manager",
+    "inventory manager",
+    "accounts manager",
+    "hr manager",
+    "support executive",
+    "production head",
+    "project manager",
+  ];
+
+  const userRoles = Array.isArray(user.roles)
+    ? user.roles
+    : [];
+
+  return userRoles.some(role =>
+    allowedRoles.includes(role.trim().toLowerCase())
+  );
 }
 
 /* ✅ Validate User Helper */

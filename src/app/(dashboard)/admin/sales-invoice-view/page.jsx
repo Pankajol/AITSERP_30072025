@@ -1,209 +1,519 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import Link from 'next/link';
-import axios from 'axios';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import axios from "axios";
 import {
-  FaEllipsisV,
-  FaEdit,
-  FaTrash,
-  FaCopy,
-  FaEye,
-  FaEnvelope,
-  FaWhatsapp,
-  FaPrint,
-  FaSearch,
-} from 'react-icons/fa';
-import ActionMenu from '@/components/ActionMenu';
+  FaEdit, FaTrash, FaCopy, FaEye,
+  FaEnvelope, FaWhatsapp, FaSearch, FaPlus,
+  FaCloudUploadAlt, FaDownload
+} from "react-icons/fa";
+import ActionMenu from "@/components/ActionMenu";
 
-/* ================================================================= */
-/*  Sales Invoice List                                               */
-/* ================================================================= */
 export default function SalesInvoiceList() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [uploading, setUploading] = useState(false);
   const router = useRouter();
 
-  /* ---------- fetch invoices ---------- */
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      // If you protect the route with auth, include the token
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const res = await axios.get('/api/sales-invoice', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/api/sales-invoice", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-
       if (res.data?.success && Array.isArray(res.data.data)) {
         setInvoices(res.data.data);
-        console.log('Fetched invoices:', res.data.data);
-      } else if (Array.isArray(res.data)) {
-        // fallback if API directly returns an array
-        setInvoices(res.data);
-        console.log('Fetched invoices (array response):', res.data);
-      } else {
-        console.warn('Unexpected response:', res.data);
       }
-    } catch (err) {
-      console.error('Error fetching invoices:', err.response?.data || err.message);
+    } catch (error) {
+      toast.error("Error fetching sales invoices");
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchInvoices();
-  }, []);
+  useEffect(() => { fetchInvoices(); }, []);
 
-  /* ---------- filtered list ---------- */
-  const displayInvoices = useMemo(() => {
-    if (!search.trim()) return invoices;
-    const q = search.toLowerCase();
-    return invoices.filter((inv) => (inv.customerName || '').toLowerCase().includes(q));
-  }, [invoices, search]);
+  const filtered = useMemo(() => {
+    return invoices.filter((o) => {
+      const matchSearch = !search.trim() ||
+        (o.customerName || "").toLowerCase().includes(search.toLowerCase()) ||
+        (o.invoiceNumber || "").toLowerCase().includes(search.toLowerCase());
+      const matchStatus = filterStatus === "All" || o.status === filterStatus;
+      return matchSearch && matchStatus;
+    });
+  }, [invoices, search, filterStatus]);
 
-  /* ---------- actions ---------- */
   const handleDelete = async (id) => {
-    if (!confirm('Delete this invoice?')) return;
+    if (!confirm("Delete this invoice?")) return;
     try {
-      await axios.delete(`/api/sales-invoice/${id}`);
-      setInvoices((prev) => prev.filter((inv) => inv._id !== id));
+      const token = localStorage.getItem("token");
+      await axios.delete(`/api/sales-invoice/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInvoices((prev) => prev.filter((o) => o._id !== id));
+      toast.success("Invoice deleted");
     } catch {
-      alert('Failed to delete');
+      toast.error("Failed to delete");
     }
   };
 
   const handleCopyTo = (invoice, dest) => {
-    if (dest === 'Credit') {
-      sessionStorage.setItem('CreditData', JSON.stringify(invoice));
-      router.push('/admin/credit-memo-veiw/new');
-    } else if (dest === 'Invoice') {
-      sessionStorage.setItem('purchaseInvoiceData', JSON.stringify(invoice));
-      router.push('/admin/sales-invoice-view/new');
+    if (dest === "CreditMemo") {
+      const data = { ...invoice, sourceId: invoice._id, sourceModel: "salesinvoice" };
+      sessionStorage.setItem("creditMemoData", JSON.stringify(data));
+      router.push("/admin/credit-memo-veiw/new");
     }
   };
 
-  /* ================================================================= */
-  /*  UI                                                               */
-  /* ================================================================= */
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
-        Sales Invoices
-      </h1>
+  const downloadTemplate = () => {
+    const link = document.createElement("a");
+    link.href = "/api/sales-invoice/template";
+    link.download = "sales_invoice_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
-      {/* toolbar */}
-      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
-        <div className="relative flex-1 max-w-md">
-          <FaSearch className="absolute top-3 left-3 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer…"
-            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-          />
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const lines = text.trim().split("\n");
+      const headers = lines[0].split(",");
+      const jsonData = lines.slice(1).map((line) => {
+        const values = line.split(",");
+        const obj = {};
+        headers.forEach((h, i) => { obj[h.trim()] = values[i]?.trim() || ""; });
+        return obj;
+      });
+      const token = localStorage.getItem("token");
+      const res = await axios.post("/api/sales-invoice/bulk", { invoices: jsonData }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) {
+        toast.success(`Upload complete: ${res.data.successCount} success`);
+        fetchInvoices();
+      }
+    } catch {
+      toast.error("Invalid CSV file");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const stats = {
+    total: invoices.length,
+    paid: invoices.filter(o => o.status === "Paid" || o.status === "Closed").length,
+    pending: invoices.filter(o => o.status === "Pending" || o.status === "Open").length,
+    cancelled: invoices.filter(o => o.status === "Cancelled").length,
+  };
+
+  const StatusBadge = ({ status }) => {
+    const map = {
+      Paid:      "bg-emerald-50 text-emerald-600",
+      Closed:    "bg-emerald-50 text-emerald-600",
+      Pending:   "bg-amber-50 text-amber-600",
+      Open:      "bg-blue-50 text-blue-600",
+      Draft:     "bg-gray-100 text-gray-500",
+      Cancelled: "bg-red-50 text-red-500",
+    };
+    return (
+      <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full ${map[status] || "bg-gray-100 text-gray-500"}`}>
+        {status || "—"}
+      </span>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Sales Invoices</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{invoices.length} total invoices</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={downloadTemplate} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm">
+              <FaDownload className="text-xs" /> Template
+            </button>
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm cursor-pointer">
+              <FaCloudUploadAlt className="text-xs" /> {uploading ? "Uploading..." : "Bulk Upload"}
+              <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
+            </label>
+            <Link href="/admin/sales-invoice-view/new">
+              <button className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
+                <FaPlus className="text-xs" /> Create Invoice
+              </button>
+            </Link>
+          </div>
         </div>
 
-        <Link href="/admin/sales-invoice-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaEdit /> New Invoice
-          </button>
-        </Link>
-      </div>
-
-      {/* table / cards */}
-      {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
-      ) : (
-        <>
-          {/* desktop */}
-          <div className="hidden md:block overflow-x-auto">
-            <Table invoices={displayInvoices} onDelete={handleDelete} onCopy={handleCopyTo} />
-          </div>
-
-          {/* mobile cards */}
-          <div className="md:hidden space-y-4">
-            {displayInvoices.map((inv, i) => (
-              <Card
-                key={inv._id}
-                invoice={inv}
-                idx={i}
-                onDelete={handleDelete}
-                onCopy={handleCopyTo}
-              />
-            ))}
-            {!displayInvoices.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">No matching invoices</p>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================= */
-/*  Desktop Table                                                    */
-/* ================================================================= */
-function Table({ invoices, onDelete, onCopy }) {
-  return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
-        <tr>
-          {['#', 'Documents No.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
-            <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100">
-              {h}
-            </th>
+        {/* Stat Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { label: "Total",     value: stats.total,     emoji: "🧾", filter: "All" },
+            { label: "Paid",      value: stats.paid,      emoji: "✅", filter: "Paid" },
+            { label: "Pending",   value: stats.pending,   emoji: "⏳", filter: "Pending" },
+            { label: "Cancelled", value: stats.cancelled, emoji: "❌", filter: "Cancelled" },
+          ].map(s => (
+            <div key={s.label} onClick={() => setFilterStatus(s.filter)}
+              className={`bg-white rounded-2xl p-4 flex items-center gap-3 cursor-pointer border-2 transition-all
+                ${filterStatus === s.filter ? "border-indigo-400 shadow-md shadow-indigo-100" : "border-transparent shadow-sm hover:border-indigo-200 hover:-translate-y-0.5"}`}>
+              <span className="text-2xl">{s.emoji}</span>
+              <div>
+                <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">{s.label}</p>
+                <p className="text-2xl font-extrabold tracking-tight text-gray-900 leading-none mt-0.5">{s.value}</p>
+              </div>
+            </div>
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {invoices.map((inv, i) => (
-          <tr key={inv._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
-            <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{inv.invoiceNumber }</td>
-            <td className="px-4 py-3">{inv.customerName}</td>
-            <td className="px-4 py-3">{new Date(inv.orderDate || inv.postingDate).toLocaleDateString('en-GB')}</td>
-            <td className="px-4 py-3">{inv.status}</td>
-            <td className="px-4 py-3">₹{inv.grandTotal}</td>
-            <td className="px-4 py-3">
-              <RowMenu invoice={inv} onDelete={onDelete} onCopy={onCopy} />
-            </td>
-          </tr>
-        ))}
-        {!invoices.length && (
-          <tr>
-            <td colSpan={6} className="text-center py-6 text-gray-500 dark:text-gray-400">
-              No invoices found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-/* ================================================================= */
-/*  Mobile Card                                                      */
-/* ================================================================= */
-function Card({ invoice, idx, onDelete, onCopy }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {invoice.invoiceNumber}
         </div>
-        <RowMenu invoice={invoice} onDelete={onDelete} onCopy={onCopy} isMobile />
+
+        {/* Table Card */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-gray-100">
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs pointer-events-none" />
+              <input
+                className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all placeholder:text-gray-300"
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search invoices..." />
+            </div>
+            <div className="flex gap-2 flex-wrap ml-auto">
+              {["All", "Open", "Pending", "Paid", "Cancelled"].map(s => (
+                <button key={s} onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all
+                    ${filterStatus === s ? "bg-indigo-600 text-white border-indigo-600" : "bg-gray-50 text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-500"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {["#", "Doc Number", "Customer", "Invoice Date", "Due Date", "Status", "Total", "Actions"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      {Array(8).fill(0).map((__, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <div className="h-3.5 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 bg-[length:400%_100%] animate-[shimmer_1.4s_infinite]" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-16 text-gray-300">
+                    <div className="text-4xl mb-2 opacity-30">🧾</div>
+                    <p className="text-sm font-medium">No invoices found</p>
+                  </td></tr>
+                ) : filtered.map((o, idx) => (
+                  <tr key={o._id} className="border-b border-gray-50 hover:bg-indigo-50/30 transition-colors">
+                    <td className="px-4 py-3 text-xs font-bold text-gray-300 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                        {o.invoiceNumber || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-gray-900">{o.customerName || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {o.invoiceDate ? new Date(o.invoiceDate).toLocaleDateString("en-GB") : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {o.dueDate ? new Date(o.dueDate).toLocaleDateString("en-GB") : "—"}
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                    <td className="px-4 py-3 font-mono font-bold text-gray-800">₹{Number(o.grandTotal || 0).toLocaleString("en-IN")}</td>
+                    <td className="px-4 py-3">
+                      <InvoiceRowMenu invoice={o} onDelete={handleDelete} onCopy={handleCopyTo} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-gray-50">
+            {loading ? (
+              Array(4).fill(0).map((_, i) => (
+                <div key={i} className="p-4 border-b border-gray-100">
+                  <div className="h-4 w-32 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite] mb-2" />
+                  <div className="h-3 w-24 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-[shimmer_1.4s_infinite]" />
+                </div>
+              ))
+            ) : filtered.map((o, idx) => (
+              <div key={o._id} className="p-4 hover:bg-indigo-50/20 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{o.invoiceNumber || `#${idx + 1}`}</span>
+                    <p className="font-bold text-gray-900 text-sm mt-1.5">{o.customerName}</p>
+                  </div>
+                  <InvoiceRowMenu invoice={o} onDelete={handleDelete} onCopy={handleCopyTo} />
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2">
+                  <span className="text-xs text-gray-400">{o.invoiceDate ? new Date(o.invoiceDate).toLocaleDateString("en-GB") : "—"}</span>
+                  <StatusBadge status={o.status} />
+                  <span className="font-mono font-bold text-gray-800 text-xs ml-auto">₹{Number(o.grandTotal || 0).toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Customer: {invoice.customerName}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">Date: {new Date(invoice.orderDate || invoice.postingDate).toLocaleDateString('en-GB')}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">Status: {invoice.status}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">Total: ₹{invoice.grandTotal}</p>
+      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
     </div>
   );
 }
+
+function InvoiceRowMenu({ invoice, onDelete, onCopy }) {
+  const router = useRouter();
+
+  const actions = [
+    { icon: <FaEye />,   label: "View",             onClick: () => router.push(`/admin/sales-invoice-view/view/${invoice._id}`) },
+    { icon: <FaEdit />,  label: "Edit",             onClick: () => router.push(`/admin/sales-invoice-view/new?editId=${invoice._id}`) },
+    { icon: <FaCopy />,  label: "Copy → Credit Memo", onClick: () => onCopy(invoice, "CreditMemo") },
+    { icon: <FaEnvelope />, label: "Email",         onClick: async () => {
+        try {
+          const res = await axios.post("/api/email", { type: "invoice", id: invoice._id });
+          if (res.data.success) toast.success("Email sent!");
+        } catch { toast.error("Email error"); }
+      }
+    },
+    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(invoice._id) },
+  ];
+
+  return <ActionMenu actions={actions} />;
+}
+
+
+// 'use client';
+
+// import { useState, useEffect, useMemo, useRef } from 'react';
+// import Link from 'next/link';
+// import axios from 'axios';
+// import { useRouter } from 'next/navigation';
+// import {
+//   FaEllipsisV,
+//   FaEdit,
+//   FaTrash,
+//   FaCopy,
+//   FaEye,
+//   FaEnvelope,
+//   FaWhatsapp,
+//   FaPrint,
+//   FaSearch,
+// } from 'react-icons/fa';
+// import ActionMenu from '@/components/ActionMenu';
+
+// /* ================================================================= */
+// /*  Sales Invoice List                                               */
+// /* ================================================================= */
+// export default function SalesInvoiceList() {
+//   const [invoices, setInvoices] = useState([]);
+//   const [loading, setLoading] = useState(true);
+//   const [search, setSearch] = useState('');
+//   const router = useRouter();
+
+//   /* ---------- fetch invoices ---------- */
+//   const fetchInvoices = async () => {
+//     setLoading(true);
+//     try {
+//       // If you protect the route with auth, include the token
+//       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+//       const res = await axios.get('/api/sales-invoice', {
+//         headers: token ? { Authorization: `Bearer ${token}` } : {},
+//       });
+
+//       if (res.data?.success && Array.isArray(res.data.data)) {
+//         setInvoices(res.data.data);
+//         console.log('Fetched invoices:', res.data.data);
+//       } else if (Array.isArray(res.data)) {
+//         // fallback if API directly returns an array
+//         setInvoices(res.data);
+//         console.log('Fetched invoices (array response):', res.data);
+//       } else {
+//         console.warn('Unexpected response:', res.data);
+//       }
+//     } catch (err) {
+//       console.error('Error fetching invoices:', err.response?.data || err.message);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   useEffect(() => {
+//     fetchInvoices();
+//   }, []);
+
+//   /* ---------- filtered list ---------- */
+//   const displayInvoices = useMemo(() => {
+//     if (!search.trim()) return invoices;
+//     const q = search.toLowerCase();
+//     return invoices.filter((inv) => (inv.customerName || '').toLowerCase().includes(q));
+//   }, [invoices, search]);
+
+//   /* ---------- actions ---------- */
+//   const handleDelete = async (id) => {
+//     if (!confirm('Delete this invoice?')) return;
+//     try {
+//       await axios.delete(`/api/sales-invoice/${id}`);
+//       setInvoices((prev) => prev.filter((inv) => inv._id !== id));
+//     } catch {
+//       alert('Failed to delete');
+//     }
+//   };
+
+//   const handleCopyTo = (invoice, dest) => {
+//     if (dest === 'Credit') {
+//       sessionStorage.setItem('CreditData', JSON.stringify(invoice));
+//       router.push('/admin/credit-memo-veiw/new');
+//     } else if (dest === 'Invoice') {
+//       sessionStorage.setItem('purchaseInvoiceData', JSON.stringify(invoice));
+//       router.push('/admin/sales-invoice-view/new');
+//     }
+//   };
+
+//   /* ================================================================= */
+//   /*  UI                                                               */
+//   /* ================================================================= */
+//   return (
+//     <div className="max-w-7xl mx-auto px-4 py-6">
+//       <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
+//         Sales Invoices
+//       </h1>
+
+//       {/* toolbar */}
+//       <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
+//         <div className="relative flex-1 max-w-md">
+//           <FaSearch className="absolute top-3 left-3 text-gray-400" />
+//           <input
+//             value={search}
+//             onChange={(e) => setSearch(e.target.value)}
+//             placeholder="Search customer…"
+//             className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+//           />
+//         </div>
+
+//         <Link href="/admin/sales-invoice-view/new" className="sm:w-auto">
+//           <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
+//             <FaEdit /> New Invoice
+//           </button>
+//         </Link>
+//       </div>
+
+//       {/* table / cards */}
+//       {loading ? (
+//         <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
+//       ) : (
+//         <>
+//           {/* desktop */}
+//           <div className="hidden md:block overflow-x-auto">
+//             <Table invoices={displayInvoices} onDelete={handleDelete} onCopy={handleCopyTo} />
+//           </div>
+
+//           {/* mobile cards */}
+//           <div className="md:hidden space-y-4">
+//             {displayInvoices.map((inv, i) => (
+//               <Card
+//                 key={inv._id}
+//                 invoice={inv}
+//                 idx={i}
+//                 onDelete={handleDelete}
+//                 onCopy={handleCopyTo}
+//               />
+//             ))}
+//             {!displayInvoices.length && (
+//               <p className="text-center text-gray-500 dark:text-gray-400">No matching invoices</p>
+//             )}
+//           </div>
+//         </>
+//       )}
+//     </div>
+//   );
+// }
+
+// /* ================================================================= */
+// /*  Desktop Table                                                    */
+// /* ================================================================= */
+// function Table({ invoices, onDelete, onCopy }) {
+//   return (
+//     <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+//       <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
+//         <tr>
+//           {['#', 'Documents No.', 'Customer', 'Date', 'Status', 'Total', ''].map((h) => (
+//             <th key={h} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100">
+//               {h}
+//             </th>
+//           ))}
+//         </tr>
+//       </thead>
+//       <tbody>
+//         {invoices.map((inv, i) => (
+//           <tr key={inv._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+//             <td className="px-4 py-3">{i + 1}</td>
+//             <td className="px-4 py-3">{inv.invoiceNumber }</td>
+//             <td className="px-4 py-3">{inv.customerName}</td>
+//             <td className="px-4 py-3">{new Date(inv.orderDate || inv.postingDate).toLocaleDateString('en-GB')}</td>
+//             <td className="px-4 py-3">{inv.status}</td>
+//             <td className="px-4 py-3">₹{inv.grandTotal}</td>
+//             <td className="px-4 py-3">
+//               <RowMenu invoice={inv} onDelete={onDelete} onCopy={onCopy} />
+//             </td>
+//           </tr>
+//         ))}
+//         {!invoices.length && (
+//           <tr>
+//             <td colSpan={6} className="text-center py-6 text-gray-500 dark:text-gray-400">
+//               No invoices found.
+//             </td>
+//           </tr>
+//         )}
+//       </tbody>
+//     </table>
+//   );
+// }
+
+// /* ================================================================= */
+// /*  Mobile Card                                                      */
+// /* ================================================================= */
+// function Card({ invoice, idx, onDelete, onCopy }) {
+//   return (
+//     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+//       <div className="flex justify-between">
+//         <div className="font-semibold text-gray-700 dark:text-gray-100">
+//           #{idx + 1} • {invoice.invoiceNumber}
+//         </div>
+//         <RowMenu invoice={invoice} onDelete={onDelete} onCopy={onCopy} isMobile />
+//       </div>
+//       <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">Customer: {invoice.customerName}</p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">Date: {new Date(invoice.orderDate || invoice.postingDate).toLocaleDateString('en-GB')}</p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">Status: {invoice.status}</p>
+//       <p className="text-sm text-gray-500 dark:text-gray-300">Total: ₹{invoice.grandTotal}</p>
+//     </div>
+//   );
+// }
 
 /* ================================================================= */
 /*  Row Action Menu (dropdown)                                       */

@@ -37,6 +37,7 @@ const LeaveSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "CompanyUser",
     },
+    rejectionReason: { type: String }, // ✅ ADD THIS
   },
   { timestamps: true }
 );

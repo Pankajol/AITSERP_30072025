@@ -7,9 +7,10 @@ const LeaveBalanceSchema = new mongoose.Schema(
       ref: "Company",
       required: true,
     },
+
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "CompanyUser",
+      ref: "Employee", // ✅ FIXED
       required: true,
       unique: true,
     },

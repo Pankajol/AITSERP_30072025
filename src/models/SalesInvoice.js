@@ -74,7 +74,7 @@ const SalesInvoiceSchema = new Schema(
     contactPerson: { type: String },
     refNumber: { type: String },
     salesEmployee: { type: String },
-    status: { type: String, enum: ["Pending", "Confirmed"], default: "Pending" },
+    status: { type: String,  default: "Pending" },
     orderDate: { type: Date },
     expectedDeliveryDate: { type: Date },
     items: { type: [SalesInvoiceItemSchema], required: true },

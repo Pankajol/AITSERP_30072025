@@ -3,556 +3,333 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import jsPDF from "jspdf";
-
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import axios from "axios";
-
 import {
-  FaEllipsisV,
-  FaEdit,
-  FaTrash,
-  FaCopy,
-  FaEye,
-  FaEnvelope,
-  FaWhatsapp,
-  FaSearch,
+  FaEdit, FaTrash, FaCopy, FaEye,
+  FaEnvelope, FaWhatsapp, FaSearch, FaPlus,
+  FaFileAlt, FaCloudUploadAlt, FaDownload
 } from "react-icons/fa";
 import ActionMenu from "@/components/ActionMenu";
 
-/* ================================================================= */
-/*  Sales Order List                                                 */
-/* ================================================================= */
 export default function SalesOrderList() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const router = useRouter();
+  const [filterStatus, setFilterStatus] = useState("All");
   const [uploading, setUploading] = useState(false);
-  /* ---------- fetch orders ---------- */
-  
-
-  //   const fetchOrders = async () => {
-  //   try {
-  //     const res = await axios.get("/api/sales-order");
-  //     console.log("Fetched orders:", res.data.data);
-  //     //Expecting an object with a success flag and a data array.
-  //     if (res.data.success) {
-  //       setOrders(res.data);
-  //     }
-  //   setOrders(res.data);
-  //   } catch (error) {
-  //     console.error("Error fetching sales orders:", error);
-  //   } finally {
-  //       setLoading(false);
-  //     }
-  // };
+  const router = useRouter();
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-
       const res = await axios.get("/api/sales-order", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-
-      console.log("Fetched orders:", res.data?.data);
-
       if (res.data?.success && Array.isArray(res.data.data)) {
         setOrders(res.data.data);
-      } else {
-        console.warn("Unexpected response:", res.data);
       }
     } catch (error) {
-      console.error(
-        "Error fetching sales orders:",
-        error.response?.data || error.message
-      );
+      toast.error("Error fetching sales orders");
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  useEffect(() => { fetchOrders(); }, []);
 
-  /* ---------- fetch orders ---------- */
-  // useEffect(() => {
-  //   (async () => {
-  //     try {
-  //         const res = await axios.get("/api/sales-order");
-  //         if (res.data.success) {
-  //       setOrders(res.data);
-  //     }
-  //     } catch (err) {
-  //       console.error('Error fetching orders:', err);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   })();
-  // }, []);
+  const filtered = useMemo(() => {
+    return orders.filter((o) => {
+      const matchSearch = !search.trim() ||
+        (o.customerName || "").toLowerCase().includes(search.toLowerCase()) ||
+        (o.documentNumberOrder || "").toLowerCase().includes(search.toLowerCase());
+      const matchStatus = filterStatus === "All" || o.status === filterStatus;
+      return matchSearch && matchStatus;
+    });
+  }, [orders, search, filterStatus]);
 
-  /* ---------- filtered list ---------- */
-  const displayOrders = useMemo(() => {
-    if (!search.trim()) return orders;
-    const q = search.toLowerCase();
-    return orders.filter((o) =>
-      (o.customerName || "").toLowerCase().includes(q)
-    );
-  }, [orders, search]);
-
-  /* ---------- row actions ---------- */
   const handleDelete = async (id) => {
     if (!confirm("Delete this order?")) return;
     try {
       await axios.delete(`/api/sales-order/${id}`);
       setOrders((prev) => prev.filter((o) => o._id !== id));
+      toast.success("Order deleted");
     } catch {
-      alert("Failed to delete");
+      toast.error("Failed to delete");
     }
   };
 
-
-  const downloadSalesOrderTemplate = () => {
-  try {
-    // If your template route is /api/sales-order/template
-    const url = "/api/sales-order/template";
-
-    // Create and auto-click a hidden link
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "sales_order_template.csv"; // fallback filename
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-  } catch (err) {
-    console.error("Template download failed:", err);
-    toast.error("Failed to download template");
-  }
-};
-
-const handleBulkUpload = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  setUploading(true);
-
-  try {
-    const text = await file.text();
-    const jsonData = parseCSV(text); // make sure parseCSV() exists
-    const token = localStorage.getItem("token");
-
-    const res = await axios.post(
-      "/api/sales-order/bulk",
-      { orders: jsonData },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    const result = res.data;
-
-    if (result.success) {
-      toast.success("Bulk Upload Completed");
-
-      toast.info(
-        `Success: ${result.successCount || 0} | Failed: ${result.failCount || 0}`
-      );
-
-      fetchOrders(); // refresh the table
-    } else {
-      toast.error("Bulk upload failed");
-    }
-  } catch (err) {
-    toast.error("Invalid CSV file");
-  }
-
-  setUploading(false);
-};
-
-
-const parseCSV = (text) => {
-  const lines = text.trim().split("\n");
-  const headers = lines[0].split(",");
-
-  return lines.slice(1).map((line) => {
-    const values = line.split(",");
-    const obj = {};
-    headers.forEach((h, i) => {
-      obj[h.trim()] = values[i]?.trim() || "";
-    });
-    return obj;
-  });
-};
-
-
-
   const handleCopyTo = (order, dest) => {
     if (dest === "Delivery") {
-      const data = {
-        ...order,
-        sourceId: order._id, // ✅ Add correct field
-        sourceModel: "delivery", // ✅ Already good
-      };
+      const data = { ...order, sourceId: order._id, sourceModel: "delivery" };
       sessionStorage.setItem("deliveryData", JSON.stringify(data));
       router.push("/admin/delivery-view/new");
     } else {
-      const data = {
-        ...order,
-        sourceId: order._id, // ✅ Add correct field
-        sourceModel: "salesorder", // ✅ Already good
-      };
+      const data = { ...order, sourceId: order._id, sourceModel: "salesorder" };
       sessionStorage.setItem("SalesInvoiceData", JSON.stringify(data));
       router.push("/admin/sales-invoice-view/new");
     }
   };
 
-  /* ================================================================= */
-  /*  UI                                                               */
-  /* ================================================================= */
+  const downloadSalesOrderTemplate = () => {
+    const url = "/api/sales-order/template";
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sales_order_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const text = await file.text();
+      const jsonData = parseCSV(text);
+      const token = localStorage.getItem("token");
+      const res = await axios.post("/api/sales-order/bulk", { orders: jsonData }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.success) {
+        toast.success(`Upload complete: ${res.data.successCount} success`);
+        fetchOrders();
+      }
+    } catch (err) {
+      toast.error("Invalid CSV file");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split("\n");
+    const headers = lines[0].split(",");
+    return lines.slice(1).map((line) => {
+      const values = line.split(",");
+      const obj = {};
+      headers.forEach((h, i) => { obj[h.trim()] = values[i]?.trim() || ""; });
+      return obj;
+    });
+  };
+
+  // ── Stats ──
+  const stats = {
+    total: orders.length,
+    completed: orders.filter(o => o.status === "Completed" || o.status === "Closed").length,
+    pending: orders.filter(o => o.status === "Pending" || o.status === "Draft").length,
+    cancelled: orders.filter(o => o.status === "Cancelled").length,
+  };
+
+  const StatusBadge = ({ status }) => {
+    const map = {
+      Completed: "bg-emerald-50 text-emerald-600",
+      Closed: "bg-emerald-50 text-emerald-600",
+      Pending: "bg-amber-50 text-amber-600",
+      Draft: "bg-gray-100 text-gray-500",
+      Cancelled: "bg-red-50 text-red-500",
+    };
+    return (
+      <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full ${map[status] || "bg-gray-100 text-gray-500"}`}>
+        {status || "—"}
+      </span>
+    );
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
-        Sales Orders
-      </h1>
-
-      {/* toolbar */}
-   <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
-  
-  {/* 🔍 Search Bar */}
-  <div className="relative flex-1 max-w-md">
-    <FaSearch className="absolute top-3 left-3 text-gray-400" />
-    <input
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      placeholder="Search customer…"
-      className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 
-        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 
-        focus:ring-2 focus:ring-blue-500 outline-none"
-    />
-  </div>
-
-  {/* 📥 Download Template */}
-<button
-  onClick={downloadSalesOrderTemplate}
-  className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 shadow sm:w-auto w-full"
->
-  📄 Download Template
-</button>
-
-
-  {/* 📤 Bulk Upload */}
-  <label className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 shadow cursor-pointer sm:w-auto w-full">
-    📥 Bulk Upload
-    <input
-      type="file"
-      hidden
-      accept=".csv"
-      onChange={handleBulkUpload}
-    />
-  </label>
-
-  {/* ➕ Create New Order */}
-  <Link href="/admin/sales-order-view/new" className="sm:w-auto w-full">
-    <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-      <FaEdit /> New Order
-    </button>
-  </Link>
-</div>
-
-      {/* table / cards */}
-      {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">Loading…</p>
-      ) : (
-        <>
-          {/* desktop */}
-          <div className="hidden md:block overflow-x-auto">
-            <Table
-              orders={displayOrders}
-              onDelete={handleDelete}
-              onCopy={handleCopyTo}
-            />
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+        
+        {/* ── Header ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Sales Orders</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{orders.length} active orders</p>
           </div>
-
-          {/* mobile cards */}
-          <div className="md:hidden space-y-4">
-            {displayOrders.map((o, i) => (
-              <Card
-                key={o._id}
-                order={o}
-                idx={i}
-                onDelete={handleDelete}
-                onCopy={handleCopyTo}
-              />
-            ))}
-            {!displayOrders.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
-                No matching orders
-              </p>
-            )}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={downloadSalesOrderTemplate} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm">
+               <FaDownload className="text-xs" /> Template
+            </button>
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm cursor-pointer">
+               <FaCloudUploadAlt className="text-xs" /> Bulk Upload
+               <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
+            </label>
+            <Link href="/admin/sales-order-view/new">
+              <button className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
+                <FaPlus className="text-xs" /> Create Order
+              </button>
+            </Link>
           </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================= */
-/*  Desktop Table                                                    */
-/* ================================================================= */
-function Table({ orders, onDelete, onCopy }) {
-  return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
-        <tr>
-          {[
-            "#",
-            "Document Number.",
-            "Customer",
-            "Date",
-            "Status",
-            "Total",
-            "",
-          ].map((h) => (
-            <th
-              key={h}
-              className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-            >
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map((o, i) => (
-          <tr
-            key={o._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-          >
-            <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{o.documentNumberOrder}</td>
-            <td className="px-4 py-3">{o.customerName}</td>
-            <td className="px-4 py-3">
-              {new Date(o.postingDate || o.orderDate).toLocaleDateString(
-                "en-GB"
-              )}
-            </td>
-
-            <td className="px-4 py-3">{o.status}</td>
-            <td className="px-4 py-3">₹{o.grandTotal}</td>
-            <td className="px-4 py-3">
-              <RowMenu order={o} onDelete={onDelete} onCopy={onCopy} />
-            </td>
-          </tr>
-        ))}
-        {!orders.length && (
-          <tr>
-            <td
-              colSpan={7}
-              className="text-center py-6 text-gray-500 dark:text-gray-400"
-            >
-              No orders found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-/* ================================================================= */
-/*  Mobile Card                                                      */
-/* ================================================================= */
-function Card({ order, idx, onDelete, onCopy }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {order.ducumentNumber}
         </div>
-        <RowMenu order={order} onDelete={onDelete} onCopy={onCopy} isMobile />
+
+        {/* ── Stat Cards ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { label: "Total", value: stats.total, emoji: "📦", filter: "All" },
+            { label: "Completed", value: stats.completed, emoji: "✅", filter: "Completed" },
+            { label: "Pending", value: stats.pending, emoji: "⏳", filter: "Pending" },
+            { label: "Cancelled", value: stats.cancelled, emoji: "❌", filter: "Cancelled" },
+          ].map(s => (
+            <div key={s.label} onClick={() => setFilterStatus(s.filter)}
+              className={`bg-white rounded-2xl p-4 flex items-center gap-3 cursor-pointer border-2 transition-all
+                ${filterStatus === s.filter ? "border-indigo-400 shadow-md shadow-indigo-100" : "border-transparent shadow-sm hover:border-indigo-200 hover:-translate-y-0.5"}`}>
+              <span className="text-2xl">{s.emoji}</span>
+              <div>
+                <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">{s.label}</p>
+                <p className="text-2xl font-extrabold tracking-tight text-gray-900 leading-none mt-0.5">{s.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Table Card ── */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-gray-100">
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs pointer-events-none" />
+              <input
+                className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all placeholder:text-gray-300"
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search orders..." />
+            </div>
+
+            <div className="flex gap-2 flex-wrap ml-auto">
+              {["All", "Pending", "Completed", "Cancelled"].map(s => (
+                <button key={s} onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all
+                    ${filterStatus === s ? "bg-indigo-600 text-white border-indigo-600" : "bg-gray-50 text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-500"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {["#", "Doc Number", "Customer", "Date", "Status", "Total", "Actions"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      {Array(7).fill(0).map((__, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <div className="h-3.5 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 bg-[length:400%_100%] animate-[shimmer_1.4s_infinite]" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-16 text-gray-300">No orders found</td></tr>
+                ) : filtered.map((o, idx) => (
+                  <tr key={o._id} className="border-b border-gray-50 hover:bg-indigo-50/30 transition-colors">
+                    <td className="px-4 py-3 text-xs font-bold text-gray-300 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                        {o.documentNumberOrder || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-gray-900">{o.customerName || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {new Date(o.postingDate || o.orderDate).toLocaleDateString("en-GB")}
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
+                    <td className="px-4 py-3 font-mono font-bold text-gray-800">₹{Number(o.grandTotal || 0).toLocaleString("en-IN")}</td>
+                    <td className="px-4 py-3">
+                      <RowMenu order={o} onDelete={handleDelete} onCopy={handleCopyTo} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-gray-50">
+            {filtered.map((o, idx) => (
+              <div key={o._id} className="p-4 hover:bg-indigo-50/20 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{o.documentNumberOrder || `#${idx + 1}`}</span>
+                    <p className="font-bold text-gray-900 text-sm mt-1.5">{o.customerName}</p>
+                  </div>
+                  <RowMenu order={o} onDelete={handleDelete} onCopy={handleCopyTo} />
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2">
+                  <span className="text-xs text-gray-400">{new Date(o.postingDate || o.orderDate).toLocaleDateString("en-GB")}</span>
+                  <StatusBadge status={o.status} />
+                  <span className="font-mono font-bold text-gray-800 text-xs ml-auto">₹{Number(o.grandTotal || 0).toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-        Customer: {order.customerName}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Date:{" "}
-        {new Date(order.postingDate || order.orderDate).toLocaleDateString(
-          "en-GB"
-        )}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Status: {order.status}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Total: ₹{order.grandTotal}
-      </p>
+      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
     </div>
   );
 }
 
-/* ================================================================= */
-/*  Row Action Menu (dropdown)                                       */
-/* ================================================================= */
 function RowMenu({ order, onDelete, onCopy }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
   const router = useRouter();
 
-  /** ✅ Actions Array */
-  const actions = [
-    {
-      icon: <FaEye />,
-      label: "View",
-      onClick: () => router.push(`/admin/sales-order-view/view/${order._id}`),
-    },
-    {
-      icon: <FaEdit />,
-      label: "Edit",
-      onClick: () =>
-        router.push(`/admin/sales-order-view/new?editId=${order._id}`),
-    },
-    {
-      icon: <FaCopy />,
-      label: "Copy → Delivery",
-      onClick: () => onCopy(order, "Delivery"),
-    },
-    {
-      icon: <FaCopy />,
-      label: "Copy → Invoice",
-      onClick: () => onCopy(order, "Invoice"),
-    },
-    {
-      icon: <FaEnvelope />,
-      label: "Email",
-      onClick: async () => {
-        try {
-          const res = await axios.post("/api/email", {
-            type: "order",
-            id: order._id,
-          });
-          if (res.data.success) toast.success("Email sent successfully!");
-          else toast.error(res.data.message || "Failed to send email.");
-        } catch {
-          toast.error("Error sending email.");
-        }
-      },
-    },
-
-// {
-//   icon: <FaWhatsapp />,
-//   label: "WhatsApp",
-//   onClick: async () => {
-//     try {
-//       const phone = "917738961799"; // ✅ include country code (no + or spaces)
-
-//       if (!order || !order.customerName || !order._id || !order.grandTotal) {
-//         toast.error("Missing order details!");
-//         console.warn("Invalid order object:", order);
-//         return;
-//       }
-
-//       // ✅ Create message text
-//       const message = `Hello ${order.customerName}, your order #${order._id} has been received successfully. The total amount is ₹${order.grandTotal}. Thank you for shopping with us!`;
-
-//       // ✅ Send API request
-//       const res = await axios.post("/api/whatsapp", {
-//         phone,
-//         message, // ✅ sending message now
-//       });
-
-//       if (res.data?.success) {
-//         toast.success("✅ WhatsApp message sent successfully!");
-//       } else {
-//         console.error("❌ WhatsApp send failed:", res.data);
-//         toast.error(res.data?.message || "Failed to send WhatsApp message.");
-//       }
-//     } catch (err) {
-//       console.error("❌ Error sending WhatsApp:", err.response?.data || err.message);
-//       toast.error("Error sending WhatsApp message.");
-//     }
-//   },
-// }
-
-
- {
-  icon: <FaWhatsapp />,
-  label: "WhatsApp",
-  onClick: async () => {
+  const handleWhatsApp = async () => {
     try {
-      const phone = "917738961799"; // ✅ include country code (no + or spaces)
+      const phone = "917738961799"; 
+      if (!order || !order.customerName || !order._id) return toast.error("Missing details");
 
-      if (!order || !order.customerName || !order._id || !order.grandTotal) {
-        toast.error("Missing order details!");
-        console.warn("Invalid order object:", order);
-        return;
-      }
+      const message = `Hello ${order.customerName}, your order #${order.documentNumberOrder || order._id} has been received. Total: ₹${order.grandTotal}.`;
 
-      // ✅ 1. Create message text
-      const message = `Hello ${order.customerName}, your order #${order._id} has been received successfully. The total amount is ₹${order.grandTotal}. Thank you for shopping with us!`;
-
-      // ✅ 2. Generate a PDF dynamically
       const doc = new jsPDF();
-      doc.text("🧾 Order Invoice", 10, 10);
-      doc.text(`Order ID: ${order._id}`, 10, 20);
+      doc.text("🧾 Sales Order", 10, 10);
+      doc.text(`Order: ${order.documentNumberOrder}`, 10, 20);
       doc.text(`Customer: ${order.customerName}`, 10, 30);
       doc.text(`Total: ₹${order.grandTotal}`, 10, 40);
-      doc.text("Thank you for shopping with us!", 10, 60);
 
-      // Convert PDF to Blob
       const pdfBlob = doc.output("blob");
       const pdfFile = new File([pdfBlob], `order-${order._id}.pdf`, { type: "application/pdf" });
 
-      // ✅ 3. Create FormData for sending to backend
       const formData = new FormData();
       formData.append("phone", phone);
       formData.append("message", message);
       formData.append("file", pdfFile);
 
-      // ✅ 4. Send request to your backend
-      const res = await axios.post("/api/whatsapp", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (res.data?.success) {
-        toast.success("✅ WhatsApp message with PDF sent successfully!");
-      } else {
-        console.error("❌ WhatsApp send failed:", res.data);
-        toast.error(res.data?.message || "Failed to send WhatsApp message.");
-      }
+      const res = await axios.post("/api/whatsapp", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      if (res.data?.success) toast.success("WhatsApp sent!");
     } catch (err) {
-      console.error("❌ Error sending WhatsApp:", err.response?.data || err.message);
-      toast.error("Error sending WhatsApp message.");
+      toast.error("Error sending WhatsApp");
     }
-  },
-}
+  };
 
-
-
-
-
-
-
-
-
-,
-
-    {
-      icon: <FaTrash />,
-      label: "Delete",
-      color: "text-red-600",
-      onClick: () => onDelete(order._id),
+  const actions = [
+    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/sales-order-view/view/${order._id}`) },
+    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/sales-order-view/new?editId=${order._id}`) },
+    { icon: <FaCopy />, label: "Copy → Delivery", onClick: () => onCopy(order, "Delivery") },
+    { icon: <FaCopy />, label: "Copy → Invoice", onClick: () => onCopy(order, "Invoice") },
+    { icon: <FaEnvelope />, label: "Email", onClick: async () => {
+        try {
+          const res = await axios.post("/api/email", { type: "order", id: order._id });
+          if (res.data.success) toast.success("Email sent!");
+        } catch { toast.error("Email error"); }
+      }
     },
+    { icon: <FaWhatsapp />, label: "WhatsApp", onClick: handleWhatsApp },
+    { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(order._id) },
   ];
+
   return <ActionMenu actions={actions} />;
 }
 

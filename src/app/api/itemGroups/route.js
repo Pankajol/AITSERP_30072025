@@ -3,12 +3,30 @@ import ItemGroup from "@/models/ItemGroupModels";
 import { NextResponse } from "next/server";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
-// ✅ Check user role/permissions
+// ✅ Role-based access for item management
 function isAuthorized(user) {
-  return (
-    user?.type === "company" ||
-    user?.role === "Admin" ||
-    user?.permissions?.includes("item")
+  if (!user) return false;
+
+  if (user.type === "company") return true;
+
+  const allowedRoles = [
+    "admin",
+    "sales manager",
+    "purchase manager",
+    "inventory manager",
+    "accounts manager",
+    "hr manager",
+    "support executive",
+    "production head",
+    "project manager",
+  ];
+
+  const userRoles = Array.isArray(user.roles)
+    ? user.roles
+    : [];
+
+  return userRoles.some(role =>
+    allowedRoles.includes(role.trim().toLowerCase())
   );
 }
 
@@ -27,28 +45,7 @@ async function validateUser(req) {
   }
 }
 
-// ✅ GET Item Groups
-// export async function GET(req) {
-//   await dbConnect();
 
-//   const { user, error, status } = await validateUser(req);
-//   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
-//   try {
-//     const itemGroups = await ItemGroup.find({ companyId: user.companyId }).sort({
-//       createdAt: -1,
-//     });
-//     return NextResponse.json({ success: true, data: itemGroups }, { status: 200 });
-//   } catch (err) {
-//     console.error("Error fetching item groups:", err.message);
-//     return NextResponse.json(
-//       { success: false, message: "Error fetching item groups" },
-//       { status: 500 }
-//     );
-//   }
-// }
-
-// ✅ POST Create Item Group
 export async function POST(req) {
   await dbConnect();
 

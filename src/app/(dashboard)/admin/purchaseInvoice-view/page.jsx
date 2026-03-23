@@ -1,15 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-
-
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { toast } from "react-toastify"; // Assuming you have react-toastify installed for notifications
-
+import { toast } from "react-toastify";
 import {
-  FaEllipsisV,
   FaEdit,
   FaTrash,
   FaCopy,
@@ -17,30 +13,30 @@ import {
   FaEnvelope,
   FaWhatsapp,
   FaSearch,
-  FaPlus, // Changed from FaEdit for "Create New" button
+  FaPlus,
+  FaFileInvoice,
 } from "react-icons/fa";
 import ActionMenu from "@/components/ActionMenu";
 
-export default function InvoiceView() {
+export default function PurchaseInvoiceList() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("All");
   const router = useRouter();
 
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      // Assuming you might need a token for fetching invoices as well
-      const token = localStorage.getItem("token"); 
-      const res = await axios.get("/api/purchaseInvoice"
-      , { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const token = localStorage.getItem("token");
+      const res = await axios.get("/api/purchaseInvoice", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (res.data?.success && Array.isArray(res.data.data)) {
         setInvoices(res.data.data);
       } else {
-        console.warn("Unexpected response:", res.data);
-        setInvoices([]); // Ensure invoices is an array even if API response is not as expected
+        setInvoices([]);
       }
     } catch (error) {
       console.error("Error fetching invoices:", error);
@@ -54,31 +50,37 @@ export default function InvoiceView() {
     fetchInvoices();
   }, []);
 
-  const displayInvoices = useMemo(() => {
-    if (!search.trim()) return invoices;
-    const q = search.toLowerCase();
-    return invoices.filter(
-      (invoice) =>
+  const filtered = useMemo(() => {
+    return invoices.filter((invoice) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        !search.trim() ||
         (invoice.supplierName || "").toLowerCase().includes(q) ||
-        (invoice.invoiceNumber || "").toLowerCase().includes(q)
-    );
-  }, [invoices, search]);
+        (invoice.documentNumberPurchaseInvoice || "").toLowerCase().includes(q);
+      
+      const matchStatus = filterStatus === "All" || invoice.status === filterStatus;
+      return matchSearch && matchStatus;
+    });
+  }, [invoices, search, filterStatus]);
+
+  const stats = {
+    total: invoices.length,
+    paid: invoices.filter((i) => i.status === "Paid" || i.status === "Closed").length,
+    unpaid: invoices.filter((i) => i.status === "Unpaid" || i.status === "Open").length,
+    totalAmount: invoices.reduce((acc, curr) => acc + (Number(curr.grandTotal) || 0), 0),
+  };
 
   const handleDelete = async (id) => {
     if (!confirm("Are you sure you want to delete this invoice?")) return;
     try {
-      // const token = localStorage.getItem("token");
-      const res = await axios.delete(`/api/purchaseInvoice/${id}`
-      // , { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await axios.delete(`/api/purchaseInvoice/${id}`);
       if (res.data.success) {
         toast.success("Invoice deleted successfully!");
-        fetchInvoices(); // Re-fetch to update the list
+        setInvoices((prev) => prev.filter((i) => i._id !== id));
       } else {
         toast.error(res.data.message || "Failed to delete invoice.");
       }
     } catch (error) {
-      console.error("Error deleting invoice:", error);
       toast.error("Failed to delete invoice.");
     }
   };
@@ -90,274 +92,182 @@ export default function InvoiceView() {
     }
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <h1 className="text-3xl md:text-4xl font-bold mb-6 text-center dark:text-white">
-        Invoice List
-      </h1>
+  const StatusBadge = ({ status }) => {
+    const map = {
+      Paid: "bg-emerald-50 text-emerald-600",
+      Closed: "bg-emerald-50 text-emerald-600",
+      Unpaid: "bg-red-50 text-red-600",
+      Open: "bg-blue-50 text-blue-600",
+      Draft: "bg-gray-100 text-gray-500",
+      Pending: "bg-amber-50 text-amber-600",
+    };
+    return (
+      <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full ${map[status] || "bg-gray-100 text-gray-500"}`}>
+        {status || "—"}
+      </span>
+    );
+  };
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center mb-6">
-        <div className="relative flex-1 max-w-md">
-          <FaSearch className="absolute top-3 left-3 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice or supplier…"
-            className="w-full pl-10 pr-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
-          />
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+        
+        {/* ── Header ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Purchase Invoices</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Manage and track supplier billing</p>
+          </div>
+          <Link href="/admin/purchaseInvoice-view/new">
+            <button className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm">
+              <FaPlus className="text-xs" /> New Invoice
+            </button>
+          </Link>
         </div>
 
-        <Link href="/admin/purchaseInvoice-view/new" className="sm:w-auto">
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 shadow">
-            <FaPlus /> New Invoice
-          </button>
-        </Link>
-      </div>
+        {/* ── Stat Cards ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          {[
+            { label: "Total Invoices", value: stats.total, emoji: "📄", filter: "All" },
+            { label: "Paid", value: stats.paid, emoji: "✅", filter: "Paid" },
+            { label: "Unpaid", value: stats.unpaid, emoji: "⏳", filter: "Unpaid" },
+            { label: "Payable Value", value: `₹${stats.totalAmount.toLocaleString("en-IN")}`, emoji: "💰", filter: "All", noFilter: true },
+          ].map((s) => (
+            <div key={s.label} 
+              onClick={() => !s.noFilter && setFilterStatus(s.filter)}
+              className={`bg-white rounded-2xl p-4 flex items-center gap-3 border-2 transition-all
+                ${!s.noFilter && filterStatus === s.filter 
+                  ? "border-indigo-400 shadow-md shadow-indigo-100" 
+                  : "border-transparent shadow-sm hover:border-indigo-200 cursor-pointer"}`}>
+              <span className="text-2xl">{s.emoji}</span>
+              <div>
+                <p className="text-[10.5px] font-bold uppercase tracking-widest text-gray-400">{s.label}</p>
+                <p className="text-xl font-extrabold tracking-tight text-gray-900 mt-0.5">{s.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
 
-      {/* Table / Cards */}
-      {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">
-          Loading invoices…
-        </p>
-      ) : (
-        <>
+        {/* ── Main Content Card ── */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+          
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-gray-100 bg-white">
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs pointer-events-none" />
+              <input
+                className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search invoice or supplier..." />
+            </div>
+            <div className="flex gap-2 flex-wrap ml-auto">
+              {["All", "Open", "Paid", "Unpaid"].map((s) => (
+                <button key={s} onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all
+                    ${filterStatus === s 
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
+                      : "bg-gray-50 text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-500"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto">
-            <InvoiceTable
-              invoices={displayInvoices}
-              onDelete={handleDelete}
-              onCopyTo={handleCopyTo}
-            />
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {["#", "Invoice No.", "Supplier", "Date", "Status", "Grand Total", "Actions"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      {Array(7).fill(0).map((__, j) => (
+                        <td key={j} className="px-4 py-4">
+                          <div className="h-3 rounded bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 bg-[length:400%_100%] animate-[shimmer_1.4s_infinite]" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-20">
+                      <FaFileInvoice className="mx-auto text-4xl text-gray-100 mb-3" />
+                      <p className="text-sm font-medium text-gray-400">No invoices found</p>
+                    </td>
+                  </tr>
+                ) : filtered.map((invoice, idx) => (
+                  <tr key={invoice._id} className="border-b border-gray-50 hover:bg-indigo-50/20 transition-colors">
+                    <td className="px-4 py-4 text-xs font-bold text-gray-300 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-4">
+                      <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                        {invoice.documentNumberPurchaseInvoice || "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 font-bold text-gray-900">{invoice.supplierName || "—"}</td>
+                    <td className="px-4 py-4 text-xs text-gray-500">
+                      {invoice.documentDate ? new Date(invoice.documentDate).toLocaleDateString("en-GB") : "—"}
+                    </td>
+                    <td className="px-4 py-4"><StatusBadge status={invoice.status} /></td>
+                    <td className="px-4 py-4 font-mono font-bold text-gray-800">
+                       ₹{Number(invoice.grandTotal || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-4 py-4">
+                      <InvoiceRowMenu invoice={invoice} onDelete={handleDelete} onCopyTo={handleCopyTo} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {/* Mobile Cards */}
-          <div className="md:hidden space-y-4">
-            {displayInvoices.map((invoice, i) => (
-              <InvoiceCard
-                key={invoice._id}
-                invoice={invoice}
-                idx={i}
-                onDelete={handleDelete}
-                onCopyTo={handleCopyTo}
-              />
+          {/* Mobile View */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {filtered.map((invoice, idx) => (
+              <div key={invoice._id} className="p-4 hover:bg-gray-50 transition-colors">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                    {invoice.documentNumberPurchaseInvoice || `#${idx + 1}`}
+                  </span>
+                  <InvoiceRowMenu invoice={invoice} onDelete={handleDelete} onCopyTo={handleCopyTo} />
+                </div>
+                <h3 className="font-bold text-gray-900 text-sm">{invoice.supplierName}</h3>
+                <div className="flex justify-between items-end mt-3">
+                  <div className="space-y-1">
+                    <StatusBadge status={invoice.status} />
+                    <p className="text-[10px] text-gray-400">
+                      {invoice.documentDate ? new Date(invoice.documentDate).toLocaleDateString("en-GB") : ""}
+                    </p>
+                  </div>
+                  <span className="font-mono font-bold text-gray-800 text-sm">
+                    ₹{Number(invoice.grandTotal || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             ))}
-            {!displayInvoices.length && (
-              <p className="text-center text-gray-500 dark:text-gray-400">
-                No matching invoices found.
-              </p>
-            )}
           </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ================= Desktop Table ================= */
-function InvoiceTable({ invoices, onDelete, onCopyTo }) {
-  return (
-    <table className="min-w-full bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 dark:bg-gray-700 text-sm">
-        <tr>
-          {["#", "Invoice No.", "Supplier", "Date", "Grand Total", ""].map(
-            (h) => (
-              <th
-                key={h}
-                className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-100"
-              >
-                {h}
-              </th>
-            )
-          )}
-        </tr>
-      </thead>
-      <tbody>
-        {invoices.map((invoice, i) => (
-          <tr
-            key={invoice._id}
-            className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-          >
-            <td className="px-4 py-3">{i + 1}</td>
-            <td className="px-4 py-3">{invoice.documentNumberPurchaseInvoice}</td>
-            <td className="px-4 py-3">{invoice.supplierName}</td>
-            <td className="px-4 py-3">
-              {invoice.documentDate
-                ? new Date(invoice.documentDate).toLocaleDateString("en-GB")
-                : ""}
-            </td>
-            <td className="px-4 py-3">₹{invoice.grandTotal}</td>
-            <td className="px-4 py-3">
-              <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} />
-            </td>
-          </tr>
-        ))}
-        {!invoices.length && (
-          <tr>
-            <td
-              colSpan={6} // Adjusted colspan to match number of columns
-              className="text-center py-6 text-gray-500 dark:text-gray-400"
-            >
-              No invoices found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-/* ================= Mobile Card ================= */
-function InvoiceCard({ invoice, idx, onDelete, onCopyTo }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <div className="flex justify-between">
-        <div className="font-semibold text-gray-700 dark:text-gray-100">
-          #{idx + 1} • {invoice.documentNumberPurchaseInvoice}
         </div>
-        <InvoiceRowMenu invoice={invoice} onDelete={onDelete} onCopyTo={onCopyTo} isMobile />
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-        Supplier: {invoice.supplierName}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Date:{" "}
-        {invoice.documentDate
-          ? new Date(invoice.documentDate).toLocaleDateString("en-GB")
-          : ""}
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-300">
-        Grand Total: ₹{invoice.grandTotal}
-      </p>
+      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
     </div>
   );
 }
-
-/* ================= Dropdown Menu for Invoice Actions ================= */
-// function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
-//   const [open, setOpen] = useState(false);
-//   const btnRef = useRef(null);
-//   const [coords, setCoords] = useState({ top: 0, left: 0 });
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     if (open && btnRef.current) {
-//       const { bottom, right } = btnRef.current.getBoundingClientRect();
-//       setCoords({ top: bottom + 8, left: right - 192 }); // Adjust left for menu width
-//     }
-//   }, [open]);
-
-//   // Close dropdown if clicked outside
-//   useEffect(() => {
-//     const handleClickOutside = (event) => {
-//       if (btnRef.current && !btnRef.current.contains(event.target) && !event.target.closest('.fixed.z-50')) {
-//         setOpen(false);
-//       }
-//     };
-//     document.addEventListener("mousedown", handleClickOutside);
-//     return () => {
-//       document.removeEventListener("mousedown", handleClickOutside);
-//     };
-//   }, [btnRef]);
-
-//   const MenuItem = ({ icon, label, onClick, color = "" }) => (
-//     <button
-//       onClick={() => {
-//         onClick();
-//         setOpen(false);
-//       }}
-//       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
-//     >
-//       <span className={`${color}`}>{icon}</span> {label}
-//     </button>
-//   );
-
-//   return (
-//     <>
-//       <button
-//         ref={btnRef}
-//         onClick={() => setOpen(!open)}
-//         className="p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full focus:ring-2 focus:ring-blue-500"
-//         title="More Actions"
-//       >
-//         <FaEllipsisV size={16} />
-//       </button>
-
-//       {open && (
-//         <div
-//           style={{ top: coords.top, left: coords.left }}
-//           className="fixed z-50 w-48 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg"
-//         >
-//           <MenuItem
-//             icon={<FaEye />}
-//             label="View"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/${invoice._id}`)}
-//           />
-//           <MenuItem
-//             icon={<FaEdit />}
-            
-//             label="Edit"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/new/?editId=${invoice._id}`)}
-//           />
-//           <MenuItem
-//             icon={<FaCopy />}
-//             label="Copy → Debit Note"
-//             onClick={() => onCopyTo(invoice, "debitNote")}
-//           />
-//           <MenuItem
-//             icon={<FaEnvelope />}
-//             label="Email"
-//             onClick={async () => {
-//               try {
-//                 // Assuming an email API similar to purchase quotation
-//                 const res = await axios.post("/api/email", {
-//                   type: "purchase-invoice", // A new type for purchase invoices
-//                   id: invoice._id,
-//                 });
-
-//                 if (res.data.success) {
-//                   toast.success("Email sent successfully!");
-//                 } else {
-//                   toast.error(res.data.message || "Failed to send email.");
-//                 }
-//               } catch (error) {
-//                 console.error("Error sending email:", error);
-//                 toast.error("Error sending email.");
-//               }
-//             }}
-//           />
-//           <MenuItem
-//             icon={<FaWhatsapp />}
-//             label="WhatsApp"
-//             onClick={() => router.push(`/admin/purchaseInvoice-view/${invoice._id}/send-whatsapp`)}
-//           />
-//           <MenuItem
-//             icon={<FaTrash />}
-//             label="Delete"
-//             color="text-red-600"
-//             onClick={() => onDelete(invoice._id)}
-//           />
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
 
 function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
-  const [open, setOpen] = useState(false);
-  const [style, setStyle] = useState({});
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
   const router = useRouter();
 
   const actions = [
-    { icon: <FaEye />, label: "View", onClick: () => router.push(`/admin/purchaseInvoice-view/${invoice._id}`) },
-    { icon: <FaEdit />, label: "Edit", onClick: () => router.push(`/admin/purchaseInvoice-view/new/?editId=${invoice._id}`) },
+    { icon: <FaEye />, label: "View Invoice", onClick: () => router.push(`/admin/purchaseInvoice-view/view/${invoice._id}`) },
+    { icon: <FaEdit />, label: "Edit Invoice", onClick: () => router.push(`/admin/purchaseInvoice-view/new/?editId=${invoice._id}`) },
     { icon: <FaCopy />, label: "Copy → Debit Note", onClick: () => onCopyTo(invoice, "debitNote") },
     {
       icon: <FaEnvelope />,
-      label: "Email",
+      label: "Email PDF",
       onClick: async () => {
         try {
           const res = await axios.post("/api/email", { type: "purchase-invoice", id: invoice._id });
@@ -372,8 +282,5 @@ function InvoiceRowMenu({ invoice, onDelete, onCopyTo }) {
     { icon: <FaTrash />, label: "Delete", color: "text-red-600", onClick: () => onDelete(invoice._id) },
   ];
 
-  return (
-    
-    <ActionMenu actions={actions} />
-  )
+  return <ActionMenu actions={actions} />;
 }

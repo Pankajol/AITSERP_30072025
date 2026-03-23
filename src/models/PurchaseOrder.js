@@ -22,7 +22,7 @@ const OrderItemSchema = new mongoose.Schema({
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item' },
   itemCode: { type: String },
   itemName: { type: String },
-  orderedQuantity: { type: Number, required: true },
+  orderedQuantity: { type: Number },
   receivedQuantity: { type: Number, default: 0 },
   itemDescription: { type: String },
 

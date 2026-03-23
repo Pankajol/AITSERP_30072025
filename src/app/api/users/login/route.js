@@ -74,8 +74,11 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import CompanyUser from '@/models/CompanyUser';
+import Employee from '@/models/hr/Employee';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import {jwtDecode} from 'jwt-decode';
+
 
 const SECRET = process.env.JWT_SECRET;
 
@@ -93,7 +96,8 @@ export async function POST(req) {
     await dbConnect();
 
     // 🔐 Find user
-    const user = await CompanyUser.findOne({ email });
+    const user = await CompanyUser.findOne({ email })
+      .populate("employeeId");
     if (!user) {
       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
@@ -116,14 +120,23 @@ export async function POST(req) {
         roles: Array.isArray(user.roles) ? user.roles : [],
         modules,
         type: 'user',
+        employeeId: user.employeeId?._id,
       },
       SECRET,
       { expiresIn: '1d' }
+
     );
+    // add console log to verify token payload
+     console.log(jwtDecode(token));
+      console.log(JSON.stringify(user.modules, null, 2));
+      
 
     // ✅ Remove sensitive fields
     const { password: _, __v, ...safeUser } = user.toObject();
     safeUser.modules = modules;
+
+    console.log(jwtDecode(token));
+    console.log(JSON.stringify(user.modules, null, 2));
 
     return NextResponse.json({ token, user: safeUser });
   } catch (e) {
