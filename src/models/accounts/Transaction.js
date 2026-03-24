@@ -11,7 +11,7 @@ const JournalLineSchema = new mongoose.Schema({
   accountId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "AccountHead",
-    required: true,
+    required: true, 
   },
 
   accountName: {
