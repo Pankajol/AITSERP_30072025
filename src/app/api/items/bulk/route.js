@@ -77,6 +77,7 @@ export async function POST(req) {
       const itemData = {
         companyId,
         createdBy,
+        imageUrl: row.imageUrl || "",
         itemName: row.itemName,
         category: row.category,
         unitPrice: parseFloat(row.unitPrice),
@@ -98,10 +99,14 @@ export async function POST(req) {
           action: "updated",
         });
       } else {
+        // 
         // ✅ Create new item with auto code
         const itemCode = `ITEM-${nextCodeNumber.toString().padStart(4, "0")}`;
         nextCodeNumber++;
         itemData.itemCode = itemCode;
+        // Create image Url  AI se and dummy MOdel and 
+        itemData.imageUrl = row.imageUrl || "";
+
 
         await Item.create(itemData);
         createdCount++;

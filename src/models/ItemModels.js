@@ -23,7 +23,7 @@ const ItemSchema = new mongoose.Schema(
   {
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "CompanyUser" },
-
+    imageUrl: { type: String },
     itemCode: { type: String, required: true },
     itemName: { type: String, required: true },
     description: { type: String },
