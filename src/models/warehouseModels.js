@@ -26,7 +26,7 @@ const WarehouseSchema = new mongoose.Schema(
     warehouseCode: { 
       type: String, 
       required: true, 
-      unique: true, 
+     
       trim: true, 
       uppercase: true 
     },

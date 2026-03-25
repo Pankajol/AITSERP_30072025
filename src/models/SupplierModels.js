@@ -10,7 +10,7 @@ const addressSchema = new mongoose.Schema({
   pin: {
     type: String,
     trim: true,
-    match: [/^[0-9]{6}$/, "Invalid PIN code format"]
+    // match: [/^[0-9]{6}$/, "Invalid PIN code format"]
   }
 }, { _id: false });
 
@@ -37,7 +37,7 @@ const SupplierSchema = new mongoose.Schema({
   },
   supplierGroup: {
     type: String,
-    required: [true, "Supplier group is required"],
+    // required: [true, "Supplier group is required"],
     trim: true
   },
   supplierCategory: {
@@ -93,23 +93,23 @@ const SupplierSchema = new mongoose.Schema({
   gstCategory: {
     type: String,
     trim: true,
-    enum: [
-      "Registered Regular",
-      "Registered Composition",
-      "Unregistered",
-      "SEZ",
-      "Overseas",
-      "Deemed Export",
-      "UIN Holders",
-      "Tax Deductor",
-      "Tax Collector",
-      "Input Service Distributor"
-    ]
+    // enum: [
+    //   "Registered Regular",
+    //   "Registered Composition",
+    //   "Unregistered",
+    //   "SEZ",
+    //   "Overseas",
+    //   "Deemed Export",
+    //   "UIN Holders",
+    //   "Tax Deductor",
+    //   "Tax Collector",
+    //   "Input Service Distributor"
+    // ]
   },
 
   pan: {
     type: String,
-    required: [true, "PAN is required"],
+    // required: [true, "PAN is required"],
     trim: true,
     uppercase: true,
     // match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, "Invalid PAN format"]

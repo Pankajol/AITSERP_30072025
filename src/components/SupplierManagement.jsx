@@ -44,7 +44,7 @@ const VALIDATORS = {
     const e = {};
     if (!d.supplierName?.trim()) e.supplierName = "Supplier Name is required";
     if (!d.supplierType)         e.supplierType = "Supplier Type is required";
-    if (!d.supplierGroup?.trim()) e.supplierGroup = "Supplier Group is required";
+    
     return e;
   },
   2: (d) => {
@@ -72,7 +72,7 @@ const VALIDATORS = {
     else if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(d.pan)) e.pan = "Invalid PAN (e.g. ABCDE1234F)";
     if (d.gstNumber && !/^\d{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(d.gstNumber))
       e.gstNumber = "Invalid GST (e.g. 22ABCDE1234F1Z5)";
-    if (!d.glAccount?._id) e.glAccount = "GL Account is required";
+    // if (!d.glAccount?._id) e.glAccount = "GL Account is required";
     return e;
   },
   5: (d) => {
@@ -424,9 +424,9 @@ export default function SupplierManagement() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Lbl text="Supplier Group" req />
+              <Lbl text="Supplier Group"  />
               <GroupSearch value={sd.supplierGroup} onSelectGroup={name => { setSd(p => ({ ...p, supplierGroup: name })); clearErr("supplierGroup"); }} />
-              <Err k="supplierGroup" />
+           
             </div>
             <div>
               <Lbl text="Supplier Type" req />
@@ -622,7 +622,7 @@ export default function SupplierManagement() {
             <RRow l="GST Category" v={sd.gstCategory} />
             <RRow l="PAN"          v={sd.pan} />
             <RRow l="Payment Terms" v={sd.paymentTerms ? `${sd.paymentTerms} days` : ""} />
-            <RRow l="GL Account"   v={sd.glAccount?.accountName} />
+            {/* <RRow l="GL Account"   v={sd.glAccount?.accountName} /> */}
           </div>
 
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
