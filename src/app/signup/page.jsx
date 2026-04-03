@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
 
 const LAND_DOTS = [
   [49,-125],[50,-120],[49,-115],[48,-110],[47,-120],[46,-124],[44,-124],[42,-124],[40,-124],[38,-122],[37,-122],[36,-121],[35,-120],
@@ -33,8 +34,8 @@ const CONNECTIONS = [[0,5],[0,1],[1,8],[1,2],[2,9],[0,7],[7,3],[3,11],[5,1],[5,7
 function project(lat,lon,W,H){const x=((lon+180)/360)*W;const latRad=(lat*Math.PI)/180;const mercN=Math.log(Math.tan(Math.PI/4+latRad/2));const y=H/2-(W*mercN)/(2*Math.PI);return[x,y];}
 
 const BUNDLES=[
-  {id:"starter",name:"Standard",price:2999,features:["Sales Order","Sales Invoice","5 Users","Inventory View"]},
-  {id:"growth",name:"Growth",price:6999,features:["All Modules","Priority Support","API Access","Unlimited Users"],popular:true},
+  {id:"starter",name:"Standard",price:50,features:["Sales Order","Sales Invoice","5 Users","Inventory View"]},
+  {id:"growth",name:"Growth",price:299,features:["All Modules","Priority Support","API Access","Unlimited Users"],popular:true},
 ];
 const BUSINESS_TYPES=["Pvt Ltd","LLP","Partnership","Sole Proprietorship"];
 const INDUSTRIES=["Manufacturing","IT / Software","Retail","Healthcare","Other"];
@@ -48,6 +49,9 @@ const PAYMENT_METHODS=[
   {id:"paylater",icon:"🕐",title:"Pay Later",         sub:"Invoice sent · Pay within 30 days",badge:"Net-30",badgeColor:"#a855f7"},
   {id:"trial", icon:"🎁",title:"1 Week Free Trial",   sub:"Full access · No card required",badge:"FREE",    badgeColor:"#00f5ff"},
 ];
+  
+
+
 
 // ── Proxy caller — goes through /api/claude (no CORS / Method Not Allowed) ──
 async function callClaude(messages,systemPrompt=""){
@@ -159,9 +163,31 @@ export default function App(){
   const[errors,setErrors]=useState({});
   const[packets,setPackets]=useState(8842);
   const[welcomeMsg,setWelcomeMsg]=useState("");
+  const [qr, setQr] = useState("");
   const[form,setForm]=useState({companyName:"",contactName:"",email:"",phone:"",businessType:"",industry:"",gstNumber:"",country:"",address:"",pinCode:"",password:"",confirmPwd:"",agreeToTerms:false,upi:"",cardNumber:"",cardName:"",cardExpiry:"",cardCvv:""});
   useEffect(()=>{const iv=setInterval(()=>setPackets(v=>v+Math.floor(Math.random()*40-10)),1100);return()=>clearInterval(iv);},[]);
   const price=useMemo(()=>BUNDLES.find(b=>b.id===activeBundle),[activeBundle]);
+ useEffect(() => {
+  const script = document.createElement("script");
+  script.src = "https://checkout.razorpay.com/v1/checkout.js";
+  script.async = true;
+  document.body.appendChild(script);
+}, []);
+
+useEffect(() => {
+  const amount = price?.price || 2999;
+
+  const upiLink = `upi://pay?pa=pankajdyadav10699@okhdfcbank&pn=Pankaj Yadav&am=${amount}&cu=INR`;
+
+  QRCode.toDataURL(upiLink)
+    .then((url) => {
+      console.log("QR Generated:", url); // debug
+      setQr(url);
+    })
+    .catch((err) => {
+      console.error("QR Error:", err);
+    });
+}, [price]);
   const handleChange=(e)=>{const n=e.target.name,v=e.target.type==="checkbox"?e.target.checked:e.target.value;setForm(p=>({...p,[n]:v}));if(errors[n])setErrors(p=>({...p,[n]:null}));};
   const validate=()=>{
     const e={};
@@ -240,6 +266,83 @@ export default function App(){
       setProcessing(false);setSubmitting(false);
     }
   };
+  const handleRazorpayPayment = async () => {
+  try {
+    setSubmitting(true);
+
+    // 1. Create Order
+    const res = await fetch("/api/payment/create-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: price.price,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error("Order creation failed");
+    }
+
+    // 2. Razorpay Options
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: data.order.amount,
+      currency: "INR",
+      name: "AITS ERP",
+      description: "ERP Subscription",
+      order_id: data.order.id,
+
+      handler: async function (response) {
+        // 3. Verify Payment
+        const verifyRes = await fetch("/api/payment/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(response),
+        });
+
+        const verifyData = await verifyRes.json();
+
+        if (verifyData.success) {
+          // ✅ SUCCESS → continue your flow
+          await handleSubmit("razorpay");
+        } else {
+          alert("Payment verification failed");
+        }
+      },
+
+      prefill: {
+        name: form.contactName,
+        email: form.email,
+        contact: form.phone,
+      },
+
+      theme: {
+        color: "#00f5ff",
+      },
+
+      modal: {
+        ondismiss: function () {
+          setSubmitting(false);
+        },
+      },
+    };
+
+    // 4. Open Razorpay
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+
+  } catch (err) {
+    console.error(err);
+    alert("Payment failed");
+    setSubmitting(false);
+  }
+};
 
   const C={cyan:"#00f5ff",violet:"#a855f7",card:"rgba(5,2,18,0.92)"};
   const stepLabel=["Company Identity","Business Profile","Office Address","Choose Plan","Set Password","Complete Payment","You're Live"][step];
@@ -247,7 +350,45 @@ export default function App(){
   const BackBtn=()=><button onClick={()=>setPaymentView("methods")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.28)",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:20,display:"flex",alignItems:"center",gap:5,padding:0}}>← Back to methods</button>;
 
   const renderPaymentDetail=()=>{
-    if(paymentView==="upi")return(<div><BackBtn/><FloatInput label="UPI ID" name="upi" value={form.upi} onChange={handleChange}/><p style={{fontSize:10,color:"rgba(255,255,255,0.22)",marginBottom:22}}>e.g. name@okaxis · name@ybl · name@paytm</p><ConfirmBtn label={`PAY Rs.${price?.price.toLocaleString()} VIA UPI`} onClick={()=>handleSubmit("upi")} loading={submitting} color={C.cyan}/></div>);
+// 🔥 UI
+if (paymentView === "upi") return (
+  <div>
+    <BackBtn />
+
+    <div style={{
+      textAlign: "center",
+      padding: "20px",
+      border: "1px solid rgba(0,245,255,0.2)",
+      borderRadius: "12px",
+      marginBottom: "20px"
+    }}>
+      <p style={{ color: "#00f5ff", fontWeight: "bold" }}>
+        Scan & Pay via UPI
+      </p>
+
+      <p style={{ fontSize: "10px", color: "#999" }}>
+        GPay · PhonePe · Paytm supported
+      </p>
+
+      {/* 👇 Important info */}
+      <p style={{
+        marginTop: "10px",
+        fontSize: "11px",
+        color: "#aaa"
+      }}>
+        Click below → QR will open
+      </p>
+    </div>
+
+    <ConfirmBtn
+      label={`Pay ₹${price?.price || 2999}`}
+      onClick={handleRazorpayPayment}
+      loading={submitting}
+      color={C.cyan}
+    />
+  </div>
+);
+    // if(paymentView==="upi")return(<div><BackBtn/><FloatInput label="UPI ID" name="upi" value={form.upi} onChange={handleChange}/><p style={{fontSize:10,color:"rgba(255,255,255,0.22)",marginBottom:22}}>e.g. name@okaxis · name@ybl · name@paytm</p><ConfirmBtn label={`PAY Rs.${price?.price.toLocaleString()} VIA UPI`} onClick={()=>handleSubmit("upi")} loading={submitting} color={C.cyan}/></div>);
     if(paymentView==="card")return(<div><BackBtn/><FloatInput label="Card Number" name="cardNumber" value={form.cardNumber} onChange={handleChange}/><FloatInput label="Name on Card" name="cardName" value={form.cardName} onChange={handleChange}/><div style={{display:"flex",gap:12}}><div style={{flex:1}}><FloatInput label="Expiry MM/YY" name="cardExpiry" value={form.cardExpiry} onChange={handleChange}/></div><div style={{flex:1}}><FloatInput label="CVV" name="cardCvv" value={form.cardCvv} onChange={handleChange} type="password"/></div></div><ConfirmBtn label={`PAY Rs.${price?.price.toLocaleString()} SECURELY`} onClick={()=>handleSubmit("card")} loading={submitting} color={C.cyan}/></div>);
     if(paymentView==="netbanking")return(<div><BackBtn/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>{["SBI","HDFC","ICICI","Axis","Kotak","PNB"].map(bank=><button key={bank} style={{padding:"12px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,color:"rgba(255,255,255,0.5)",fontFamily:"monospace",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.border="1px solid rgba(0,245,255,0.3)";e.currentTarget.style.color="#00f5ff";}} onMouseLeave={e=>{e.currentTarget.style.border="1px solid rgba(255,255,255,0.08)";e.currentTarget.style.color="rgba(255,255,255,0.5)"}}>{bank}</button>)}</div><ConfirmBtn label={`PAY Rs.${price?.price.toLocaleString()} VIA NET BANKING`} onClick={()=>handleSubmit("netbanking")} loading={submitting} color={C.cyan}/></div>);
     if(paymentView==="cash")return(<div><BackBtn/><div style={{padding:"16px",background:"rgba(251,146,60,0.06)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:12,marginBottom:16}}><div style={{fontSize:11,color:"#fb923c",fontWeight:700,marginBottom:8}}>💵 Cash Payment Instructions</div><div style={{fontSize:11,color:"rgba(255,255,255,0.45)",lineHeight:1.9}}>1. Your account is created <span style={{color:"#fb923c",fontWeight:700}}>immediately</span><br/>2. Visit our office within <span style={{color:"#fb923c",fontWeight:700}}>7 working days</span><br/>3. Pay <span style={{color:"#fb923c",fontWeight:700}}>Rs.{price?.price.toLocaleString()}</span> at billing counter<br/>4. Collect payment receipt</div></div><div style={{padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,marginBottom:18}}><div style={{fontSize:9,color:"rgba(255,255,255,0.3)",letterSpacing:"0.12em",marginBottom:4}}>OFFICE ADDRESS</div><div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>AITS ERP Global, 4th Floor,<br/>Tech Park, Whitefield, Bengaluru — 560066</div></div><ConfirmBtn label="CONFIRM CASH PAYMENT" onClick={()=>handleSubmit("cash")} loading={submitting} color="#fb923c"/></div>);
@@ -311,6 +452,10 @@ export default function App(){
     </div>
   );
 }
+
+
+
+
 // 'use client';
 
 // import { useState } from 'react';

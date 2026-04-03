@@ -520,7 +520,7 @@ export default function BankHeadPage() {
     const e = {};
     if (!fd.accountCode?.trim()) e.accountCode = "Account Code is required";
     if (!fd.accountName?.trim()) e.accountName = "Account Name is required";
-    if (!fd.accountHead)         e.accountHead = "Account Head is required";
+    // if (!fd.accountHead)         e.accountHead = "Account Head is required";
     if (!fd.status)              e.status      = "Status is required";
     setErrs(e);
     if (Object.keys(e).length) { toast.error(Object.values(e)[0]); return false; }
@@ -802,7 +802,7 @@ export default function BankHeadPage() {
             </div>
 
             <div>
-              <Lbl text="Account Head" req />
+              <Lbl text="Account Head"  />
               <select className={fi("accountHead")} name="accountHead" value={fd.accountHead} onChange={handleChange}>
                 <option value="">Select Account Head…</option>
                 {accountHeads.map(h => (
@@ -817,7 +817,7 @@ export default function BankHeadPage() {
             <div>
               <Lbl text="Status" req />
               <select className={fi("status")} name="status" value={fd.status} onChange={handleChange}>
-                <option value="">Select Status…</option>
+                {/* <option value="">Select Status…</option> */}
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
               </select>

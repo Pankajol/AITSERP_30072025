@@ -75,6 +75,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import CompanyUser from '@/models/CompanyUser';
 import Employee from '@/models/hr/Employee';
+import Company from '@/models/Company';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import {jwtDecode} from 'jwt-decode';
@@ -108,6 +109,15 @@ export async function POST(req) {
       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
 
+
+     // 🏢 ✅ Fetch company name
+    let companyName = null;
+
+    if (user.companyId) {
+      const company = await Company.findById(user.companyId);
+      companyName = company?.companyName || null;
+    }
+
     // ✅ Convert modules Map to plain object
     const modules = user.modules ? Object.fromEntries(user.modules) : {};
 
@@ -116,6 +126,7 @@ export async function POST(req) {
       {
         id: user._id,
         companyId: user.companyId,
+        companyName: companyName,
         email: user.email,
         roles: Array.isArray(user.roles) ? user.roles : [],
         modules,
@@ -134,6 +145,7 @@ export async function POST(req) {
     // ✅ Remove sensitive fields
     const { password: _, __v, ...safeUser } = user.toObject();
     safeUser.modules = modules;
+    safeUser.companyName = companyName; // ✅ ALSO ADD HERE
 
     console.log(jwtDecode(token));
     console.log(JSON.stringify(user.modules, null, 2));

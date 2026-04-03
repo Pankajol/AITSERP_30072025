@@ -63,7 +63,6 @@ export async function GET(req) {
   if (error)
     return NextResponse.json({ success: false, message: error }, { status });
 
-  // Authorization: ensure user has access to customers
   if (!isAuthorized(user)) {
     return NextResponse.json(
       { success: false, message: "Forbidden: insufficient permissions" },
@@ -72,14 +71,31 @@ export async function GET(req) {
   }
 
   try {
-    // Restrict populated fields to avoid extra data
-    const customers = await Customer.find({
-      companyId: user.companyId,
-    })
-    .populate("assignedAgents", "name email")
-    .populate("glAccount", "accountName accountCode");
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search");
 
-    return NextResponse.json({ success: true, data: customers }, { status: 200 });
+    let query = {
+      companyId: user.companyId,
+    };
+
+    // ✅ Apply search filter
+    if (search && search.trim() !== "") {
+      query.$or = [
+        { customerName: { $regex: search, $options: "i" } },
+        { customerCode: { $regex: search, $options: "i" } },
+        { contactPersonName: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const customers = await Customer.find(query)
+      .populate("assignedAgents", "name email")
+      .populate("glAccount", "accountName accountCode")
+      .limit(50); // ⚡ optional (performance)
+
+    return NextResponse.json(
+      { success: true, data: customers },
+      { status: 200 }
+    );
   } catch (err) {
     console.error("GET /customers error:", err);
     return NextResponse.json(

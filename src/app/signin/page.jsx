@@ -127,7 +127,7 @@ export default function LoginPage() {
   }
 };
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0f] relative overflow-hidden font-sans">
+    <main className="min-h-screen flex items-center justify-center bg-[#d4d4da] relative overflow-hidden font-sans">
       
       {/* ADVANCED BACKGROUND BLOBS */}
       <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-600/10 blur-[120px] rounded-full animate-pulse" />

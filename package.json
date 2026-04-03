@@ -58,6 +58,8 @@
     "otp-generator": "^4.0.1",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "^5.1.91",
+    "qrcode": "^1.5.4",
+    "razorpay": "^2.9.6",
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
     "react-calendar": "^6.0.0",

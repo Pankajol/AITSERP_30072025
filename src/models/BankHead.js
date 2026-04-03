@@ -17,7 +17,7 @@ const BankHeadSchema = new mongoose.Schema(
     },
     accountHead: {
       type: String,
-      required: true,
+   
       trim: true,
     },
     isActualBank: {

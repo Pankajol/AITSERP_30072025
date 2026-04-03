@@ -283,6 +283,7 @@ export default function Layout({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
   const sidebarRef = useRef(null);
+  const [companyName, setCompanyName] = useState("");
 
   const [notifications, setNotifications] = useState([]);
   const [openNotif, setOpenNotif]         = useState(false);
@@ -309,6 +310,33 @@ export default function Layout({ children }) {
       fetchNotifications();
     } catch (err) { console.error(err); }
   };
+
+
+
+
+useEffect(() => {
+  const fetchCompany = async () => {
+    // ✅ CASE 1: Company login (direct companyName aata hai)
+    if (session?.type === "company") {
+      setCompanyName(session?.companyName);
+      return;
+    }
+
+    // ✅ CASE 2: User login (companyId se fetch karo)
+    if (!session?.companyId) return;
+
+    try {
+      const res = await fetch(`/api/company/${session.companyId}`);
+      const data = await res.json();
+
+      setCompanyName(data.companyName || data.name || "");
+    } catch (err) {
+      console.error("Company fetch error:", err);
+    }
+  };
+
+  fetchCompany();
+}, [session]);
 
   useEffect(() => {
     async function getSession() {
@@ -551,61 +579,104 @@ export default function Layout({ children }) {
       </aside>
 
       {/* CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
-          <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
-          <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors">
-                {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
-              </button>
-              <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
-                {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
-              </h1>
-            </div>
+{/* CONTENT AREA */}
+<div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+  <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
+    <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
 
-            <div className="flex items-center gap-3 shrink-0 relative">
-              <div className="relative">
-                <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 text-gray-300 hover:text-white">
-                  <HiBell size={22} />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full">{unreadCount}</span>
-                  )}
-                </button>
-                {openNotif && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white text-black rounded-xl shadow-lg overflow-hidden z-50">
-                    <div className="p-3 font-bold border-b">Notifications</div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-4 text-sm text-gray-500">No notifications</div>
-                      ) : (
-                        notifications.map(n => (
-                          <div key={n._id} onClick={() => markAsRead(n._id)}
-                            className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${!n.isRead ? "bg-gray-50 font-semibold" : ""}`}>
-                            <div className="text-sm">{n.title}</div>
-                            <div className="text-xs text-gray-500">{n.message}</div>
-                          </div>
-                        ))
-                      )}
-                    </div>
+    <div className="flex items-center justify-between px-4 h-14">
+      
+      {/* LEFT SIDE */}
+   <div className="flex items-center gap-3 min-w-0">
+  <button
+    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+    className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+  >
+    {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
+  </button>
+
+  <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
+    {isCompany
+      ? "Company Administrator"
+      : isAdmin
+      ? "Admin Dashboard"
+      : "Dashboard"}
+  </h1>
+
+  {/* ✅ Company Name */}
+  <span className="text-xs text-gray-300 bg-white/10 px-2 py-0.5 rounded truncate max-w-[150px]">
+    {companyName || "Loading..."}
+  </span>
+</div>
+
+      {/* RIGHT SIDE */}
+      <div className="flex items-center gap-3 shrink-0 relative">
+        
+        {/* 🔔 Notifications */}
+        <div className="relative">
+          <button
+            onClick={() => setOpenNotif(!openNotif)}
+            className="relative p-2 text-gray-300 hover:text-white"
+          >
+            <HiBell size={22} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {openNotif && (
+            <div className="absolute right-0 mt-2 w-80 bg-white text-black rounded-xl shadow-lg overflow-hidden z-50">
+              <div className="p-3 font-bold border-b">Notifications</div>
+
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-500">
+                    No notifications
                   </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n._id}
+                      onClick={() => markAsRead(n._id)}
+                      className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${
+                        !n.isRead ? "bg-gray-50 font-semibold" : ""
+                      }`}
+                    >
+                      <div className="text-sm">{n.title}</div>
+                      <div className="text-xs text-gray-500">
+                        {n.message}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
-              <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
-                <span>{session.name || session.email}</span>
-              </div>
-              <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner" title={session.email}>
-                {session.email?.charAt(0).toUpperCase()}
-              </div>
             </div>
-          </div>
-        </header>
+          )}
+        </div>
 
-        <main className="flex-1 overflow-y-auto bg-[#f8fafc]">
-          {children}
-        </main>
+        {/* 👤 User Info */}
+        <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
+          <span>{session?.name || session?.email}</span>
+        </div>
+
+        {/* 🧑 Avatar */}
+        <div
+          className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner"
+          title={session?.email}
+        >
+          {session?.email?.charAt(0)?.toUpperCase() || "U"}
+        </div>
       </div>
+
+    </div>
+  </header>
+
+  <main className="flex-1 overflow-y-auto bg-[#f8fafc]">
+    {children}
+  </main>
+</div>
     </div>
   );
 }
@@ -1877,6 +1948,7 @@ export default function Layout({ children }) {
 //           <div className="flex items-center gap-3">
 //             <img
 //               src="/#"
+
 //               alt="Profile"
 //               className="w-8 h-8 rounded-full object-cover"
 //             />
