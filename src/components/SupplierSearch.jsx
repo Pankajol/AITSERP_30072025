@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import useSearch from "../hooks/useSearch";
 
-// Prop name ko 'onSelectCustomer' rakha hai taaki main page se match kare
-const SupplierSearch = ({ onSelectCustomer, initialSupplier }) => {
+// Prop name ko 'onSelectSupplier' rakha hai taaki main page se match kare
+const SupplierSearch = ({ onSelectSupplier, initialSupplier }) => {
   const wrapperRef = useRef(null);
 
   const [query, setQuery] = useState(initialSupplier?.supplierName || "");
@@ -75,8 +75,8 @@ const SupplierSearch = ({ onSelectCustomer, initialSupplier }) => {
     
     // Parent component (Order Form) ko pura supplier object bhejein
     // Taaki Name, Code aur Contact Person fill ho sake
-    if (onSelectCustomer) {
-      onSelectCustomer(sup); 
+    if (onSelectSupplier) {
+      onSelectSupplier(sup); 
     }
   };
 
