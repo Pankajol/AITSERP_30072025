@@ -5,126 +5,193 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 function isAuthorized(user) {
   if (user.type === "company") return true;
-  if (["Admin"].includes(user.role)) return true;
-  return user.permissions?.includes("customer");
+  if (user.roles?.includes("Admin")) return true;
+  // fallback: any user with customer permission
+  return user.permissions?.includes("customer") === true;
 }
 
 export async function GET(req, { params }) {
   await dbConnect();
+  const token = getTokenFromHeader(req);
+  if (!token) return NextResponse.json({ success: false, message: "Token missing" }, { status: 401 });
 
-  try {
-    const token = getTokenFromHeader(req);
-    if (!token) {
-      return NextResponse.json({ success: false, message: "Token missing" }, { status: 401 });
-    }
+  let user;
+  try { user = verifyJWT(token); } catch { return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 }); }
+  if (!isAuthorized(user)) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    let user;
-    try {
-      user = verifyJWT(token);
-    } catch (err) {
-      return NextResponse.json({ success: false, message: "Invalid or expired token" }, { status: 401 });
-    }
+  const { id } = params;
+  const customer = await Customer.findOne({ _id: id, companyId: user.companyId });
+  if (!customer) return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
 
-    if (!isAuthorized(user)) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
-    }
-
-    const { id } = params;
-    // const customer = await Customer.findOne({ _id: id, companyId: user.companyId });
-        const customer = await Customer.findById(id);
-        if (!customer) {
-          return res.status(404).json({ success: false, message: 'Customer not found' });
-        }
-    if (!customer) {
-      return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, data: customer }, { status: 200 });
-  } catch (error) {
-    console.error("GET /api/customers/:id error:", error);
-    return NextResponse.json({ success: false, message: "Failed to fetch customer" }, { status: 500 });
-  }
+  return NextResponse.json({ success: true, data: customer }, { status: 200 });
 }
 
-/* ================================
-   PUT /api/customers/[id]
-================================ */
 export async function PUT(req, { params }) {
   await dbConnect();
+  const token = getTokenFromHeader(req);
+  let user;
+  try { user = verifyJWT(token); } catch { return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 }); }
+  if (!isAuthorized(user)) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-  try {
-    const token = getTokenFromHeader(req);
-    let user;
-    try {
-      user = verifyJWT(token);
-    } catch {
-      return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 });
-    }
+  const { id } = params;
+  const body = await req.json();
 
-    if (!isAuthorized(user)) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
-    }
-
-    const { id } = params;
-    const body = await req.json();
-
-    // ✅ FIX: assignedAgents ko ObjectId array me convert karo
-    if (Array.isArray(body.assignedAgents)) {
-      body.assignedAgents = body.assignedAgents.map(a =>
-        typeof a === "string"
-          ? a
-          : a?._id?._id || a?._id
-      );
-    }
-
-    const updated = await Customer.findOneAndUpdate(
-      { _id: id, companyId: user.companyId },
-      { $set: body },
-      { new: true, runValidators: true }
-    );
-
-    if (!updated) {
-      return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, data: updated }, { status: 200 });
-  } catch (error) {
-    console.error("PUT /customers/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Failed to update customer" }, { status: 500 });
+  // Convert assignedAgents to array of ObjectId strings
+  if (Array.isArray(body.assignedAgents)) {
+    body.assignedAgents = body.assignedAgents.map(a => typeof a === "string" ? a : a?._id?._id || a?._id);
   }
+
+  const updated = await Customer.findOneAndUpdate(
+    { _id: id, companyId: user.companyId },
+    { $set: body },
+    { new: true, runValidators: true }
+  );
+
+  if (!updated) return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+  return NextResponse.json({ success: true, data: updated }, { status: 200 });
 }
 
-/* ================================
-   DELETE /api/customers/[id]
-================================ */
 export async function DELETE(req, { params }) {
   await dbConnect();
-  try {
-    const token = getTokenFromHeader(req);
-    let user;
-    try {
-      user = verifyJWT(token);
-    } catch {
-      return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 });
-    }
+  const token = getTokenFromHeader(req);
+  let user;
+  try { user = verifyJWT(token); } catch { return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 }); }
+  if (!isAuthorized(user)) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
 
-    if (!isAuthorized(user)) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
-    }
-
-    const { id } = params;
-    const deleted = await Customer.findOneAndDelete({ _id: id, companyId: user.companyId });
-
-    if (!deleted) {
-      return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, message: "Customer deleted successfully" }, { status: 200 });
-  } catch (error) {
-    console.error("DELETE /customers/[id] error:", error);
-    return NextResponse.json({ success: false, message: "Failed to delete customer" }, { status: 500 });
-  }
+  const { id } = params;
+  const deleted = await Customer.findOneAndDelete({ _id: id, companyId: user.companyId });
+  if (!deleted) return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+  return NextResponse.json({ success: true, message: "Customer deleted" }, { status: 200 });
 }
+
+
+// import { NextResponse } from "next/server";
+// import dbConnect from "@/lib/db";
+// import Customer from "@/models/CustomerModel";
+// import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+
+// function isAuthorized(user) {
+//   if (user.type === "company") return true;
+//   if (["Admin"].includes(user.role)) return true;
+//   return user.permissions?.includes("customer");
+// }
+
+// export async function GET(req, { params }) {
+//   await dbConnect();
+
+//   try {
+//     const token = getTokenFromHeader(req);
+//     if (!token) {
+//       return NextResponse.json({ success: false, message: "Token missing" }, { status: 401 });
+//     }
+
+//     let user;
+//     try {
+//       user = verifyJWT(token);
+//     } catch (err) {
+//       return NextResponse.json({ success: false, message: "Invalid or expired token" }, { status: 401 });
+//     }
+
+//     if (!isAuthorized(user)) {
+//       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
+//     }
+
+//     const { id } = params;
+//     // const customer = await Customer.findOne({ _id: id, companyId: user.companyId });
+//         const customer = await Customer.findById(id);
+//         if (!customer) {
+//           return res.status(404).json({ success: false, message: 'Customer not found' });
+//         }
+//     if (!customer) {
+//       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+//     }
+
+//     return NextResponse.json({ success: true, data: customer }, { status: 200 });
+//   } catch (error) {
+//     console.error("GET /api/customers/:id error:", error);
+//     return NextResponse.json({ success: false, message: "Failed to fetch customer" }, { status: 500 });
+//   }
+// }
+
+// /* ================================
+//    PUT /api/customers/[id]
+// ================================ */
+// export async function PUT(req, { params }) {
+//   await dbConnect();
+
+//   try {
+//     const token = getTokenFromHeader(req);
+//     let user;
+//     try {
+//       user = verifyJWT(token);
+//     } catch {
+//       return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 });
+//     }
+
+//     if (!isAuthorized(user)) {
+//       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
+//     }
+
+//     const { id } = params;
+//     const body = await req.json();
+
+//     // ✅ FIX: assignedAgents ko ObjectId array me convert karo
+//     if (Array.isArray(body.assignedAgents)) {
+//       body.assignedAgents = body.assignedAgents.map(a =>
+//         typeof a === "string"
+//           ? a
+//           : a?._id?._id || a?._id
+//       );
+//     }
+
+//     const updated = await Customer.findOneAndUpdate(
+//       { _id: id, companyId: user.companyId },
+//       { $set: body },
+//       { new: true, runValidators: true }
+//     );
+
+//     if (!updated) {
+//       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+//     }
+
+//     return NextResponse.json({ success: true, data: updated }, { status: 200 });
+//   } catch (error) {
+//     console.error("PUT /customers/[id] error:", error);
+//     return NextResponse.json({ success: false, message: "Failed to update customer" }, { status: 500 });
+//   }
+// }
+
+// /* ================================
+//    DELETE /api/customers/[id]
+// ================================ */
+// export async function DELETE(req, { params }) {
+//   await dbConnect();
+//   try {
+//     const token = getTokenFromHeader(req);
+//     let user;
+//     try {
+//       user = verifyJWT(token);
+//     } catch {
+//       return NextResponse.json({ success: false, message: "Invalid token" }, { status: 401 });
+//     }
+
+//     if (!isAuthorized(user)) {
+//       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
+//     }
+
+//     const { id } = params;
+//     const deleted = await Customer.findOneAndDelete({ _id: id, companyId: user.companyId });
+
+//     if (!deleted) {
+//       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+//     }
+
+//     return NextResponse.json({ success: true, message: "Customer deleted successfully" }, { status: 200 });
+//   } catch (error) {
+//     console.error("DELETE /customers/[id] error:", error);
+//     return NextResponse.json({ success: false, message: "Failed to delete customer" }, { status: 500 });
+//   }
+// }
 
 
 

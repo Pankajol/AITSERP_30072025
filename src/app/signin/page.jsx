@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { FiEye, FiEyeOff, FiMail, FiLock, FiChevronRight, FiLoader, FiShield, FiUser, FiBriefcase } from 'react-icons/fi';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import Image from 'next/image';
 
 const Link = ({ href, children, className }) => (
   <a href={href} className={className}>
@@ -16,258 +17,259 @@ const Link = ({ href, children, className }) => (
 export default function LoginPage() {
   const router = useRouter();
 
-  const [mode, setMode] = useState('Company'); // Company | User | Customer
-  const [step, setStep] = useState('login'); // login | email | setPassword
+  const [mode, setMode] = useState('Company');
   const [form, setForm] = useState({ email: '', password: '' });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+// In your component:
+const [logoError, setLogoError] = useState(false);
+const [imageLoaded, setImageLoaded] = useState(false);
 
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // const submit = async (e) => {
-  //   e.preventDefault();
-  //   if (!form.email || !form.password) return toast.error("Credentials required");
-
-  //   setLoading(true);
-  //   try {
-  //     const urls = {
-  //       Company: "/api/company/login",
-  //       User: "/api/users/login",
-  //       Customer: "/api/customers/login",
-       
-  //     };
-
-  //     const res = await axios.post(urls[mode], form);
-  //     const { token, company, user, customer,employee } = res.data;
-  //     const finalUser = company || user || customer || employee;
-
-  //     if (!token || !finalUser) throw new Error("Authentication failed");
-
-  //     localStorage.setItem("token", token);
-  //     localStorage.setItem("user", JSON.stringify(finalUser));
-
-  //     toast.success(`Access Granted: ${finalUser.name || "User"}`);
-
-  //     const roleRedirectMap = {
-  //       admin: "/admin",
-  //       agent: "/admin",
-  //       employee: "/admin/hr/employee",
-  //       customer: "/customer-dashboard",
-  //     };
-
-  //     let redirect = "/admin";
-  //     if (mode === "Customer") {
-  //       redirect = "/customer-dashboard";
-  //     }
-  //      else if (mode === "User") {
-  //       const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
-  //       const matchedRole = roles.find((r) => roleRedirectMap[r]);
-  //       redirect = roleRedirectMap[matchedRole] || "/admin";
-  //     }
-
-  //     setTimeout(() => router.push(redirect), 500);
-  //   } catch (error) {
-  //     toast.error(error?.response?.data?.message || "Verification Failed");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-
   const submit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!form.email || !form.password) {
-    return toast.error("Credentials required");
-  }
-
-  setLoading(true);
-
-  try {
-    const urls = {
-      Company: "/api/company/login",
-      User: "/api/users/login",
-      Customer: "/api/customers/login",
-    };
-
-    const res = await axios.post(urls[mode], form);
-
-    const { token, company, user, customer } = res.data;
-    const finalUser = company || user || customer;
-
-    if (!token || !finalUser) throw new Error("Authentication failed");
-
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(finalUser));
-
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-    toast.success(`Access Granted: ${finalUser.name || "User"}`);
-
-    let redirect = "/admin";
-
-    if (mode === "Customer") {
-      redirect = "/customer-dashboard";
-    } else if (mode === "User") {
-      const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
-
-      if (roles.includes("employee")) {
-        redirect = "/admin/hr/employees";
-      } else if (roles.includes("admin")) {
-        redirect = "/admin";
-      }
+    if (!form.email || !form.password) {
+      return toast.error("Credentials required");
     }
 
-    router.push(redirect);
+    setLoading(true);
 
-  } catch (error) {
-    toast.error(error?.response?.data?.message || "Verification Failed");
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      const urls = {
+        Company: "/api/company/login",
+        User: "/api/users/login",
+        Customer: "/api/customers/login",
+      };
+
+      const res = await axios.post(urls[mode], form);
+
+      const { token, company, user, customer } = res.data;
+      const finalUser = company || user || customer;
+
+      if (!token || !finalUser) throw new Error("Authentication failed");
+
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(finalUser));
+
+      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+      toast.success(`Access Granted: ${finalUser.name || "User"}`);
+
+      let redirect = "/admin";
+
+      if (mode === "Customer") {
+        redirect = "/customer-dashboard";
+      } else if (mode === "User") {
+        const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+        if (roles.includes("employee")) {
+          redirect = "/admin/hr/employees";
+        } else if (roles.includes("admin")) {
+          redirect = "/admin";
+        }
+      }
+
+      router.push(redirect);
+
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Verification Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0f] relative overflow-hidden font-sans">
+    <main className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: '#105B92' }}>
       
-      {/* ADVANCED BACKGROUND BLOBS */}
-      <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-600/10 blur-[120px] rounded-full animate-pulse" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-amber-500/10 blur-[120px] rounded-full animate-pulse delay-700" />
+      {/* Animated Background - Lighter overlays for depth */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-300 rounded-full mix-blend-overlay filter blur-3xl opacity-20 animate-pulse" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-300 rounded-full mix-blend-overlay filter blur-3xl opacity-20 animate-pulse animation-delay-2000" />
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-300 rounded-full mix-blend-overlay filter blur-3xl opacity-10 animate-pulse animation-delay-4000" />
+      </div>
 
-      <ToastContainer position="top-center" theme="dark" />
+      <ToastContainer position="top-center" theme="light" />
 
-      <div className="w-full max-w-[440px] z-10 px-6">
+      <div className="w-full max-w-md z-10 px-6">
         
-        {/* LOGO AREA */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-[22px] flex items-center justify-center text-3xl shadow-2xl shadow-indigo-500/20 mb-4 transition-transform hover:scale-110 duration-500">
-             <FiShield className="text-white" />
-          </div>
-          <h1 className="text-white text-3xl font-black tracking-tighter uppercase">
-            AITS <span className="text-indigo-500">Cloud</span>
-          </h1>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mt-2">Enterprise Resource Hub</p>
-        </div>
 
-        {/* LOGIN CARD */}
-        <div className="bg-[#11111d] border border-white/5 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)] rounded-[40px] overflow-hidden transition-all duration-500">
+
+
+<div className="flex flex-col items-center mb-6 sm:mb-8">
+  <div className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 transition-all duration-300 hover:scale-105 overflow-hidden relative">
+    
+    {/* Show loading spinner while image loads */}
+    {!imageLoaded && !logoError && (
+      <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+        <div className="w-6 h-6 border-2 border-[#105B92] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )}
+    
+    {/* Attempt to load image */}
+    {!logoError ? (
+      <img
+        src="/logo_erp_express.png"
+        alt="ERP Express Logo"
+        className={`w-full h-full object-contain transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setImageLoaded(true)}
+        onError={() => setLogoError(true)}
+      />
+    ) : (
+      /* Fallback 1: Text logo */
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#105B92] to-[#0a3b60] rounded-2xl">
+        <span className="text-white font-bold text-2xl sm:text-3xl">ERP</span>
+      </div>
+    )}
+  </div>
+  
+  {/* Fallback 2: If image fails and you want to show an icon instead */}
+  {logoError && (
+    <div className="mt-2 text-center">
+      <span className="text-blue-100 text-xs">Logo not loaded, using text version</span>
+    </div>
+  )}
+  
+  {/* <h1 className="text-white text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-center">
+    AITS <span className="text-blue-200">Cloud</span>
+  </h1>
+  <p className="text-blue-100 text-[10px] sm:text-xs font-medium uppercase tracking-wide mt-1 text-center">
+    Enterprise Resource Hub
+  </p> */}
+</div>
+
+        {/* Login Card */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
           
-          {/* TAB SELECTOR */}
-          <div className="flex p-2 bg-black/20 gap-1">
+          {/* Tabs */}
+          <div className="flex p-1 bg-gray-100/50 gap-1">
             {[
-              { id: 'Company', icon: <FiBriefcase /> },
-              { id: 'User', icon: <FiUser /> },
-              { id: 'Customer', icon: <FiMail /> } // ✅ ADD THIS
-            ].map((m) => (
+              { id: 'Company', icon: <FiBriefcase size={14} /> },
+              { id: 'User', icon: <FiUser size={14} /> },
+              { id: 'Customer', icon: <FiMail size={14} /> }
+            ].map((tab) => (
               <button
-                key={m.id}
+                key={tab.id}
                 type="button"
                 onClick={() => {
-                  setMode(m.id);
+                  setMode(tab.id);
                   setForm({ email: '', password: '' });
                 }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all duration-500 ${
-                  mode === m.id 
-                  ? 'bg-indigo-600 text-white shadow-lg' 
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  mode === tab.id 
+                    ? 'text-white shadow-sm' 
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                 }`}
+                style={mode === tab.id ? { backgroundColor: '#105B92' } : {}}
               >
-                {m.icon} {m.id}
+                {tab.icon} {tab.id}
               </button>
             ))}
           </div>
 
-          <div className="p-10 pt-8">
-            <form onSubmit={submit} className="space-y-6">
+          <div className="p-6">
+            <form onSubmit={submit} className="space-y-5">
               
-              {/* EMAIL FIELD */}
-              <div className="group">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1 transition-colors group-focus-within:text-indigo-400">Identity Identifier</label>
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email Address</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-600 group-focus-within:text-indigo-500 transition-colors">
-                    <FiMail size={18} />
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <FiMail size={16} />
                   </div>
                   <input
                     type="email"
                     name="email"
                     value={form.email}
                     onChange={handle}
-                    className="w-full bg-black/40 border-2 border-transparent focus:border-indigo-500/50 text-white pl-14 pr-5 py-4 rounded-2xl outline-none transition-all duration-300 placeholder:text-slate-700 font-bold text-sm shadow-inner"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#105B92] focus:border-transparent transition"
                     placeholder="name@company.com"
                   />
                 </div>
               </div>
 
-              {/* PASSWORD FIELD */}
-              <div className="group">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1 transition-colors group-focus-within:text-indigo-400">Access Secret</label>
+              {/* Password */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Password</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-600 group-focus-within:text-indigo-500 transition-colors">
-                    <FiLock size={18} />
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <FiLock size={16} />
                   </div>
                   <input
                     type={show ? "text" : "password"}
                     name="password"
                     value={form.password}
                     onChange={handle}
-                    className="w-full bg-black/40 border-2 border-transparent focus:border-indigo-500/50 text-white pl-14 pr-14 py-4 rounded-2xl outline-none transition-all duration-300 placeholder:text-slate-700 font-bold text-sm shadow-inner"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-10 py-2.5 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#105B92] focus:border-transparent transition"
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShow(!show)}
-                    className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-indigo-400 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {show ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                    {show ? <FiEyeOff size={16} /> : <FiEye size={16} />}
                   </button>
                 </div>
               </div>
 
-              {/* FORGOT PASS */}
-              <div className="flex justify-end px-1">
-                <button type="button" className="text-[10px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-400 transition-colors">Forgot Secret Key?</button>
+              {/* Forgot Password */}
+              <div className="text-right">
+                <button type="button" className="text-xs font-medium" style={{ color: '#105B92' }}>
+                  Forgot password?
+                </button>
               </div>
 
-              {/* SUBMIT BUTTON */}
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-2xl overflow-hidden transition-all duration-300 active:scale-95 shadow-2xl shadow-indigo-500/20"
+                className="w-full text-white font-semibold py-2.5 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ backgroundColor: '#105B92' }}
               >
-                <div className="relative z-10 flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em]">
-                  {loading ? <FiLoader className="animate-spin" /> : "Authenticate Connection"}
-                  {!loading && <FiChevronRight className="group-hover:translate-x-1 transition-transform" />}
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                {loading ? <FiLoader className="animate-spin" size={18} /> : <span>Sign In</span>}
+                {!loading && <FiChevronRight size={16} />}
               </button>
             </form>
 
-            {/* REGISTER LINK */}
-            <div className="mt-8 text-center">
-              <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">
-                New to the platform? <Link href="/signup" className="text-indigo-500 hover:text-indigo-400 underline decoration-2 underline-offset-4 ml-1">Establish Instance</Link>
-              </p>
+            {/* Register Link */}
+            <div className="mt-6 text-center text-xs text-gray-500">
+              New to the platform?{' '}
+              <Link href="/signup" className="font-semibold" style={{ color: '#105B92' }}>
+                Create an account
+              </Link>
             </div>
           </div>
 
-          {/* FOOTER STRIP */}
-          <div className="bg-black/40 py-4 px-8 border-t border-white/5 flex justify-between items-center">
-            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">AITS v3.0.4</span>
-            <div className="flex gap-2">
-               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-               <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Servers Online</span>
+          {/* Footer */}
+          <div className="bg-gray-50/80 px-6 py-3 border-t border-gray-100 flex justify-between items-center text-xs">
+            <span className="text-gray-400">AITS v3.0.4</span>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-gray-400">Servers Online</span>
             </div>
           </div>
         </div>
 
-        {/* SECURITY NOTE */}
-        <p className="text-slate-700 text-center mt-8 text-[9px] font-black uppercase tracking-[0.3em] leading-relaxed px-10">
-          Encrypted with military-grade 256-bit AES protocol. Authorized access only.
+        {/* Security Note */}
+        <p className="text-center text-blue-100 text-[10px] uppercase tracking-wider mt-6">
+          🔒 256-bit AES encryption • Authorized access only
         </p>
       </div>
+
+      {/* Add custom delay classes for Tailwind */}
+      <style jsx>{`
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </main>
   );
 }
-
 // 'use client';
 
 // import { useState } from 'react';
