@@ -13,52 +13,10 @@ import { SiCivicrm } from "react-icons/si";
 import { useRouter, usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 
-const Section = ({ title, icon, isOpen, onToggle, children }) => (
-  <div className="border-b border-gray-600/20">
-    <button onClick={onToggle} className="flex justify-between w-full px-3 py-3 hover:bg-gray-600/40 transition-colors text-left">
-      <span className="flex gap-3 items-center font-medium text-sm">
-        <span className="text-lg text-blue-400">{icon}</span>
-        <span className="truncate">{title}</span>
-      </span>
-      <span className="text-xs ml-2 shrink-0">{isOpen ? "−" : "+"}</span>
-    </button>
-    {isOpen && (
-      <div className="bg-gray-800/40 pb-2 ml-4 border-l border-gray-500/50">{children}</div>
-    )}
-  </div>
-);
-
-const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
-  <div className="mt-1">
-    <button onClick={onToggle} className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-400 hover:text-white uppercase tracking-wider transition-colors">
-      <span className="flex gap-2 items-center">{icon}<span>{label}</span></span>
-      <span>{isOpen ? "−" : "+"}</span>
-    </button>
-    {isOpen && <div className="ml-2 space-y-0.5 border-l border-gray-600/30">{children}</div>}
-  </div>
-);
-
-const Item = ({ href, icon, label, onClick, isActive }) => (
-  <Link href={href} onClick={onClick}
-    className={`flex gap-3 px-4 py-2 text-[13px] rounded-l-md transition-all ${
-      isActive ? "text-white bg-blue-600/40 border-r-2 border-blue-400" : "text-gray-300 hover:text-white hover:bg-blue-600/20"
-    }`}>
-    <span className="text-base opacity-70 shrink-0">{icon}</span>
-    <span className="truncate">{label}</span>
-  </Link>
-);
-
 // ─────────────────────────────────────────────────────────────
-// MODULE_ROUTE_MAP
-// ✅ FIX 2: "employees" key was DUPLICATED — two separate definitions existed.
-//    First:  employees → Employee Dashboard, Attendance, Leaves  (for HR Manager)
-//    Second: employees → My Profile only                         (for Employee role)
-//    The second definition silently OVERWROTE the first.
-//    Fix: ONE "employees" key that covers BOTH use cases:
-//         My Profile (always), + HR management routes (filtered by permissions)
+// MODULE_ROUTE_MAP (unchanged functionality)
 // ─────────────────────────────────────────────────────────────
 const MODULE_ROUTE_MAP = {
-  // ── Sales ──────────────────────────────────────────────────
   "Sales Quotation": [
     { label: "Quotation View",   path: "/admin/sales-quotation-view", needsView: true },
     { label: "Create Quotation", path: "/admin/sales-quotation",      needsCreate: true },
@@ -81,8 +39,6 @@ const MODULE_ROUTE_MAP = {
     { label: "Sales Board",      path: "/admin/sales-board",          needsView: true },
     { label: "POS Report",       path: "/admin/pos/reports",          needsView: true },
   ],
-
-  // ── Masters ────────────────────────────────────────────────
   "Customers": [
     { label: "Customer View",    path: "/admin/customer-view",        needsView: true },
     { label: "Create Customer",  path: "/admin/createCustomers",      needsCreate: true },
@@ -105,12 +61,6 @@ const MODULE_ROUTE_MAP = {
     { label: "Account Head View", path: "/admin/account-head-view",       needsView: true },
     { label: "General Ledger",    path: "/admin/bank-head-details-view",   needsView: true },
   ],
-
-  // ── HR modules (lowercase — matches JWT token keys exactly) ─
-  // ✅ FIX 2 (continued): Single "employees" key — covers My Profile for Employee role
-  //    AND Employee Dashboard/Attendance/Leaves for HR Manager role.
-  //    Both roles use the same key "employees" but have different permissions,
-  //    so the route filter (needsView/needsCreate) naturally shows correct routes.
   "employees": [
     { label: "My Profile",          path: "/admin/hr/profile",               needsView: true },
     { label: "Employee Dashboard",  path: "/admin/hr/Dashboard",             needsView: true },
@@ -128,14 +78,9 @@ const MODULE_ROUTE_MAP = {
   "salary": [
     { label: "My Salary",           path: "/admin/hr/my-salary",             needsView: true },
   ],
-  // ✅ FIX 4: "payroll" had NO entry in MODULE_ROUTE_MAP at all.
-  //    HR Manager and Employee roles both have "payroll" module,
-  //    but sidebar would silently skip it (no routes = invisible section).
   "payroll": [
     { label: "Payroll",             path: "/admin/hr/payroll",               needsView: true },
   ],
-
-  // ── Purchase ───────────────────────────────────────────────
   "Purchase Quotation": [
     { label: "Quotation View",     path: "/admin/PurchaseQuotationList",      needsView: true },
   ],
@@ -154,16 +99,12 @@ const MODULE_ROUTE_MAP = {
   "Purchase Report": [
     { label: "Purchase Report",    path: "/admin/purchase-report",            needsView: true },
   ],
-
-  // ── Inventory ──────────────────────────────────────────────
   "Inventory": [
     { label: "Inventory View",     path: "/admin/InventoryView",              needsView: true },
     { label: "Inventory Entry",    path: "/admin/InventoryEntry",             needsCreate: true },
     { label: "Inventory Ledger",   path: "/admin/InventoryAdjustmentsView",   needsView: true },
     { lable: "Gate Entry",         path: "/admin/gate-entry",                  needsCreate: true}
   ],
-
-  // ── Production ─────────────────────────────────────────────
   "Production Order": [
     { label: "Production Order",   path: "/admin/ProductionOrder",            needsView: true },
     { label: "Production Board",   path: "/admin/production-board",           needsView: true },
@@ -172,8 +113,6 @@ const MODULE_ROUTE_MAP = {
     { label: "BoM",                path: "/admin/bom",                        needsCreate: true },
     { label: "BoM View",           path: "/admin/bom-view",                   needsView: true },
   ],
-
-  // ── CRM ────────────────────────────────────────────────────
   "Lead Generation": [
     { label: "Lead Generation",    path: "/admin/leads-view",                 needsView: true },
   ],
@@ -183,24 +122,17 @@ const MODULE_ROUTE_MAP = {
   "Campaign": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
   ],
-  // ✅ FIX 3: "crm" key kept but now only as fallback for legacy data.
-  //    ROLE_OPTIONS crm gives individual module keys ("Lead Generation", "Opportunity", "Campaign")
-  //    which are already mapped above. "crm" as a module key is kept for backward compat.
   "crm": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
     { label: "Opportunity",        path: "/admin/opportunities",              needsView: true },
     { label: "Lead Generation",    path: "/admin/leads-view",                 needsView: true },
   ],
-
-  // ── Project ────────────────────────────────────────────────
   "Project": [
     { label: "Projects",           path: "/admin/project/projects",           needsView: true },
     { label: "Workspaces",         path: "/admin/project/workspaces",         needsView: true },
     { label: "Tasks",              path: "/admin/project/tasks",              needsView: true },
     { label: "Task Board",         path: "/admin/project/tasks/board",        needsView: true },
   ],
-
-  // ── Finance ────────────────────────────────────────────────
   "Journal Entry": [
     { label: "Journal Entry",      path: "/admin/finance/journal-entry",      needsCreate: true },
   ],
@@ -234,8 +166,6 @@ const MODULE_ROUTE_MAP = {
   "Ledger": [
     { label: "General Ledger",     path: "/admin/bank-head-details-view",     needsView: true },
   ],
-
-  // ── Helpdesk ───────────────────────────────────────────────
   "Tickets": [
     { label: "Tickets",            path: "/admin/helpdesk/tickets",           needsView: true },
   ],
@@ -243,8 +173,6 @@ const MODULE_ROUTE_MAP = {
     { label: "Feedback",           path: "/admin/helpdesk/feedback",          needsView: true },
     { label: "Feedback Analysis",  path: "/admin/helpdesk/feedback/analytics", needsView: true },
   ],
-
-  // ── PPC ────────────────────────────────────────────────────
   "PPC": [
     { label: "Operators",               path: "/admin/ppc/operatorsPage",              needsView: true },
     { label: "Machines",                path: "/admin/ppc/machinesPage",               needsView: true },
@@ -257,23 +185,54 @@ const MODULE_ROUTE_MAP = {
     { label: "Job Card",                path: "/admin/ppc/jobcards",                   needsView: true },
     { label: "Downtime",                path: "/admin/ppc/downtime",                   needsView: true },
   ],
-
-  // ── Task ───────────────────────────────────────────────────
   "Task": [
     { label: "Tasks",              path: "/admin/tasks",                       needsView: true },
     { label: "Tasks Board",        path: "/admin/tasks/board",                 needsView: true },
   ],
 };
 
-// ✅ FIX 5: canAccessModule — removed p.read (not in PERMISSIONS array)
-// Old: p.view || p.read || p.write || p.edit || p.create || p.delete
-// New: p.view || p.edit || p.create || p.delete (only valid permission keys)
 function canAccessModule(data) {
   if (!data) return false;
   if (data.selected === true) return true;
   const p = data.permissions || {};
   return !!(p.view || p.edit || p.create || p.delete);
 }
+
+// ─── Helper Components (light theme versions) ─────────────────
+const Section = ({ title, icon, isOpen, onToggle, children }) => (
+  <div className="border-b border-gray-200">
+    <button onClick={onToggle} className="flex justify-between w-full px-3 py-3 hover:bg-gray-100 transition-colors text-left">
+      <span className="flex gap-3 items-center font-medium text-sm text-gray-700">
+        <span className="text-lg text-blue-600">{icon}</span>
+        <span className="truncate">{title}</span>
+      </span>
+      <span className="text-xs ml-2 shrink-0 text-gray-500">{isOpen ? "−" : "+"}</span>
+    </button>
+    {isOpen && (
+      <div className="bg-gray-50 pb-2 ml-4 border-l border-gray-200">{children}</div>
+    )}
+  </div>
+);
+
+const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
+  <div className="mt-1">
+    <button onClick={onToggle} className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 uppercase tracking-wider transition-colors">
+      <span className="flex gap-2 items-center">{icon}<span>{label}</span></span>
+      <span>{isOpen ? "−" : "+"}</span>
+    </button>
+    {isOpen && <div className="ml-2 space-y-0.5 border-l border-gray-200">{children}</div>}
+  </div>
+);
+
+const Item = ({ href, icon, label, onClick, isActive }) => (
+  <Link href={href} onClick={onClick}
+    className={`flex gap-3 px-4 py-2 text-[13px] rounded-l-md transition-all font-serif ${
+      isActive ? "text-blue-700 bg-blue-100 border-r-2 border-blue-500" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+    }`}>
+    <span className="text-base opacity-70 shrink-0">{icon}</span>
+    <span className="truncate">{label}</span>
+  </Link>
+);
 
 export default function Layout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -332,7 +291,7 @@ export default function Layout({ children }) {
   }, []);
 
   if (!session) return (
-    <div className="flex h-screen items-center justify-center bg-gray-100">
+    <div className="flex h-screen items-center justify-center bg-gray-50">
       <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
     </div>
   );
@@ -348,32 +307,34 @@ export default function Layout({ children }) {
   const isActive      = (path) => pathname === path;
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden pt-[safe-area-inset-top] sm:pt-0 font-sans">
+    <div className="flex h-screen bg-gray-50 overflow-hidden pt-safe-top sm:pt-0 font-serif">
+      {/* Global font override */}
+      <style jsx global>{`
+        * { font-family: 'Times New Roman', Times, serif; }
+      `}</style>
 
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
       )}
 
       <aside ref={sidebarRef} aria-label="Sidebar navigation"
-        className={`fixed inset-y-0 left-0 z-50 w-64 lg:w-72 bg-[#1e293b] text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 lg:w-72 bg-white text-gray-800 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } flex flex-col shadow-2xl`}>
+        } flex flex-col shadow-xl border-r border-gray-200`}>
 
-        <div className="h-16 flex items-center justify-between px-4 lg:px-6 bg-[#0f172a] border-b border-gray-700 shrink-0">
-          <span className="font-bold text-base lg:text-lg flex items-center gap-2 tracking-wider">
-            <HiHome className="text-blue-400 shrink-0" />
+        <div className="h-16 flex items-center justify-between px-4 lg:px-6 bg-gray-50 border-b border-gray-200 shrink-0">
+          <span className="font-bold text-base lg:text-lg flex items-center gap-2 tracking-wider text-gray-800">
+            <HiHome className="text-blue-600 shrink-0" />
             <Link href="/admin" className="truncate">ERP SYSTEM</Link>
           </span>
           {isSidebarOpen && (
-            <button onClick={closeSidebar} className="p-2 rounded hover:bg-gray-700 transition-colors">
+            <button onClick={closeSidebar} className="p-2 rounded hover:bg-gray-200 transition-colors text-gray-600">
               <HiX size={24} />
             </button>
           )}
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2">
-
-          {/* ── Full Access (Admin / Company) ── */}
           {hasFullAccess && (
             <>
               <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
@@ -519,7 +480,6 @@ export default function Layout({ children }) {
             </>
           )}
 
-          {/* ── Module-Based Access (Normal Users) ── */}
           {!hasFullAccess &&
             Object.entries(modules).map(([moduleName, data]) => {
               if (!canAccessModule(data)) return null;
@@ -544,7 +504,7 @@ export default function Layout({ children }) {
             })
           }
 
-          <div className="p-4 mt-4 border-t border-gray-700">
+          <div className="p-4 mt-4 border-t border-gray-200">
             <LogoutButton />
           </div>
         </nav>
@@ -552,37 +512,36 @@ export default function Layout({ children }) {
 
       {/* CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full bg-black border-b border-gray-800 shadow-lg shrink-0">
-          <div className="h-[env(safe-area-inset-top,24px)] w-full bg-black" />
+        <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm shrink-0">
           <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white transition-colors">
+                className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 transition-colors">
                 {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
               </button>
-              <h1 className="text-sm md:text-base font-bold text-white truncate tracking-tight">
-                {isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard"}
-              </h1>
+            <h1 className="text-sm md:text-base font-bold text-gray-800 truncate tracking-tight">
+  {session?.companyName || (isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard")}
+</h1>
             </div>
 
             <div className="flex items-center gap-3 shrink-0 relative">
               <div className="relative">
-                <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 text-gray-300 hover:text-white">
+                <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 text-gray-600 hover:text-gray-900">
                   <HiBell size={22} />
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full">{unreadCount}</span>
                   )}
                 </button>
                 {openNotif && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white text-black rounded-xl shadow-lg overflow-hidden z-50">
-                    <div className="p-3 font-bold border-b">Notifications</div>
+                  <div className="absolute right-0 mt-2 w-80 bg-white text-gray-800 rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
+                    <div className="p-3 font-bold border-b border-gray-200">Notifications</div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="p-4 text-sm text-gray-500">No notifications</div>
                       ) : (
                         notifications.map(n => (
                           <div key={n._id} onClick={() => markAsRead(n._id)}
-                            className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${!n.isRead ? "bg-gray-50 font-semibold" : ""}`}>
+                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${!n.isRead ? "bg-gray-50 font-semibold" : ""}`}>
                             <div className="text-sm">{n.title}</div>
                             <div className="text-xs text-gray-500">{n.message}</div>
                           </div>
@@ -592,17 +551,17 @@ export default function Layout({ children }) {
                   </div>
                 )}
               </div>
-              <div className="hidden md:flex items-center gap-3 text-sm text-gray-300">
+              <div className="hidden md:flex items-center gap-3 text-sm text-gray-600">
                 <span>{session.name || session.email}</span>
               </div>
-              <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/10 shadow-inner" title={session.email}>
+              <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/20 shadow-sm" title={session.email}>
                 {session.email?.charAt(0).toUpperCase()}
               </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-[#f8fafc]">
+        <main className="flex-1 overflow-y-auto bg-gray-50">
           {children}
         </main>
       </div>

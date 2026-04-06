@@ -39,7 +39,6 @@ export default function AdminDashboard() {
         const purchases = (await purchaseRes.json())?.data || [];
         const items = (await itemsRes.json())?.data || [];
 
-        // 1. Basic Stats
         setStats({
           totalUsers: users.length,
           totalOrders: sales.length,
@@ -47,10 +46,8 @@ export default function AdminDashboard() {
           revenue: sales.reduce((sum, item) => sum + (item.grandTotal || 0), 0),
         });
 
-        // 2. Stock Alerts (Mock logic: stock < 10)
         setStockAlerts(items.filter(i => (i.stock || 0) < 10).slice(0, 4));
 
-        // 3. Top Customers logic
         const custMap = {};
         sales.forEach(s => {
             custMap[s.customerName] = (custMap[s.customerName] || 0) + (s.grandTotal || 0);
@@ -59,7 +56,6 @@ export default function AdminDashboard() {
             .map(([name, val]) => ({ name, val }))
             .sort((a,b) => b.val - a.val).slice(0, 4));
 
-        // 4. Chart Data
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         setChartData(months.map((m, i) => ({
           name: m,
@@ -76,51 +72,54 @@ export default function AdminDashboard() {
     fetchDashboardData();
   }, []);
 
-  if (loading) return <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center text-indigo-500 font-black uppercase tracking-[0.3em] animate-pulse">Initializing System...</div>;
+  if (loading) return <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center text-indigo-600 font-semibold text-sm animate-pulse">Loading dashboard...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-slate-300 p-4  md:p-8 font-sans selection:bg-indigo-500">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 text-gray-700 p-4 md:p-8 font-sans selection:bg-indigo-200">
       
       {/* HEADER & QUICK SHORTCUTS */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-10">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <HiOutlineSparkles className="text-amber-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400">Command Center</span>
+            <HiOutlineSparkles className="text-amber-500" />
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">Command Center</span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Operations <span className="text-indigo-500">Live</span></h1>
+          <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Operations <span className="text-indigo-600">Live</span></h1>
         </div>
 
         <div className="flex flex-wrap gap-3">
-            <ShortcutBtn href="/admin/sales-order-view/new" icon={<FiPlus />} label="New Sale" color="bg-indigo-600" />
-            <ShortcutBtn href="/admin/purchase-order-view/new" icon={<FiShoppingCart />} label="Purchase" color="bg-emerald-600" />
-            <ShortcutBtn href="/admin/sales-invoice-view/new" icon={<FiFileText />} label="Invoice" color="bg-violet-600" />
-            <ShortcutBtn href="/admin/delivery-view/new" icon={<FiTruck />} label="Dispatch" color="bg-amber-600" />
+            <ShortcutBtn href="/admin/sales-order-view/new" icon={<FiPlus />} label="New Sale" color="bg-indigo-600 hover:bg-indigo-700" />
+            <ShortcutBtn href="/admin/purchase-order-view/new" icon={<FiShoppingCart />} label="Purchase" color="bg-emerald-600 hover:bg-emerald-700" />
+            <ShortcutBtn href="/admin/sales-invoice-view/new" icon={<FiFileText />} label="Invoice" color="bg-violet-600 hover:bg-violet-700" />
+            <ShortcutBtn href="/admin/delivery-view/new" icon={<FiTruck />} label="Dispatch" color="bg-amber-600 hover:bg-amber-700" />
         </div>
       </div>
 
       {/* STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard title="Active Users" value={stats.totalUsers} icon={<FiUsers />} color="from-blue-600 to-indigo-700" />
-        <StatCard title="Sales Volume" value={stats.totalOrders} icon={<FiShoppingCart />} color="from-purple-600 to-violet-800" />
-        <StatCard title="Inventory In" value={stats.totalPurchaseOrders} icon={<FiPackage />} color="from-rose-600 to-pink-700" />
+        <StatCard title="Active Users" value={stats.totalUsers} icon={<FiUsers />} color="from-blue-500 to-indigo-600" />
+        <StatCard title="Sales Volume" value={stats.totalOrders} icon={<FiShoppingCart />} color="from-purple-500 to-violet-600" />
+        <StatCard title="Inventory In" value={stats.totalPurchaseOrders} icon={<FiPackage />} color="from-rose-500 to-pink-600" />
         <StatCard title="Net Revenue" value={`₹${stats.revenue.toLocaleString()}`} icon={<FiZap />} color="from-amber-500 to-orange-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* MAIN CHART */}
-        <div className="lg:col-span-2 bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-8 flex items-center gap-2"><FiActivity className="text-indigo-500" /> Performance Analytics</h2>
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-lg p-6 transition-all hover:shadow-xl">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-6 flex items-center gap-2"><FiActivity className="text-indigo-500" /> Performance Analytics</h2>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
-                  <linearGradient id="cS" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="cS" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
-                <CartesianGrid vertical={false} stroke="#ffffff05" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10}} />
-                <Tooltip contentStyle={{backgroundColor: '#11111d', borderRadius: '12px', border: 'none'}} />
+                <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 10}} />
+                <Tooltip contentStyle={{backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'}} />
                 <Area type="monotone" dataKey="sales" stroke="#6366f1" strokeWidth={3} fill="url(#cS)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -128,80 +127,67 @@ export default function AdminDashboard() {
         </div>
 
         {/* TOP CUSTOMERS WIDGET */}
-        <div className="bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6">Top Contributors</h2>
-            <div className="space-y-5">
+        <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-lg p-6 transition-all hover:shadow-xl">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-6">Top Contributors</h2>
+            <div className="space-y-4">
                 {topCustomers.map((c, i) => (
                     <div key={i} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-[10px] font-black text-indigo-400 border border-indigo-500/20">{i+1}</div>
-                            <span className="text-[11px] font-bold text-slate-300 uppercase truncate max-w-[120px]">{c.name}</span>
+                            <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700">{i+1}</div>
+                            <span className="text-xs font-medium text-gray-700 truncate max-w-[120px]">{c.name}</span>
                         </div>
-                        <span className="text-[11px] font-black text-white">₹{c.val.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-gray-800">₹{c.val.toLocaleString()}</span>
                     </div>
                 ))}
             </div>
-            <button className="w-full mt-8 py-3 rounded-xl border border-white/5 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:bg-white/5 transition-all">Full Leaderboard</button>
+            <button className="w-full mt-6 py-2.5 rounded-xl border border-gray-200 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 hover:bg-indigo-50 transition-all">Full Leaderboard</button>
         </div>
 
         {/* RECENT ACTIVITY */}
-        <div className="bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6 flex items-center gap-2"><FiClock className="text-indigo-500" /> Recent Activity</h2>
-            <div className="space-y-4">
-    {recentOrders.map((o) => {
-        const isSalesOrder = !!o.documentNumberOrder;
-        
-        // Base path configuration
-        const basePath = isSalesOrder 
-            ? '/admin/sales-order-view/view' 
-            : '/admin/purchase-order-view/view';
+        <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-lg p-6 transition-all hover:shadow-xl">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-6 flex items-center gap-2"><FiClock className="text-indigo-500" /> Recent Activity</h2>
+            <div className="space-y-3">
+              {recentOrders.map((o) => {
+                const isSalesOrder = !!o.documentNumberOrder;
+                const basePath = isSalesOrder ? '/admin/sales-order-view/view' : '/admin/purchase-order-view/view';
+                const docNumber = o.documentNumberOrder || o.documentNumberPurchaseOrder || "N/A";
+                const name = o.customerName || o.supplierName || "Unknown";
 
-        const docNumber = o.documentNumberOrder || o.documentNumberPurchaseOrder || "N/A";
-        const name = o.customerName || o.supplierName || "Unknown";
-
-        return (
-            <div key={o._id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-transparent hover:border-white/10 transition-colors group">
-                <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                
-                <div className="flex-1 min-w-0">
-                    <Link 
-                        href={`${basePath}/${o._id}`} 
-                        className="text-[10px] font-bold text-slate-300 uppercase truncate block hover:text-white transition-colors"
-                    >
+                return (
+                  <div key={o._id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-gray-200 transition-all group">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <div className="flex-1 min-w-0">
+                      <Link href={`${basePath}/${o._id}`} className="text-xs font-medium text-gray-700 truncate block hover:text-indigo-600 transition-colors">
                         {name} - {docNumber}
-                    </Link>
-                    
-                    <p className="text-[8px] font-bold text-slate-500 uppercase mt-0.5">
+                      </Link>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase mt-0.5">
                         {new Date(o.createdAt).toLocaleString()}
-                    </p>
-                </div>
-
-                {/* 'group-hover' use kiya hai taaki arrow hover par highlight ho */}
-                <FiArrowRight className="text-slate-700 shrink-0 group-hover:text-slate-300 transition-colors" />
+                      </p>
+                    </div>
+                    <FiArrowRight className="text-gray-400 shrink-0 group-hover:text-indigo-500 transition-colors" />
+                  </div>
+                );
+              })}
             </div>
-        );
-    })}
-</div>
-
         </div>
 
         {/* STOCK ALERTS WIDGET */}
-        <div className="lg:col-span-2 bg-[#11111d] border border-white/5 rounded-[32px] p-8 shadow-2xl">
-            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white mb-6 flex items-center gap-2"><FiAlertTriangle className="text-amber-500" /> Critical Stock Alerts</h2>
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-lg p-6 transition-all hover:shadow-xl">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-6 flex items-center gap-2"><FiAlertTriangle className="text-amber-500" /> Critical Stock Alerts</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {stockAlerts.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
+                    <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-amber-50 border border-amber-200">
                         <div>
-                            <p className="text-[11px] font-black text-amber-500 uppercase">{item.itemName}</p>
-                            <p className="text-[9px] font-bold text-slate-500 uppercase">Code: {item.itemCode}</p>
+                            <p className="text-xs font-bold text-amber-700 uppercase">{item.itemName}</p>
+                            <p className="text-[10px] font-medium text-amber-600">Code: {item.itemCode}</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-xs font-black text-white">{item.stock} Units</p>
-                            <span className="text-[8px] font-black text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full uppercase">Low Stock</span>
+                            <p className="text-sm font-bold text-gray-800">{item.stock} Units</p>
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full uppercase">Low Stock</span>
                         </div>
                     </div>
                 ))}
-                {stockAlerts.length === 0 && <p className="text-[10px] text-slate-500 font-bold italic">Inventory levels are within safe limits.</p>}
+                {stockAlerts.length === 0 && <p className="text-xs text-gray-500 italic">Inventory levels are within safe limits.</p>}
             </div>
         </div>
 
@@ -211,24 +197,22 @@ export default function AdminDashboard() {
 }
 
 const ShortcutBtn = ({ href, icon, label, color }) => (
-    <Link href={href} className={`flex items-center gap-2 px-5 py-3 rounded-2xl ${color} text-white transition-all hover:scale-105 active:scale-95 shadow-lg`}>
-        <span className="text-lg">{icon}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    <Link href={href} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl ${color} text-white transition-all hover:scale-105 active:scale-95 shadow-md`}>
+        <span className="text-base">{icon}</span>
+        <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
     </Link>
 );
 
 const StatCard = ({ title, value, icon, color }) => (
-  <div className="relative group bg-[#11111d] border border-white/5 rounded-[32px] p-7 overflow-hidden transition-all hover:translate-y-[-4px]">
+  <div className="relative group bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl p-6 transition-all hover:translate-y-[-2px] hover:shadow-xl">
     <div className="relative z-10 flex justify-between items-start mb-4">
-      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center text-white text-xl shadow-lg`}>{icon}</div>
+      <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center text-white text-lg shadow-md`}>{icon}</div>
     </div>
-    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{title}</p>
-    <h3 className="text-2xl font-black text-white tracking-tight">{value}</h3>
-    <div className={`absolute -bottom-10 -right-10 w-24 h-24 bg-gradient-to-br ${color} blur-[50px] opacity-10`} />
+    <p className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}</p>
+    <h3 className="text-2xl font-bold text-gray-800 tracking-tight">{value}</h3>
+    <div className={`absolute -bottom-8 -right-8 w-20 h-20 bg-gradient-to-br ${color} blur-2xl opacity-20 group-hover:opacity-30 transition-opacity`} />
   </div>
 );
-
-
 // "use client";
 
 // import React, { useEffect, useState } from "react";

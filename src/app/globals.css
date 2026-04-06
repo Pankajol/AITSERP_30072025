@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+
+* {
+  font-family: 'Times New Roman', Times, serif !important;
+}
 .input-field {
   @apply w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
 }
