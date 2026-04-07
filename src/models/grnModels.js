@@ -59,6 +59,8 @@ const GRNSchema = new mongoose.Schema({
   purchaseOrderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'PurchaseOrder',
+    default: null,
+    set: (v) => (v === "" || v === null ? null : v) // Convert empty string to null
    // ✅ RECOMMENDED: ensure every GRN is linked to a PO
   },
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },

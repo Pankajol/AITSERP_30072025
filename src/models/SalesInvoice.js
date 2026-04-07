@@ -75,6 +75,11 @@ const SalesInvoiceSchema = new Schema(
     refNumber: { type: String },
     salesEmployee: { type: String },
     status: { type: String,  default: "Pending" },
+    postingDate: { type: Date },
+    
+    validUntil: { type: Date },
+    documentDate: { type: Date },
+    dueDate: { type: Date },
     orderDate: { type: Date },
     expectedDeliveryDate: { type: Date },
     items: { type: [SalesInvoiceItemSchema], required: true },

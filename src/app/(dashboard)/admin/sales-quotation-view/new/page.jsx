@@ -224,6 +224,15 @@ function SalesQuotationForm() {
               <Lbl text="Valid Until" />
               <input className={fi()} type="date" name="validUntil" value={formData.validUntil || ""} onChange={handleInputChange} />
             </div>
+            <div>
+              <Lbl text ="Status" />
+              <select className={fi()} name="status" value={formData.status || ""} onChange={handleInputChange}>
+                <option value="Draft">Draft</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>  
           </div>
         </SectionCard>
 

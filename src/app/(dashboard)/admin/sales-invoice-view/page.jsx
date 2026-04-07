@@ -207,7 +207,7 @@ export default function SalesInvoiceList() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {["#", "Doc Number", "Customer", "Invoice Date", "Due Date", "Status", "Total", "Actions"].map(h => (
+                  {["#", "Doc Number", "Customer", "Invoice Date",  "Status", "Total", "Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -240,9 +240,9 @@ export default function SalesInvoiceList() {
                     <td className="px-4 py-3 text-xs text-gray-500">
                       {o.invoiceDate ? new Date(o.invoiceDate).toLocaleDateString("en-GB") : "—"}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    {/* <td className="px-4 py-3 text-xs text-gray-500">
                       {o.dueDate ? new Date(o.dueDate).toLocaleDateString("en-GB") : "—"}
-                    </td>
+                    </td> */}
                     <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-4 py-3 font-mono font-bold text-gray-800">₹{Number(o.grandTotal || 0).toLocaleString("en-IN")}</td>
                     <td className="px-4 py-3">
