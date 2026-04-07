@@ -17,11 +17,15 @@ import {
 // ============================================================
 // HELPERS & SUB-COMPONENTS (Defined OUTSIDE to prevent focus loss)
 // ============================================================
-
+function formatDateForInput(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
+}
 const initialState = {
   customerCode: "", customerName: "", contactPerson: "", refNumber: "",
   salesEmployee: "", status: "Open",
-  deliveryDate: "", expectedDeliveryDate: "",
+  deliveryDate: formatDateForInput(new Date()), expectedDeliveryDate: "",
   billingAddress: null, shippingAddress: null,
   items: [{
     item: "", itemCode: "", itemId: "", itemName: "", itemDescription: "",

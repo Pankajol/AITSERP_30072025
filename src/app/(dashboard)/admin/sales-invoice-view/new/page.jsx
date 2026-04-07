@@ -17,11 +17,16 @@ import {
 // ============================================================
 // HELPERS & SUB-COMPONENTS (Defined OUTSIDE to prevent focus loss)
 // ============================================================
-
+function formatDateForInput(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
+}
 const initialState = {
   customerCode: "", customerName: "", contactPerson: "", refNumber: "",
   salesEmployee: "", status: "Open",
-  invoiceDate: "", dueDate: "",
+  invoiceDate: formatDateForInput(new Date()), dueDate: "",orderDate: "",
+
   billingAddress: null, shippingAddress: null,
   items: [{
     item: "", itemCode: "", itemId: "", itemName: "", itemDescription: "",
@@ -329,6 +334,7 @@ const validateForm = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div><Lbl text="Invoice Date" req /><input type="date" className={fi()} name="invoiceDate" value={formData.invoiceDate || ""} onChange={handleChange} /></div>
             <div><Lbl text="Due Date" /><input type="date" className={fi()} name="dueDate" value={formData.dueDate || ""} onChange={handleChange} /></div>
+            <div> <Lbl text="Order Date" /><input type="date" className={fi()} name="orderDate" value={formData.orderDate || ""} onChange={handleChange} /></div>
             <div>
               <Lbl text="Invoice Status" />
               <select className={fi()} name="status" value={formData.status} onChange={handleChange}>

@@ -229,9 +229,10 @@ export default function SalesInvoiceView() {
             <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
               <SectionHeader icon={FaCalendarAlt} title="Billing Cycle" color="blue" />
               <div className="p-6 space-y-5">
-                <DetailField label="Posting Date" value={formatDate(invoice.postingDate)} />
+                <DetailField label="Order Date" value={formatDate(invoice.orderDate)} />
+                <DetailField label="Invoice Date" value={formatDate(invoice.invoiceDate)} />
                 <DetailField label="Due Date" value={formatDate(invoice.dueDate)} color="text-rose-600" />
-                <DetailField label="Document Date" value={formatDate(invoice.documentDate)} />
+                
               </div>
             </div>
 
