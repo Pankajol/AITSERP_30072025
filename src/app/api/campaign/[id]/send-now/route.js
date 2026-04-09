@@ -7,23 +7,14 @@ import EmailLog from "@/models/EmailLog";
 import Customer from "@/models/CustomerModel";
 import Lead from "@/models/load"; 
 import EmailMaster from "@/models/emailMaster/emailMaster";
-
 import nodemailer from "nodemailer";
-import fetch from "node-fetch"; 
 import crypto from "crypto";
-import path from "path";
 
 // -------------------------
 // CONFIGS
 // -------------------------
-const META_URL = "https://graph.facebook.com/v18.0";
-const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
-const META_TOKEN = process.env.META_WABA_TOKEN;
-
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "").replace(/\/$/, "");
-if (!BASE_URL) {
-  console.error("❌ BASE_URL is not defined in environment variables");
-}
+if (!BASE_URL) throw new Error("BASE_URL not defined");
 
 // -------------------------
 // Helpers
@@ -86,25 +77,6 @@ function formatFrom(name, email) {
   return name ? `${name} <${email}>` : email;
 }
 
-// Helper to fetch remote attachments as buffers
-async function fetchAttachmentBuffers(attachmentUrls) {
-  const buffers = [];
-  for (const url of attachmentUrls || []) {
-    try {
-      const res = await fetch(url);
-      const arrayBuffer = await res.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      buffers.push({
-        filename: url.split('/').pop(),
-        content: buffer,
-      });
-    } catch (err) {
-      console.error(`Failed to fetch attachment ${url}:`, err.message);
-    }
-  }
-  return buffers;
-}
-
 // -------------------------
 // POST Handler
 // -------------------------
@@ -157,11 +129,8 @@ export async function POST(req, context) {
     const fromName = emailMaster?.owner || campaign.sender || "";
     const fromHeader = formatFrom(fromName, fromEmail);
 
-    // 3. SEND EMAILS
+    // 3. SEND EMAILS (with tracked links for attachments)
     if (campaign.channel === "email") {
-      // Pre-fetch attachment buffers once (same for all recipients)
-      const attachmentBuffers = await fetchAttachmentBuffers(campaign.attachments);
-
       for (const to of recipients) {
         const log = await EmailLog.create({
           companyId: campaign.companyId,
@@ -171,16 +140,26 @@ export async function POST(req, context) {
           emailMasterId: emailMaster?._id || null,
         });
 
-        // Build CTA link with tracking
-        let targetUrl = campaign.ctaLink || BASE_URL; 
+        // --- CTA link with tracking ---
+        let targetUrl = campaign.ctaLink || BASE_URL;
         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
-
         const trackingUrl = `${BASE_URL}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}`;
-        
         const trackedLink = campaign.ctaText 
           ? `<a href="${trackingUrl}" style="display:inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">${campaign.ctaText}</a>` 
           : "";
 
+        // --- Attachment download links (tracked) ---
+        let downloadLinksHtml = "";
+        if (campaign.attachments && campaign.attachments.length) {
+          const links = campaign.attachments.map((url, idx) => {
+            const fileName = url.split('/').pop();
+            const trackedDownloadUrl = `${BASE_URL}/api/track/attachment?id=${log._id}&fileIndex=${idx}`;
+            return `<a href="${trackedDownloadUrl}" style="margin-right: 10px;">📎 Download ${fileName}</a>`;
+          });
+          downloadLinksHtml = `<div style="margin: 20px 0;">${links.join('<br/>')}</div>`;
+        }
+
+        // --- Open tracking pixel ---
         const openPixel = `<img src="${BASE_URL}/api/track/email-open?id=${log._id}" width="1" height="1" style="display:none;" />`;
 
         const finalHtml = `
@@ -188,7 +167,7 @@ export async function POST(req, context) {
             ${campaign.content || ""}
             <br/><br/>
             ${trackedLink}
-            <br/><br/>
+            ${downloadLinksHtml}
             ${openPixel}
           </div>
         `;
@@ -199,7 +178,7 @@ export async function POST(req, context) {
             to,
             subject: campaign.emailSubject || "(no subject)",
             html: finalHtml,
-            attachments: attachmentBuffers,  // ✅ fixed: using buffers from remote URLs
+            // NO attachments array – files are hosted and linked
           });
           log.status = "sent";
           log.sentAt = new Date();
@@ -213,8 +192,11 @@ export async function POST(req, context) {
       }
     }
 
-    // 4. SEND WHATSAPP
+    // 4. SEND WHATSAPP (unchanged)
     if (campaign.channel === "whatsapp") {
+      const META_URL = "https://graph.facebook.com/v18.0";
+      const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
+      const META_TOKEN = process.env.META_WABA_TOKEN;
       for (const num of recipients) {
         try {
           await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
