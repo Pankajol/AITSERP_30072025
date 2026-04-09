@@ -105,23 +105,16 @@ contactEmails: [
   glAccount: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "BankHead",
-  
+    default: null,
   },
+  attachments:{
+  type: String,
+  },
+
   slaPolicyId:{
   type: mongoose.Schema.Types.ObjectId,
   ref:"SlaPolicy"
-},
- attachments: {
-    type: [{
-      name: String,
-      size: Number,
-      type: String,
-      url: String,    // base64 or cloud URL
-      uploadedAt: { type: Date, default: Date.now }
-    }],
-    default: []
-  },
-
+}
 }, {
   timestamps: true,
   collection: "customers"

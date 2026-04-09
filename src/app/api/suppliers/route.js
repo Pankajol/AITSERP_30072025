@@ -1,11 +1,41 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Supplier from "@/models/SupplierModels";
-import BankHead from "@/models/BankHead";
-// import GLAccount from "@/models/GLAccount";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import { v2 as cloudinary } from "cloudinary";
 
-// ── Auth helper — works with Next.js App Router (Headers instance) ──
+// ------------------- Cloudinary config -------------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Helper: upload a single file to Cloudinary
+async function uploadToCloudinary(fileBuffer, originalName) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "suppliers",
+        resource_type: "auto",
+        public_id: `${Date.now()}_${originalName.replace(/\s/g, "_")}`,
+      },
+      (error, result) => (error ? reject(error) : resolve(result.secure_url))
+    );
+    uploadStream.end(fileBuffer);
+  });
+}
+
+// Parse multipart form data (files + JSON data field)
+async function parseMultipart(req) {
+  const formData = await req.formData();
+  const files = formData.getAll("attachments").filter(f => f && f.size > 0);
+  const dataField = formData.get("data");
+  let supplierData = dataField ? JSON.parse(dataField) : {};
+  return { files, supplierData };
+}
+
+// ── Auth helpers (matches your existing JWT structure) ──
 function getToken(req) {
   let header = null;
   if (typeof req.headers.get === "function") {
@@ -17,28 +47,15 @@ function getToken(req) {
   return header.startsWith("Bearer ") ? header.slice(7) : header;
 }
 
-// ── Authorization check — matches actual JWT structure from logs ──
-// JWT contains: { id, companyId, email, roles: [...], modules: {...}, type: "user"|"company" }
 function isAuthorized(decoded) {
   if (!decoded) return false;
-
-  // Company owner — always allowed
   if (decoded.type === "company") return true;
-
-  // Admin role
   const roles = Array.isArray(decoded.roles) ? decoded.roles : [];
   if (roles.includes("Admin") || roles.includes("admin")) return true;
-
-  // masters role includes Suppliers access
   if (roles.includes("masters")) return true;
-
-  // Purchase Manager has supplier access
   if (roles.includes("Purchase Manager")) return true;
-
-  // Check if "Suppliers" module is selected in their modules
   const modules = decoded.modules || {};
   if (modules["Suppliers"]?.selected) return true;
-
   return false;
 }
 
@@ -48,18 +65,15 @@ async function validateUser(req) {
   try {
     const decoded = verifyJWT(token);
     if (!decoded) return { error: "Invalid token", status: 401 };
-    if (!isAuthorized(decoded)) return { error: "Forbidden: insufficient permissions", status: 403 };
+    if (!isAuthorized(decoded)) return { error: "Forbidden", status: 403 };
     return { user: decoded };
   } catch (err) {
     console.error("JWT error:", err.message);
-    const status = err.message?.includes("expired") ? 401 : 401;
-    return { error: err.message || "Invalid token", status };
+    return { error: err.message || "Invalid token", status: 401 };
   }
 }
 
-// ─────────────────────────────────────────
-// GET /api/suppliers
-// ─────────────────────────────────────────
+// ------------------- GET /api/suppliers -------------------
 export async function GET(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);
@@ -69,45 +83,70 @@ export async function GET(req) {
     const suppliers = await Supplier.find({ companyId: user.companyId })
       .populate("glAccount", "accountName accountCode")
       .sort({ createdAt: -1 });
-
     return NextResponse.json({ success: true, data: suppliers }, { status: 200 });
   } catch (err) {
-    console.error("GET /suppliers error:", err);
+    console.error(err);
     return NextResponse.json({ success: false, message: "Failed to fetch suppliers" }, { status: 500 });
   }
 }
 
-// ─────────────────────────────────────────
-// POST /api/suppliers
-// ─────────────────────────────────────────
+// ------------------- POST /api/suppliers -------------------
 export async function POST(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
   try {
-    const body = await req.json();
+    let supplierData = {};
+    let uploadedUrls = [];
+    const contentType = req.headers.get("content-type") || "";
+
+    // Handle multipart file uploads
+    if (contentType.includes("multipart/form-data")) {
+      const { files, supplierData: data } = await parseMultipart(req);
+      supplierData = data;
+      for (const file of files) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const url = await uploadToCloudinary(buffer, file.name);
+        uploadedUrls.push(url);
+      }
+    } else {
+      supplierData = await req.json();
+    }
 
     // Validate required fields
-    const requiredFields = ["supplierCode", "supplierName", "supplierType", "pan"];
-    for (const field of requiredFields) {
-      if (!body[field]) {
+    const required = ["supplierCode", "supplierName", "supplierType", "pan"];
+    for (const field of required) {
+      if (!supplierData[field]) {
         return NextResponse.json({ success: false, message: `${field} is required` }, { status: 400 });
       }
     }
 
     // Prevent duplicate supplierCode within same company
-    const existing = await Supplier.findOne({ supplierCode: body.supplierCode, companyId: user.companyId });
+    const existing = await Supplier.findOne({ supplierCode: supplierData.supplierCode, companyId: user.companyId });
     if (existing) {
       return NextResponse.json({ success: false, message: "Supplier Code already exists" }, { status: 400 });
     }
 
-    const supplier = new Supplier({ ...body, companyId: user.companyId, createdBy: user.id });
+    // Merge existing attachments (if any) with newly uploaded URLs
+    let existingAttachments = supplierData.attachments || "";
+    if (typeof existingAttachments === "string") {
+      existingAttachments = existingAttachments ? existingAttachments.split(",").filter(Boolean) : [];
+    } else {
+      existingAttachments = [];
+    }
+    const allUrls = [...existingAttachments, ...uploadedUrls];
+    supplierData.attachments = allUrls.join(",");
+
+    const supplier = new Supplier({
+      ...supplierData,
+      companyId: user.companyId,
+      createdBy: user.id,
+    });
     await supplier.save();
 
     const populated = await Supplier.findById(supplier._id).populate("glAccount", "accountName accountCode");
     return NextResponse.json({ success: true, data: populated }, { status: 201 });
-
   } catch (err) {
     console.error("POST /suppliers error:", err);
     if (err.code === 11000) {

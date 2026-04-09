@@ -11,7 +11,7 @@ import EmailMaster from "@/models/emailMaster/emailMaster";
 import nodemailer from "nodemailer";
 import fetch from "node-fetch"; 
 import crypto from "crypto";
-import path from "path"; // Required for attachments
+import path from "path";
 
 // -------------------------
 // CONFIGS
@@ -20,8 +20,10 @@ const META_URL = "https://graph.facebook.com/v18.0";
 const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
 const META_TOKEN = process.env.META_WABA_TOKEN;
 
-// BASE_URL cleanup: trailing slash hata rahe hain taaki URL double slash na banaye
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "").replace(/\/$/, "");
+if (!BASE_URL) {
+  console.error("❌ BASE_URL is not defined in environment variables");
+}
 
 // -------------------------
 // Helpers
@@ -84,6 +86,25 @@ function formatFrom(name, email) {
   return name ? `${name} <${email}>` : email;
 }
 
+// Helper to fetch remote attachments as buffers
+async function fetchAttachmentBuffers(attachmentUrls) {
+  const buffers = [];
+  for (const url of attachmentUrls || []) {
+    try {
+      const res = await fetch(url);
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      buffers.push({
+        filename: url.split('/').pop(),
+        content: buffer,
+      });
+    } catch (err) {
+      console.error(`Failed to fetch attachment ${url}:`, err.message);
+    }
+  }
+  return buffers;
+}
+
 // -------------------------
 // POST Handler
 // -------------------------
@@ -138,6 +159,9 @@ export async function POST(req, context) {
 
     // 3. SEND EMAILS
     if (campaign.channel === "email") {
+      // Pre-fetch attachment buffers once (same for all recipients)
+      const attachmentBuffers = await fetchAttachmentBuffers(campaign.attachments);
+
       for (const to of recipients) {
         const log = await EmailLog.create({
           companyId: campaign.companyId,
@@ -147,11 +171,10 @@ export async function POST(req, context) {
           emailMasterId: emailMaster?._id || null,
         });
 
-        // FIX: CTA Link Ensure it's not empty
+        // Build CTA link with tracking
         let targetUrl = campaign.ctaLink || BASE_URL; 
         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
 
-        // Tracking URL Construction
         const trackingUrl = `${BASE_URL}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}`;
         
         const trackedLink = campaign.ctaText 
@@ -176,14 +199,7 @@ export async function POST(req, context) {
             to,
             subject: campaign.emailSubject || "(no subject)",
             html: finalHtml,
-            // FIX: Attachment absolute path handling
-            attachments: (campaign.attachments || []).map(p => {
-                const isUrl = p.startsWith('http');
-                return {
-                    filename: p.split('/').pop() || "attachment",
-                    path: isUrl ? p : path.join(process.cwd(), p)
-                };
-            }),
+            attachments: attachmentBuffers,  // ✅ fixed: using buffers from remote URLs
           });
           log.status = "sent";
           log.sentAt = new Date();
@@ -192,6 +208,7 @@ export async function POST(req, context) {
           log.status = "failed";
           log.error = err.message;
           await log.save();
+          console.error(`Failed to send to ${to}:`, err.message);
         }
       }
     }
@@ -215,9 +232,234 @@ export async function POST(req, context) {
 
     return new Response(JSON.stringify({ success: true, total: recipients.length }), { status: 200 });
   } catch (err) {
+    console.error("Campaign send error:", err);
     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
   }
 }
+
+
+
+
+// export const runtime = "nodejs";
+
+// import dbConnect from "@/lib/db";
+// import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+// import EmailCampaign from "@/models/EmailCampaign";
+// import EmailLog from "@/models/EmailLog";
+// import Customer from "@/models/CustomerModel";
+// import Lead from "@/models/load"; 
+// import EmailMaster from "@/models/emailMaster/emailMaster";
+
+// import nodemailer from "nodemailer";
+// import fetch from "node-fetch"; 
+// import crypto from "crypto";
+// import path from "path"; // Required for attachments
+
+// // -------------------------
+// // CONFIGS
+// // -------------------------
+// const META_URL = "https://graph.facebook.com/v18.0";
+// const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
+// const META_TOKEN = process.env.META_WABA_TOKEN;
+
+// // BASE_URL cleanup: trailing slash hata rahe hain taaki URL double slash na banaye
+// const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL || "").replace(/\/$/, "");
+
+// // -------------------------
+// // Helpers
+// // -------------------------
+// const isValidEmail = (email) =>
+//   typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+// function tryDecryptEncryptedPassword(encrypted) {
+//   if (!encrypted) return null;
+//   const secret = process.env.ENCRYPTION_KEY;
+//   if (!secret) return null;
+//   try {
+//     let ivBuf, cipherBuf;
+//     if (typeof encrypted === "string" && encrypted.includes(":")) {
+//       const [a, b] = encrypted.split(":");
+//       ivBuf = Buffer.from(a, "hex");
+//       cipherBuf = Buffer.from(b, "hex");
+//     } else {
+//       const all = Buffer.from(encrypted, "base64");
+//       ivBuf = all.slice(0, 16);
+//       cipherBuf = all.slice(16);
+//     }
+//     const key = crypto.createHash("sha256").update(secret).digest();
+//     const decipher = crypto.createDecipheriv("aes-256-cbc", key, ivBuf);
+//     let decrypted = decipher.update(cipherBuf, undefined, "utf8");
+//     decrypted += decipher.final("utf8");
+//     return decrypted;
+//   } catch (err) { return null; }
+// }
+
+// async function buildTransporterForEmailMaster(emailMaster) {
+//   if (!emailMaster) return null;
+//   const user = emailMaster.email;
+//   const pass = emailMaster.encryptedAppPassword ? tryDecryptEncryptedPassword(emailMaster.encryptedAppPassword) : null;
+//   if (!user || !pass) return null;
+//   const service = (emailMaster.service || "").toLowerCase();
+//   if (service === "gmail") return nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+//   if (["outlook", "office365", "hotmail"].includes(service)) {
+//     return nodemailer.createTransport({
+//       host: "smtp.office365.com",
+//       port: 587,
+//       secure: false,
+//       auth: { user, pass },
+//       requireTLS: true,
+//       tls: { rejectUnauthorized: false },
+//     });
+//   }
+//   return null;
+// }
+
+// function buildTransporterFromEnv() {
+//   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+//     return nodemailer.createTransport({ service: "gmail", auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } });
+//   }
+//   return null;
+// }
+
+// function formatFrom(name, email) {
+//   if (!email) return name || "no-reply@example.com";
+//   return name ? `${name} <${email}>` : email;
+// }
+
+// // -------------------------
+// // POST Handler
+// // -------------------------
+// export async function POST(req, context) {
+//   try {
+//     await dbConnect();
+//     const token = getTokenFromHeader(req);
+//     if (!token) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401 });
+
+//     const decoded = verifyJWT(token);
+//     if (!decoded?.companyId) return new Response(JSON.stringify({ success: false, error: "Invalid token" }), { status: 403 });
+
+//     const id = context?.params?.id;
+//     const campaign = await EmailCampaign.findById(id);
+//     if (!campaign) return new Response(JSON.stringify({ success: false, error: "Not found" }), { status: 404 });
+
+//     // 1. Build & Clean Recipients
+//     let recipients = [];
+//     if (campaign.recipientSource === "segment") {
+//       const Model = campaign.recipientList === "source_customers" ? Customer : Lead;
+//       const data = await Model.find({ companyId: decoded.companyId }, "email mobileNo");
+//       recipients = data.map(d => campaign.channel === "email" ? d.email : d.mobileNo).filter(Boolean);
+//     } else if (campaign.recipientSource === "manual") {
+//       recipients = (campaign.recipientManual || "").split(/[\n,]+/).map(x => x.trim()).filter(Boolean);
+//     } else if (campaign.recipientSource === "excel") {
+//       recipients = campaign.recipientExcelEmails || campaign.recipients || [];
+//     }
+
+//     if (campaign.channel === "email") {
+//       recipients = [...new Set(recipients.map(e => e.toLowerCase().trim()).filter(isValidEmail))];
+//     } else {
+//       recipients = recipients.map(n => {
+//         let num = n.toString().replace(/\D/g, "");
+//         return num.startsWith("91") ? num : "91" + num.replace(/^0/, "");
+//       }).filter(Boolean);
+//     }
+
+//     if (!recipients.length) return new Response(JSON.stringify({ success: false, error: "No recipients" }), { status: 400 });
+
+//     // 2. Transporter Setup
+//     let emailMaster = await EmailMaster.findById(campaign.emailMasterId).lean() || 
+//                        await EmailMaster.findOne({ companyId: campaign.companyId, status: "Active" }).lean();
+    
+//     let transporter = (await buildTransporterForEmailMaster(emailMaster)) || buildTransporterFromEnv();
+//     if (!transporter && campaign.channel === "email") {
+//       return new Response(JSON.stringify({ success: false, error: "SMTP config missing" }), { status: 500 });
+//     }
+
+//     const fromEmail = emailMaster?.email || process.env.SMTP_USER || "no-reply@example.com";
+//     const fromName = emailMaster?.owner || campaign.sender || "";
+//     const fromHeader = formatFrom(fromName, fromEmail);
+
+//     // 3. SEND EMAILS
+//     if (campaign.channel === "email") {
+//       for (const to of recipients) {
+//         const log = await EmailLog.create({
+//           companyId: campaign.companyId,
+//           campaignId: campaign._id,
+//           to,
+//           status: "sending",
+//           emailMasterId: emailMaster?._id || null,
+//         });
+
+//         // FIX: CTA Link Ensure it's not empty
+//         let targetUrl = campaign.ctaLink || BASE_URL; 
+//         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
+
+//         // Tracking URL Construction
+//         const trackingUrl = `${BASE_URL}/api/track/link?logId=${log._id}&url=${encodeURIComponent(targetUrl)}`;
+        
+//         const trackedLink = campaign.ctaText 
+//           ? `<a href="${trackingUrl}" style="display:inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">${campaign.ctaText}</a>` 
+//           : "";
+
+//         const openPixel = `<img src="${BASE_URL}/api/track/email-open?id=${log._id}" width="1" height="1" style="display:none;" />`;
+
+//         const finalHtml = `
+//           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+//             ${campaign.content || ""}
+//             <br/><br/>
+//             ${trackedLink}
+//             <br/><br/>
+//             ${openPixel}
+//           </div>
+//         `;
+
+//         try {
+//           await transporter.sendMail({
+//             from: fromHeader,
+//             to,
+//             subject: campaign.emailSubject || "(no subject)",
+//             html: finalHtml,
+//             // FIX: Attachment absolute path handling
+//             attachments: (campaign.attachments || []).map(p => {
+//                 const isUrl = p.startsWith('http');
+//                 return {
+//                     filename: p.split('/').pop() || "attachment",
+//                     path: isUrl ? p : path.join(process.cwd(), p)
+//                 };
+//             }),
+//           });
+//           log.status = "sent";
+//           log.sentAt = new Date();
+//           await log.save();
+//         } catch (err) {
+//           log.status = "failed";
+//           log.error = err.message;
+//           await log.save();
+//         }
+//       }
+//     }
+
+//     // 4. SEND WHATSAPP
+//     if (campaign.channel === "whatsapp") {
+//       for (const num of recipients) {
+//         try {
+//           await fetch(`${META_URL}/${WHATSAPP_PHONE_ID}/messages`, {
+//             method: "POST",
+//             headers: { Authorization: `Bearer ${META_TOKEN}`, "Content-Type": "application/json" },
+//             body: JSON.stringify({ messaging_product: "whatsapp", to: num, type: "text", text: { body: campaign.content } }),
+//           });
+//         } catch(e) { console.error("WA Error", e.message); }
+//       }
+//     }
+
+//     campaign.status = "Sent";
+//     campaign.sentAt = new Date();
+//     await campaign.save();
+
+//     return new Response(JSON.stringify({ success: true, total: recipients.length }), { status: 200 });
+//   } catch (err) {
+//     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+//   }
+// }
 
 
 

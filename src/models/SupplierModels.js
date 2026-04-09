@@ -134,6 +134,10 @@ const SupplierSchema = new mongoose.Schema({
     ref: "BankHead",
  
   },
+  attachments:{
+  type: String,
+  },
+
 
   leadTime: {
     type: Number,
