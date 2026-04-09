@@ -1,59 +1,86 @@
-export const runtime = "nodejs";
-
 import dbConnect from "@/lib/db";
 import EmailLog from "@/models/EmailLog";
-import EmailCampaign from "@/models/EmailCampaign";
 
 export async function GET(req) {
-  try {
-    await dbConnect();
+  await dbConnect();
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  const fileIndex = parseInt(url.searchParams.get("fileIndex") || "0");
 
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id"); // EmailLog id
-    const ix = parseInt(url.searchParams.get("ix") || "0", 10); // optional attachment index
+  const log = await EmailLog.findById(id);
+  if (!log) return new Response("Not found", { status: 404 });
 
-    if (!id) {
-      return new Response(JSON.stringify({ error: "Missing id" }), { status: 400 });
-    }
+  // Get campaign attachments array
+  const campaign = await EmailCampaign.findById(log.campaignId);
+  const fileUrl = campaign.attachments[fileIndex];
 
-    // find log to get campaignId
-    const log = await EmailLog.findById(id).lean();
-    if (!log || !log.campaignId) {
-      // still return 404 or simple message
-      return new Response(JSON.stringify({ error: "Log not found" }), { status: 404 });
-    }
+  // Update tracking
+  log.attachmentDownloadCount = (log.attachmentDownloadCount || 0) + 1;
+  log.lastDownloadedAttachmentIndex = fileIndex;
+  await log.save();
 
-    // try to load campaign to find attachments array
-    const campaign = await EmailCampaign.findById(log.campaignId).lean();
-    if (!campaign) {
-      return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
-    }
-
-    const attachments = Array.isArray(campaign.attachments) ? campaign.attachments : [];
-    const idx = Number.isFinite(ix) && ix >= 0 && ix < attachments.length ? ix : 0;
-    const attachmentUrl = attachments[idx];
-
-    if (!attachmentUrl) {
-      return new Response(JSON.stringify({ error: "Attachment not found" }), { status: 404 });
-    }
-
-    // update log
-    try {
-      await EmailLog.findByIdAndUpdate(id, {
-        $set: { attachmentDownloadedAt: new Date(), lastDownloadedAttachmentIndex: idx },
-        $inc: { attachmentDownloadCount: 1 },
-      });
-    } catch (err) {
-      console.error("attachment log update error:", err);
-      // continue to redirect anyway
-    }
-
-    return Response.redirect(attachmentUrl, 302);
-  } catch (err) {
-    console.error("track/attachment handler error:", err);
-    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
-  }
+  // Redirect to actual file
+  return Response.redirect(fileUrl, 302);
 }
+
+
+
+// export const runtime = "nodejs";
+
+// import dbConnect from "@/lib/db";
+// import EmailLog from "@/models/EmailLog";
+// import EmailCampaign from "@/models/EmailCampaign";
+
+// export async function GET(req) {
+//   try {
+//     await dbConnect();
+
+//     const url = new URL(req.url);
+//     const id = url.searchParams.get("id"); // EmailLog id
+//     const ix = parseInt(url.searchParams.get("ix") || "0", 10); // optional attachment index
+
+//     if (!id) {
+//       return new Response(JSON.stringify({ error: "Missing id" }), { status: 400 });
+//     }
+
+//     // find log to get campaignId
+//     const log = await EmailLog.findById(id).lean();
+//     if (!log || !log.campaignId) {
+//       // still return 404 or simple message
+//       return new Response(JSON.stringify({ error: "Log not found" }), { status: 404 });
+//     }
+
+//     // try to load campaign to find attachments array
+//     const campaign = await EmailCampaign.findById(log.campaignId).lean();
+//     if (!campaign) {
+//       return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
+//     }
+
+//     const attachments = Array.isArray(campaign.attachments) ? campaign.attachments : [];
+//     const idx = Number.isFinite(ix) && ix >= 0 && ix < attachments.length ? ix : 0;
+//     const attachmentUrl = attachments[idx];
+
+//     if (!attachmentUrl) {
+//       return new Response(JSON.stringify({ error: "Attachment not found" }), { status: 404 });
+//     }
+
+//     // update log
+//     try {
+//       await EmailLog.findByIdAndUpdate(id, {
+//         $set: { attachmentDownloadedAt: new Date(), lastDownloadedAttachmentIndex: idx },
+//         $inc: { attachmentDownloadCount: 1 },
+//       });
+//     } catch (err) {
+//       console.error("attachment log update error:", err);
+//       // continue to redirect anyway
+//     }
+
+//     return Response.redirect(attachmentUrl, 302);
+//   } catch (err) {
+//     console.error("track/attachment handler error:", err);
+//     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+//   }
+// }
   //  yea pass hua to attechement ka url mil jayega uske baad uss url pe redirect kar dena hai
 
 
