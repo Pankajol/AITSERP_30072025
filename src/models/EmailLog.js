@@ -3,27 +3,30 @@ import mongoose from "mongoose";
 const EmailLogSchema = new mongoose.Schema({
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company" },
   campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailCampaign" },
-  emailMasterId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailMaster" }, // Kaunse account se gaya
+  emailMasterId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailMaster" },
 
   to: { type: String, required: true },
-  status: { type: String, default: "sending" }, // sending, sent, failed, clicked
-  error: { type: String }, // Agar fail ho toh reason save karne ke liye
+  status: { type: String, default: "sending" }, // sending, sent, failed
+  error: { type: String },
 
-  // --- Open Tracking ---
+  // Open tracking
   isOpened: { type: Boolean, default: false },
   openCount: { type: Number, default: 0 },
   firstOpenedAt: Date,
   lastOpenedAt: Date,
 
-  // --- Link Tracking (Inhe Add Karein) ---
-  linkClicked: { type: Boolean, default: false }, // Aapke paas already hai
-  clickCount: { type: Number, default: 0 },       // <-- ADD THIS (Link tracking route ke liye)
-  clickedAt: Date,                                // <-- ADD THIS
-  lastClickUrl: String,                           // <-- ADD THIS (Kaunse link par click kiya)
+  // Link tracking
+  linkClicked: { type: Boolean, default: false },
+  clickCount: { type: Number, default: 0 },
+  clickedAt: Date,
+  lastClickUrl: String,
 
+  // Attachment tracking (now works with hosted files + tracked links)
   attachmentOpened: { type: Boolean, default: false },
+  attachmentDownloadCount: { type: Number, default: 0 },
+  attachmentDownloadedAt: Date,
 
-  // --- Device / Location / IP ---
+  // Device info
   ip: String,
   userAgent: String,
   city: String,
@@ -34,8 +37,7 @@ const EmailLogSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.EmailLog ||
-  mongoose.model("EmailLog", EmailLogSchema);
+export default mongoose.models.EmailLog || mongoose.model("EmailLog", EmailLogSchema);
 
 
 // import mongoose from "mongoose";

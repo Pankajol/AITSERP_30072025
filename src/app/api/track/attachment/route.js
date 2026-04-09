@@ -1,27 +1,70 @@
 import dbConnect from "@/lib/db";
 import EmailLog from "@/models/EmailLog";
+import EmailCampaign from "@/models/EmailCampaign";
 
 export async function GET(req) {
-  await dbConnect();
-  const url = new URL(req.url);
-  const id = url.searchParams.get("id");
-  const fileIndex = parseInt(url.searchParams.get("fileIndex") || "0");
+  try {
+    await dbConnect();
+    const url = new URL(req.url);
+    const logId = url.searchParams.get("id");
+    const fileIndex = parseInt(url.searchParams.get("fileIndex") || "0");
 
-  const log = await EmailLog.findById(id);
-  if (!log) return new Response("Not found", { status: 404 });
+    if (!logId) {
+      return new Response("Missing log id", { status: 400 });
+    }
 
-  // Get campaign attachments array
-  const campaign = await EmailCampaign.findById(log.campaignId);
-  const fileUrl = campaign.attachments[fileIndex];
+    const log = await EmailLog.findById(logId);
+    if (!log) {
+      return new Response("Log not found", { status: 404 });
+    }
 
-  // Update tracking
-  log.attachmentDownloadCount = (log.attachmentDownloadCount || 0) + 1;
-  log.lastDownloadedAttachmentIndex = fileIndex;
-  await log.save();
+    const campaign = await EmailCampaign.findById(log.campaignId);
+    if (!campaign || !campaign.attachments || !campaign.attachments[fileIndex]) {
+      return new Response("File not found", { status: 404 });
+    }
 
-  // Redirect to actual file
-  return Response.redirect(fileUrl, 302);
+    // Update tracking
+    log.attachmentOpened = true;
+    log.attachmentDownloadCount = (log.attachmentDownloadCount || 0) + 1;
+    log.attachmentDownloadedAt = new Date();
+    await log.save();
+
+    // Redirect to actual file URL
+    const fileUrl = campaign.attachments[fileIndex];
+    return Response.redirect(fileUrl, 302);
+  } catch (err) {
+    console.error("Attachment tracking error:", err);
+    return new Response("Server error", { status: 500 });
+  }
 }
+
+
+
+
+// import dbConnect from "@/lib/db";
+// import EmailLog from "@/models/EmailLog";
+
+// export async function GET(req) {
+//   await dbConnect();
+//   const url = new URL(req.url);
+//   const id = url.searchParams.get("id");
+//   const fileIndex = parseInt(url.searchParams.get("fileIndex") || "0");
+
+//   const log = await EmailLog.findById(id);
+//   if (!log) return new Response("Not found", { status: 404 });
+
+//   // Get campaign attachments array
+//   const campaign = await EmailCampaign.findById(log.campaignId);
+//   const fileUrl = campaign.attachments[fileIndex];
+
+//   // Update tracking
+//   log.attachmentDownloadCount = (log.attachmentDownloadCount || 0) + 1;
+//   log.lastDownloadedAttachmentIndex = fileIndex;
+//   await log.save();
+
+//   // Redirect to actual file
+//   return Response.redirect(fileUrl, 302);
+// }
 
 
 

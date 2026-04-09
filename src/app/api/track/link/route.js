@@ -1,67 +1,48 @@
-export const runtime = "nodejs";
 import dbConnect from "@/lib/db";
 import EmailLog from "@/models/EmailLog";
 
 export async function GET(req) {
   try {
     await dbConnect();
-    const { searchParams } = new URL(req.url);
-    
-    const logId = searchParams.get("logId") || searchParams.get("id");
-    let target = searchParams.get("url");
+    const url = new URL(req.url);
+    const logId = url.searchParams.get("logId");
+    let targetUrl = url.searchParams.get("url");
 
-    if (!target) {
-      console.error("❌ Missing target URL");
-      return Response.redirect(new URL("/", process.env.NEXT_PUBLIC_BASE_URL).href, 302);
+    if (!logId) {
+      const fallback = process.env.NEXT_PUBLIC_BASE_URL || "https://google.com";
+      return Response.redirect(fallback, 302);
     }
 
-    // --- FORCE EXTERNAL REDIRECT LOGIC ---
-    let finalRedirectUrl;
+    if (!targetUrl || targetUrl === "") {
+      targetUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://google.com";
+    }
+    if (!targetUrl.startsWith("http")) {
+      targetUrl = "https://" + targetUrl;
+    }
+
     try {
-      // Agar target "pankajal.in" hai, toh use "https://" ke saath jodo
-      let cleanTarget = target.trim();
-      if (!cleanTarget.startsWith("http")) {
-        cleanTarget = "https://" + cleanTarget;
+      const log = await EmailLog.findById(logId);
+      if (log) {
+        log.linkClicked = true;
+        log.clickCount = (log.clickCount || 0) + 1;
+        log.clickedAt = new Date();
+        log.lastClickUrl = targetUrl;
+        await log.save();
       }
-      
-      // URL object validate karega ki link sahi hai
-      const validUrl = new URL(cleanTarget);
-      finalRedirectUrl = validUrl.href;
-    } catch (e) {
-      console.error("❌ Invalid Target URL:", target);
-      return Response.redirect(new URL("/", process.env.NEXT_PUBLIC_BASE_URL).href, 302);
+    } catch (dbErr) {
+      console.error("DB update error:", dbErr);
     }
 
-    // --- DB UPDATE ---
-    if (logId) {
-      try {
-        await EmailLog.findByIdAndUpdate(logId, {
-          $inc: { clickCount: 1 },
-          $set: { 
-            linkClicked: true, 
-            clickedAt: new Date(), 
-            lastClickUrl: finalRedirectUrl 
-          }
-        });
-        console.log("✅ Click Logged for:", logId);
-      } catch (dbErr) {
-        console.error("❌ DB Update Error:", dbErr.message);
-      }
-    }
-
-    // --- FINAL REDIRECT ---
-    // Header add kar rahe hain cache clear karne ke liye
     return new Response(null, {
       status: 302,
       headers: {
-        Location: finalRedirectUrl,
+        Location: targetUrl,
         "Cache-Control": "no-cache, no-store, must-revalidate",
       },
     });
-
   } catch (err) {
-    console.error("❌ Fatal Tracking Error:", err);
-    const fallback = process.env.NEXT_PUBLIC_BASE_URL || "https://aitserp-30072025.vercel.app";
+    console.error("Link tracking error:", err);
+    const fallback = process.env.NEXT_PUBLIC_BASE_URL || "https://google.com";
     return Response.redirect(fallback, 302);
   }
 }

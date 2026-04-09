@@ -16,19 +16,23 @@ export async function GET(req) {
       return new Response("Log not found", { status: 404 });
     }
 
-    // Update open tracking
-    if (!log.opened) {
-      log.opened = true;
+    const now = new Date();
+    if (!log.isOpened) {
+      log.isOpened = true;
       log.openCount = 1;
-      log.lastOpened = new Date();
-      log.ip = req.headers.get("x-forwarded-for") || "unknown";
-      log.userAgent = req.headers.get("user-agent") || "";
+      log.firstOpenedAt = now;
+      log.lastOpenedAt = now;
     } else {
       log.openCount += 1;
+      log.lastOpenedAt = now;
     }
+
+    log.ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
+    log.userAgent = req.headers.get("user-agent") || "";
+
     await log.save();
 
-    // Return a transparent 1x1 GIF pixel
+    // Return 1x1 transparent GIF
     const pixel = Buffer.from(
       "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
       "base64"
@@ -44,6 +48,54 @@ export async function GET(req) {
     return new Response("Error", { status: 500 });
   }
 }
+
+
+// import dbConnect from "@/lib/db";
+// import EmailLog from "@/models/EmailLog";
+
+// export async function GET(req) {
+//   try {
+//     await dbConnect();
+//     const url = new URL(req.url);
+//     const id = url.searchParams.get("id");
+
+//     if (!id) {
+//       return new Response("Missing id", { status: 400 });
+//     }
+
+//     const log = await EmailLog.findById(id);
+//     if (!log) {
+//       return new Response("Log not found", { status: 404 });
+//     }
+
+//     // Update open tracking
+//     if (!log.opened) {
+//       log.opened = true;
+//       log.openCount = 1;
+//       log.lastOpened = new Date();
+//       log.ip = req.headers.get("x-forwarded-for") || "unknown";
+//       log.userAgent = req.headers.get("user-agent") || "";
+//     } else {
+//       log.openCount += 1;
+//     }
+//     await log.save();
+
+//     // Return a transparent 1x1 GIF pixel
+//     const pixel = Buffer.from(
+//       "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+//       "base64"
+//     );
+//     return new Response(pixel, {
+//       headers: {
+//         "Content-Type": "image/gif",
+//         "Cache-Control": "no-cache, no-store, must-revalidate",
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Open tracking error:", err);
+//     return new Response("Error", { status: 500 });
+//   }
+// }
 
 
 
