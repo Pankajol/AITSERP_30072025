@@ -12,12 +12,14 @@ import { HiOutlineSparkles } from "react-icons/hi2";
 
 const ROLE_OPTIONS = {
   Admin: [],
-  crm: [
-    "Lead Generation",
-    "Opportunity",
-    "Campaign",
-  ],
-  masters: [
+  // crm: [
+  //   "Lead Generation",
+  //   "Opportunity",
+  //   "Campaign",
+  // ],
+  "CRM Admin": ["Lead Management", "Opportunity", "Customer Masters", "CRM Reports", "Campaigns"],
+  "CRM Agent": ["Lead Generation", "Opportunity", "Follow-ups", "Customer View", "Email Templates"],
+  "masters": [
     "Company",
     "Users",
     "Customers",

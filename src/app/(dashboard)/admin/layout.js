@@ -122,10 +122,15 @@ const MODULE_ROUTE_MAP = {
   "Campaign": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
   ],
-  "crm": [
+  "Email Templates": [
+    { label: "Email Templates",    path: "/admin/email-templates",            needsView: true },
+  ],
+
+  "CRM Agent": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
     { label: "Opportunity",        path: "/admin/opportunities",              needsView: true },
     { label: "Lead Generation",    path: "/admin/leads-view",                 needsView: true },
+    { label: "Email Templates",      path: "/admin/email-templates",            needsView: true },  
   ],
   "Project": [
     { label: "Projects",           path: "/admin/project/projects",           needsView: true },

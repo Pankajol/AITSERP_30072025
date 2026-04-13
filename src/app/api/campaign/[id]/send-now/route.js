@@ -140,6 +140,18 @@ export async function POST(req, context) {
           emailMasterId: emailMaster?._id || null,
         });
 
+
+          // --- Extract CC list from campaign
+    let ccList = [];
+    if (campaign.cc) {
+      if (Array.isArray(campaign.cc)) {
+        ccList = campaign.cc.filter(isValidEmail);
+      } else if (typeof campaign.cc === 'string') {
+        ccList = campaign.cc.split(/[\n,]+/).map(s => s.trim()).filter(isValidEmail);
+      }
+    }
+    ccList = ccList.filter(cc => cc.toLowerCase() !== to.toLowerCase());
+
         // --- CTA link with tracking ---
         let targetUrl = campaign.ctaLink || BASE_URL;
         if (targetUrl && !targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
@@ -176,9 +188,15 @@ export async function POST(req, context) {
           await transporter.sendMail({
             from: fromHeader,
             to,
+            cc: ccList,   // <-- added
             subject: campaign.emailSubject || "(no subject)",
             html: finalHtml,
+              attachments: campaign.attachments.map((url) => ({
+    filename: url.split("/").pop(),
+    path: url,
+  })),
             // NO attachments array – files are hosted and linked
+            
           });
           log.status = "sent";
           log.sentAt = new Date();

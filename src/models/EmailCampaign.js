@@ -26,6 +26,16 @@ const CampaignSchema = new mongoose.Schema(
   enum: ["Draft", "Scheduled", "Queued", "Running", "Sent", "Failed"],
   default: "Scheduled",
 },
+  cc: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: function(v) {
+        return v.every(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+      },
+      message: 'Invalid email in CC list'
+    }
+  },
 
     // --- Channel Logic ---
     channel: {
@@ -42,6 +52,7 @@ const CampaignSchema = new mongoose.Schema(
     // Email Only
     emailSubject: { type: String },
     ctaText: { type: String },
+    ctaLink: { type: String },
 
     // Attachments
     attachments: [{ type: String }],
