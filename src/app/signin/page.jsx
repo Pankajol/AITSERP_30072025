@@ -110,7 +110,7 @@ const [imageLoaded, setImageLoaded] = useState(false);
     {/* Attempt to load image */}
     {!logoError ? (
       <img
-        src="/logo_erp_express.png"
+        src="/logo2_erpexpress.png"
         alt="ERP Express Logo"
         className={`w-full h-full object-contain transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={() => setImageLoaded(true)}

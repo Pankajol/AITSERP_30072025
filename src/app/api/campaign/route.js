@@ -64,6 +64,7 @@ export async function POST(req) {
       content,
       emailSubject,
       ctaText,
+      ctaLink,
       recipientSource,
       recipientList,       // array of emails (segment source)
       recipientManual,
@@ -71,6 +72,7 @@ export async function POST(req) {
       attachments,
       templateId,
       emailMasterId,
+      cc,
     } = body;
 
     // ── Basic validations ──────────────────────────────
@@ -128,6 +130,16 @@ export async function POST(req) {
     if (isNaN(parsedDate.getTime()))
       return badRequest("Invalid scheduledTime format. Send a valid ISO datetime.");
 
+
+    let ccArray = [];
+    if (cc) {
+      if (Array.isArray(cc)) {
+        ccArray = cc.filter(email => isValidEmail(email));
+      } else if (typeof cc === 'string') {
+        ccArray = cc.split(/[\n,]+/).map(s => s.trim()).filter(isValidEmail);
+      }
+    }
+
     // ── Build & save ───────────────────────────────────
     const campaignData = {
       campaignName:       campaignName.trim(),
@@ -137,13 +149,14 @@ export async function POST(req) {
       content,
       emailSubject:       channel === "email" ? (emailSubject || "").trim() : undefined,
       ctaText:            channel === "email" ? (ctaText || "").trim()     : undefined,
+      ctaLink:            channel === "email" ? (ctaLink || "").trim()     : undefined,
       recipientSource,
 
       // ✅ Store as arrays
       recipientList:          recipientSource === "segment" ? cleanedRecipientList : [],
       recipientManual:        recipientSource === "manual"  ? (recipientManual || "") : null,
       recipientExcelEmails:   recipientSource === "excel"   ? cleanedExcelEmails : [],
-
+      cc: ccArray,          // <-- save CC list
       attachments:   Array.isArray(attachments) ? attachments : [],
       templateId:    templateId    || null,
       emailMasterId: emailMasterId || null,

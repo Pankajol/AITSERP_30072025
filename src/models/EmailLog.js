@@ -35,8 +35,10 @@ const EmailLogSchema = new mongoose.Schema({
 
   sentAt: Date,
   createdAt: { type: Date, default: Date.now },
+  
 });
 
+EmailLogSchema.index({ campaignId: 1, to: 1 }, { unique: true });
 export default mongoose.models.EmailLog || mongoose.model("EmailLog", EmailLogSchema);
 
 
