@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Supplier from "@/models/SupplierModels";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
+import AccountHead from "@/models/accounts/AccountHead";
 import { v2 as cloudinary } from "cloudinary";
 
 // ------------------- Cloudinary config -------------------
@@ -81,7 +82,7 @@ export async function GET(req) {
 
   try {
     const suppliers = await Supplier.find({ companyId: user.companyId })
-      .populate("glAccount", "accountName accountCode")
+      .populate("glAccount", "name code") // ✅ Populate GL account details
       .sort({ createdAt: -1 });
     return NextResponse.json({ success: true, data: suppliers }, { status: 200 });
   } catch (err) {
@@ -122,6 +123,26 @@ export async function POST(req) {
       }
     }
 
+
+    // 🔥 Auto create AccountHead for supplier
+const existingAccount = await AccountHead.findOne({
+  companyId: user.companyId,
+  name: supplierData.supplierName,
+});
+
+let account;
+
+if (existingAccount) {
+  account = existingAccount;
+} else {
+  account = await AccountHead.create({
+    companyId: user.companyId,
+    name: supplierData.supplierName,
+    type: "Liability",
+    group: "Current Liability",
+    balanceType: "Credit",
+  });
+}
     // Prevent duplicate supplierCode within same company
     const existing = await Supplier.findOne({ supplierCode: supplierData.supplierCode, companyId: user.companyId });
     if (existing) {
@@ -142,6 +163,7 @@ export async function POST(req) {
       ...supplierData,
       companyId: user.companyId,
       createdBy: user.id,
+      glAccount: account._id, 
     });
     await supplier.save();
 

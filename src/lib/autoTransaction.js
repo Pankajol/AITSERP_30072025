@@ -5,6 +5,8 @@
 import Transaction from "@/models/accounts/Transaction";
 import LedgerEntry from "@/models/accounts/LedgerEntry";
 import AccountHead from "@/models/accounts/AccountHead";
+import Supplier from "@/models/SupplierModels";
+import dbConnect from "@/lib/db";
 
 // ─── Get running balance for an account ─────────────────────
 async function getBalance(companyId, accountId) {
@@ -97,27 +99,67 @@ export async function autoSalesInvoice({ companyId, amount, partyId, partyName, 
 // Purchase Dr  ↑ (Expense)   → We bought goods/services
 // Payable Cr   ↑ (Liability) → We owe supplier money
 // ════════════════════════════════════════════════════════════
-export async function autoPurchaseInvoice({ companyId, amount, partyId, partyName, referenceId, referenceNumber, narration, date, createdBy }) {
-  const [purchase, payable] = await Promise.all([
-    findAccount(companyId, "Purchase"),
-    findAccount(companyId, "Accounts Payable"),
-  ]);
+export async function autoPurchaseInvoice({
+  companyId,
+  amount,
+  partyId,
+  partyName,
+  referenceId,
+  referenceNumber,
+  narration,
+  date,
+  createdBy
+}) {
+  // ✅ Purchase account (same)
+  const purchase = await findAccount(companyId, "Purchase");
 
+  // 🔥 Get supplier account
+  const supplier = await Supplier.findById(partyId);
+
+  if (!supplier || !supplier.glAccount) {
+    throw new Error("Supplier account not linked");
+  }
+
+  const payable = await AccountHead.findById(supplier.glAccount);
+
+  // ✅ Create transaction
   const txnNumber = await genNumber(companyId, "Purchase Invoice");
+
   const txn = await Transaction.create({
-    companyId, transactionNumber: txnNumber,
+    companyId,
+    transactionNumber: txnNumber,
     type: "Purchase Invoice",
     date: date || new Date(),
     totalAmount: amount,
+
     lines: [
-      { accountId: purchase._id, accountName: purchase.name, type: "Debit",  amount },
-      { accountId: payable._id,  accountName: payable.name,  type: "Credit", amount },
+      {
+        accountId: purchase._id,
+        accountName: purchase.name,
+        type: "Debit",
+        amount
+      },
+      {
+        accountId: payable._id,   // 🔥 supplier account
+        accountName: payable.name,
+        type: "Credit",
+        amount
+      },
     ],
-    partyType: "Supplier", partyId, partyName,
-    referenceType: "PurchaseInvoice", referenceId, referenceNumber,
+
+    partyType: "Supplier",
+    partyId,
+    partyName,
+
+    referenceType: "PurchaseInvoice",
+    referenceId,
+    referenceNumber,
+
     narration: narration || `Purchase Invoice ${referenceNumber}`,
-    status: "Posted", createdBy,
+    status: "Posted",
+    createdBy,
   });
+
   await postLedger(txn);
   return txn;
 }

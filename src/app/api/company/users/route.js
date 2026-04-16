@@ -8,7 +8,8 @@ const SECRET = process.env.JWT_SECRET;
 
 const VALID_ROLES = [
   "Admin",
-  "crm",
+  "CRM Admin",
+  "CRM Agent",
   "masters",
   "Sales Manager",
   "Purchase Manager",
