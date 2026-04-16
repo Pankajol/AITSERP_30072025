@@ -28,7 +28,7 @@ const fetchAccounts = async () => {
       return;
     }
 
-    const res = await axios.get("/api/bank-head", {
+    const res = await axios.get("/api/account/heads", {
       headers: {
         Authorization: `Bearer ${token}`, // ✅ Add token in header
       },

@@ -249,6 +249,13 @@ function PurchaseInvoiceForm() {
 
         <SectionCard icon={FaCalendarAlt} title="Dates" color="blue">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div><Lbl text="Status" /> <select className={fi()} name="status" value={purchaseInvoiceData.status} onChange={handleInputChange}>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select></div>
             <div><Lbl text="Posting Date" req /><input className={fi()} type="date" name="postingDate" value={purchaseInvoiceData.postingDate} onChange={handleInputChange} /></div>
             <div><Lbl text="Document Date" /><input className={fi()} type="date" name="documentDate" value={purchaseInvoiceData.documentDate} onChange={handleInputChange} /></div>
             <div><Lbl text="Due Date" /><input className={fi()} type="date" name="dueDate" value={purchaseInvoiceData.dueDate} onChange={handleInputChange} /></div>

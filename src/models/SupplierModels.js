@@ -131,7 +131,7 @@ const SupplierSchema = new mongoose.Schema({
 
   glAccount: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "BankHead",
+    ref: "AccountHead",
  
   },
   attachments:{

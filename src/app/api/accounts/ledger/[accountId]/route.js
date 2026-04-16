@@ -1,16 +1,24 @@
-// 📁 src/app/api/accounts/ledger/[accountId]/route.js
-
+// app/api/accounts/ledger/[accountId]/route.js
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import LedgerEntry from "@/models/accounts/LedgerEntry";
 import AccountHead from "@/models/accounts/AccountHead";
+import Transaction from "@/models/accounts/Transaction"; // ✅ ADD THIS
+import mongoose from "mongoose";
 
-export async function GET(req, { params }) {
+export async function GET(req, context) {
   try {
     await connectDB();
     const user = verifyJWT(getTokenFromHeader(req));
     if (!user) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+
+    const params = await context.params;
+    let { accountId } = params;
+
+    if (!mongoose.Types.ObjectId.isValid(accountId)) {
+      return NextResponse.json({ success: false, message: "Invalid account ID format" }, { status: 400 });
+    }
 
     const { searchParams } = new URL(req.url);
     const fromDate   = searchParams.get("fromDate");
@@ -19,7 +27,7 @@ export async function GET(req, { params }) {
 
     const filter = {
       companyId: user.companyId,
-      accountId: params.accountId,
+      accountId: new mongoose.Types.ObjectId(accountId),
     };
     if (fiscalYear) filter.fiscalYear = fiscalYear;
     if (fromDate || toDate) {
@@ -29,9 +37,9 @@ export async function GET(req, { params }) {
     }
 
     const [account, entries] = await Promise.all([
-      AccountHead.findOne({ _id: params.accountId, companyId: user.companyId }),
+      AccountHead.findOne({ _id: accountId, companyId: user.companyId }),
       LedgerEntry.find(filter)
-        .populate("transactionId", "transactionNumber type referenceNumber")
+        .populate("transactionId", "transactionNumber type referenceNumber") // ✅ Now Transaction is registered
         .sort({ date: 1, createdAt: 1 }),
     ]);
 

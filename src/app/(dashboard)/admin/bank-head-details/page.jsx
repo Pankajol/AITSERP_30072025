@@ -611,13 +611,13 @@ export default function BankHeadPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Bank Heads</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">General Ledger</h1>
             <p className="text-sm text-gray-400 mt-0.5">{bankHeads.length} total bank heads</p>
           </div>
           <button
             onClick={() => { reset(); setView("form"); }}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
-            <FaPlus className="text-xs" /> Add Bank Head
+            <FaPlus className="text-xs" /> Add General Ledger
           </button>
         </div>
 

@@ -18,7 +18,7 @@ const ROLE_OPTIONS = {
   //   "Campaign",
   // ],
   "CRM Admin": ["Lead Management", "Opportunity", "Customer Masters", "CRM Reports", "Campaigns"],
-  "CRM Agent": ["Lead Generation", "Opportunity", "Follow-ups", "Customer View", "Email Templates"],
+  "CRM Agent": ["Lead Generation", "Opportunity", "Follow-ups", "Customer View", "Campaign", "Email Templates"],
   "masters": [
     "Company",
     "Users",
