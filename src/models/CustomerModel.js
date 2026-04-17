@@ -104,7 +104,7 @@ contactEmails: [
   commissionRate: { type: String, trim: true },
   glAccount: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "BankHead",
+    ref: "AccountHead",
     default: null,
   },
   attachments:{

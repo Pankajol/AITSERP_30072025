@@ -70,128 +70,158 @@
 // };
 
 // export default CustomerSearch;
-
-// components/CustomerSearch.js
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import useSearch from "../hooks/useSearch";
-import api from "@/utils/api";
+import { debounce } from "lodash";
 
-export default function CustomerSearch({ onSelectCustomer }) {
-
+export default function CustomerSearch({ onSelectCustomer, apiEndpoint = "/api/customers" }) {
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-
   const wrapperRef = useRef(null);
 
-  const customerSearch = useSearch(async (q) => {
+  // Fetch default list (when search term is empty)
+  const fetchDefaultList = async () => {
+    setLoading(true);
     try {
-      const res = await api.get(
-        `/customers?search=${encodeURIComponent(q || "")}`
-      );
-      return res?.data?.data || [];
+      const token = localStorage.getItem("token");
+      const res = await fetch(apiEndpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResults(data.data);
+      } else {
+        setResults([]);
+      }
     } catch (err) {
-      console.error("Customer search error:", err);
-      return [];
+      console.error("Failed to fetch default customers:", err);
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
-  });
+  };
 
-  /* Close dropdown on outside click */
+  // Debounced search (only when query has at least 1 character)
+  const debouncedSearch = useRef(
+    debounce(async (searchTerm) => {
+      if (!searchTerm.trim()) {
+        // When empty, show default list
+        await fetchDefaultList();
+        return;
+      }
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${apiEndpoint}?search=${encodeURIComponent(searchTerm)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          setResults(data.data);
+        } else {
+          setResults([]);
+        }
+      } catch (err) {
+        console.error("Search error:", err);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300)
+  ).current;
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => debouncedSearch.cancel();
+  }, [debouncedSearch]);
+
+  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event) {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(event.target)
-      ) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
     }
-
     document.addEventListener("mousedown", handleClickOutside);
-
-    return () =>
-      document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /* Handle typing */
-  const handleChange = async (e) => {
+  const handleChange = (e) => {
     const val = e.target.value;
-
     setQuery(val);
     setShowDropdown(true);
-
-    await customerSearch.handleSearch(val);
+    debouncedSearch(val);
   };
 
-  /* Load default customers when focused */
-  const handleFocus = async () => {
+  const handleFocus = () => {
     setShowDropdown(true);
-
-    if (!customerSearch.results?.length) {
-      await customerSearch.handleSearch("");
+    if (!query.trim()) {
+      debouncedSearch("");
     }
   };
 
-  /* Select customer */
-  const handleSelect = (c) => {
-
-    setQuery(c.customerName);
+  const handleSelect = (customer) => {
+    setQuery(customer.customerName);
     setShowDropdown(false);
-
     if (onSelectCustomer) {
       onSelectCustomer({
-        _id: c._id,
-        customerCode: c.customerCode,
-        customerName: c.customerName,
-        contactPersonName: c.contactPersonName,
+        _id: customer._id,
+        customerCode: customer.customerCode,
+        customerName: customer.customerName,
+        contactPersonName: customer.contactPersonName,
+        emailId: customer.emailId,
+        mobileNumber: customer.mobileNumber,
+        gstNumber: customer.gstNumber,
+        pan: customer.pan,
       });
     }
   };
 
   return (
     <div ref={wrapperRef} className="relative mb-4">
-
       <input
         type="text"
-        placeholder="Search Customer"
+        placeholder="Search Customer by Name, Code, Email or Mobile"
         value={query}
         onChange={handleChange}
         onFocus={handleFocus}
-        className="border px-4 py-2 w-full rounded"
+        className="border px-4 py-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
 
       {showDropdown && (
-        <div className="absolute w-full bg-white border max-h-56 overflow-y-auto z-50 shadow rounded">
-
-          {customerSearch.loading && (
-            <p className="p-2 text-sm text-gray-500">Loading...</p>
+        <div className="absolute w-full bg-white border max-h-60 overflow-y-auto z-50 shadow-lg rounded mt-1">
+          {loading && (
+            <div className="p-2 text-sm text-gray-500">Loading...</div>
           )}
 
-          {!customerSearch.loading &&
-            customerSearch.results?.length === 0 && (
-              <p className="p-2 text-sm text-gray-500">
-                No customers found
-              </p>
-            )}
+          {!loading && results.length === 0 && query.trim() !== "" && (
+            <div className="p-2 text-sm text-gray-500">No customers found</div>
+          )}
 
-          {customerSearch.results?.map((c) => (
+          {!loading && results.length === 0 && query.trim() === "" && (
+            <div className="p-2 text-sm text-gray-500">No customers available</div>
+          )}
+
+          {results.map((customer) => (
             <div
-              key={c._id}
-              onClick={() => handleSelect(c)}
-              className="p-2 hover:bg-gray-100 cursor-pointer"
+              key={customer._id}
+              onClick={() => handleSelect(customer)}
+              className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-0"
             >
-              {c.customerName} ({c.customerCode})
+              <div className="font-medium">{customer.customerName}</div>
+              <div className="text-xs text-gray-500">
+                {customer.customerCode} • {customer.emailId || "No email"} • {customer.mobileNumber || "No mobile"}
+              </div>
             </div>
           ))}
-
         </div>
       )}
     </div>
   );
 }
-
-
 
 // import React, { useState } from "react";
 // import useSearch from "../hooks/useSearch";

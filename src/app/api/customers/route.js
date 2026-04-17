@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db.js";
 import Customer from "@/models/CustomerModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import { v2 as cloudinary } from "cloudinary";
+import AccountHead from "@/models/accounts/AccountHead";
 
 // ------------------- Cloudinary configuration -------------------
 cloudinary.config({
@@ -67,10 +68,32 @@ export async function GET(req) {
   if (!isAuthorized(user))
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
 
+  const { searchParams } = new URL(req.url);
+  const search = searchParams.get("search") || "";
+
+  let query = { companyId: user.companyId };
+  let limit = 20; // default limit for listing (when no search)
+
+  if (search.trim()) {
+    // If search term provided, use $or for partial matching
+    query.$or = [
+      { customerName: { $regex: search, $options: "i" } },
+      { customerCode: { $regex: search, $options: "i" } },
+      { emailId: { $regex: search, $options: "i" } },
+      { mobileNumber: { $regex: search, $options: "i" } },
+      { contactPersonName: { $regex: search, $options: "i" } },
+      { pan: { $regex: search, $options: "i" } },
+      { gstNumber: { $regex: search, $options: "i" } },
+    ];
+    limit = 50; // allow more results when actively searching
+  }
+
   try {
-    const customers = await Customer.find({ companyId: user.companyId })
-      .populate("assignedAgents", "name email")
-      .populate("glAccount", "accountName accountCode");
+    const customers = await Customer.find(query)
+      .select("customerName customerCode emailId mobileNumber contactPersonName gstNumber pan _id")
+      .limit(limit)
+      .sort({ customerName: 1 });
+
     return NextResponse.json({ success: true, data: customers }, { status: 200 });
   } catch (err) {
     console.error(err);
@@ -94,7 +117,6 @@ export async function POST(req) {
     if (contentType.includes("multipart/form-data")) {
       const { files, customerData: data } = await parseMultipart(req);
       customerData = data;
-      // Upload each file to Cloudinary
       for (const file of files) {
         const buffer = Buffer.from(await file.arrayBuffer());
         const url = await uploadToCloudinary(buffer, file.name, file.type);
@@ -104,15 +126,68 @@ export async function POST(req) {
       customerData = await req.json();
     }
 
-    // Merge existing attachments (if any, as string) with new URLs
-    let existingAttachments = customerData.attachments || "";
-    if (existingAttachments && typeof existingAttachments === "string") {
-      existingAttachments = existingAttachments ? existingAttachments.split(",").filter(Boolean) : [];
-    } else {
-      existingAttachments = [];
+    // --- Prevent duplicate customer code ---
+    const existingCustomer = await Customer.findOne({
+      customerCode: customerData.customerCode,
+      companyId: user.companyId,
+    });
+    if (existingCustomer) {
+      return NextResponse.json(
+        { success: false, message: "Customer Code already exists" },
+        { status: 400 }
+      );
     }
+
+    // --- Auto-create AccountHead for customer ---
+  
+    let existingAccount = await AccountHead.findOne({
+      companyId: user.companyId,
+      name: customerData.customerName,
+    });
+
+    let account;
+    if (existingAccount) {
+      account = existingAccount;
+    } else {
+      // Optional: generate a unique account code (e.g., using a counter)
+      const lastAccount = await AccountHead.findOne({ companyId: user.companyId })
+        .sort({ accountCode: -1 });
+      let nextCode = "CUST-1000";
+      if (lastAccount && lastAccount.accountCode) {
+        const num = parseInt(lastAccount.accountCode.split("-")[1], 10) + 1;
+        nextCode = `CUST-${num}`;
+      }
+      account = await AccountHead.create({
+        companyId: user.companyId,
+        name: customerData.customerName,
+        accountCode: nextCode,
+        type: "Asset",
+        group: "Current Asset",
+        balanceType: "Debit",
+      });
+    }
+
+    // --- Handle attachments (merge existing + new) ---
+    let existingAttachments = [];
+    if (customerData._id) {
+      // For update: fetch current attachments if not provided
+      if (!customerData.attachments) {
+        const existing = await Customer.findById(customerData._id).select("attachments");
+        if (existing?.attachments) {
+          existingAttachments = existing.attachments.split(",").filter(Boolean);
+        }
+      } else if (typeof customerData.attachments === "string") {
+        existingAttachments = customerData.attachments.split(",").filter(Boolean);
+      }
+    } else if (customerData.attachments && typeof customerData.attachments === "string") {
+      existingAttachments = customerData.attachments.split(",").filter(Boolean);
+    }
+
     const allUrls = [...existingAttachments, ...uploadedUrls];
-    customerData.attachments = allUrls.join(","); // store as comma-separated string
+    customerData.attachments = allUrls.join(",");
+
+    // --- Attach the account ID and create customer ---
+    customerData.glAccount = account._id;
 
     const customer = new Customer({
       ...customerData,
@@ -123,11 +198,16 @@ export async function POST(req) {
 
     const populated = await Customer.findById(customer._id)
       .populate("glAccount")
-      .populate("assignedAgents", "name email");
+      .populate("assignedAgents", "name email")
+      .populate("slaPolicyId", "name description");
+
     return NextResponse.json({ success: true, data: populated }, { status: 201 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ success: false, message: "Failed to create customer" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to create customer" },
+      { status: 500 }
+    );
   }
 }
 
