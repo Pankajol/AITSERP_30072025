@@ -210,7 +210,7 @@ export async function POST(req) {
             referenceId:     invoice._id,
             referenceNumber: invoice.invoiceNumber,
             narration:       `Sales Invoice ${invoice.invoiceNumber} — ${customerName}`,
-            date:            invoice.invoiceDate || new Date(),
+            date:            invoice.postingDate,
             createdBy:       user.id,
           });
           console.log(`✅ Accounting entry created for invoice ${invoice.invoiceNumber}`);
