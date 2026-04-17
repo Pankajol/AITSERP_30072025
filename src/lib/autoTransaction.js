@@ -104,7 +104,7 @@ export async function autoSalesInvoice({
       companyId,
       transactionNumber: txnNumber,
       type: "Sales Invoice",
-      date: date || new Date(),
+      date: date,
       totalAmount: amount,
       lines: [
         { accountId: receivable._id, accountName: receivable.name, type: "Debit", amount },
@@ -166,7 +166,7 @@ export async function autoPurchaseInvoice({
     companyId,
     transactionNumber: txnNumber,
     type: "Purchase Invoice",
-    date: date || new Date(),
+    date: date,
     totalAmount: amount,
 
     lines: [

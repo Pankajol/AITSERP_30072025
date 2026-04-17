@@ -254,7 +254,7 @@ export async function POST(req) {
         referenceId:     invoice._id,
         referenceNumber: invoice.documentNumberPurchaseInvoice,  // ✅ tumhara invoice number field
         narration:       `Purchase Invoice ${invoice.documentNumberPurchaseInvoice}`,
-        date:            invoiceData.invoiceDate || new Date(),
+        date:            invoiceData.postingDate,
         createdBy:       decoded.id || decoded.userId,
       });
     } catch (accountingErr) {
