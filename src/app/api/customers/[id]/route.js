@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Customer from "@/models/CustomerModel";
+import AccountHead from "@/models/accounts/AccountHead"; // 🔥 import AccountHead model
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import { v2 as cloudinary } from "cloudinary";
 
@@ -11,7 +12,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ------------------- Helper functions (same as above) -------------------
+// ------------------- Helper functions -------------------
 function isAuthorized(user) {
   if (!user) return false;
   if (user.type === "company") return true;
@@ -84,6 +85,104 @@ export async function GET(req, { params }) {
   }
 }
 
+// ------------------- POST: Create new customer (with optional files) -------------------
+export async function POST(req) {
+  await dbConnect();
+  const { user, error } = await validateUser(req);
+  if (error || !isAuthorized(user)) {
+    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    let customerData = {};
+    let uploadedUrls = [];
+    const contentType = req.headers.get("content-type") || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const { files, customerData: data } = await parseMultipart(req);
+      customerData = data;
+      for (const file of files) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const url = await uploadToCloudinary(buffer, file.name, file.type);
+        uploadedUrls.push(url);
+      }
+    } else {
+      customerData = await req.json();
+    }
+
+    // --- Prevent duplicate customerCode within same company ---
+    const existingCustomer = await Customer.findOne({
+      customerCode: customerData.customerCode,
+      companyId: user.companyId,
+    });
+    if (existingCustomer) {
+      return NextResponse.json(
+        { success: false, message: "Customer Code already exists" },
+        { status: 400 }
+      );
+    }
+
+    // --- Auto-create AccountHead for customer (Asset, Debit balance) ---
+    let existingAccount = await AccountHead.findOne({
+      companyId: user.companyId,
+      name: customerData.customerName,
+    });
+
+    let account;
+    if (existingAccount) {
+      account = existingAccount;
+    } else {
+      // Optional: generate a unique account code (e.g., using a counter)
+      const lastAccount = await AccountHead.findOne({ companyId: user.companyId })
+        .sort({ accountCode: -1 });
+      let nextCode = "CUST-1000";
+      if (lastAccount && lastAccount.accountCode) {
+        const num = parseInt(lastAccount.accountCode.split("-")[1], 10) + 1;
+        nextCode = `CUST-${num}`;
+      }
+      account = await AccountHead.create({
+        companyId: user.companyId,
+        name: customerData.customerName,
+        accountCode: nextCode,
+        type: "Asset",
+        group: "Current Asset",
+        balanceType: "Debit",
+      });
+    }
+
+    // --- Handle attachments (merge existing + new) ---
+    let existingAttachments = [];
+    if (customerData.attachments && typeof customerData.attachments === "string") {
+      existingAttachments = customerData.attachments.split(",").filter(Boolean);
+    }
+    const allUrls = [...existingAttachments, ...uploadedUrls];
+    customerData.attachments = allUrls.join(",");
+
+    // --- Attach the account ID and create customer ---
+    customerData.glAccount = account._id;
+
+    const customer = new Customer({
+      ...customerData,
+      companyId: user.companyId,
+      createdBy: user.id,
+    });
+    await customer.save();
+
+    const populated = await Customer.findById(customer._id)
+      .populate("glAccount")
+      .populate("assignedAgents", "name email")
+      .populate("slaPolicyId", "name description");
+
+    return NextResponse.json({ success: true, data: populated }, { status: 201 });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { success: false, message: "Failed to create customer" },
+      { status: 500 }
+    );
+  }
+}
+
 // ------------------- PUT: Update an existing customer (with optional files) -------------------
 export async function PUT(req, { params }) {
   await dbConnect();
@@ -105,7 +204,6 @@ export async function PUT(req, { params }) {
     if (contentType.includes("multipart/form-data")) {
       const { files, customerData: data } = await parseMultipart(req);
       updateData = data;
-      // Upload new files
       for (const file of files) {
         const buffer = Buffer.from(await file.arrayBuffer());
         const url = await uploadToCloudinary(buffer, file.name, file.type);
@@ -115,30 +213,38 @@ export async function PUT(req, { params }) {
       updateData = await req.json();
     }
 
-    // Get existing attachments from the database
+    // Get existing customer
     const existingCustomer = await Customer.findById(id);
     if (!existingCustomer) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
 
+    // --- Handle attachments: merge existing + newly uploaded ---
     let existingAttachments = existingCustomer.attachments || "";
     if (typeof existingAttachments === "string") {
       existingAttachments = existingAttachments ? existingAttachments.split(",").filter(Boolean) : [];
     } else {
       existingAttachments = [];
     }
-
-    // If the request contains a new 'attachments' field (as string), we may want to replace?
-    // Here we merge: existing + newly uploaded.
     const allUrls = [...existingAttachments, ...uploadedUrls];
     updateData.attachments = allUrls.join(",");
+
+    // --- If customer name changed, optionally update the linked AccountHead name ---
+    if (updateData.customerName && updateData.customerName !== existingCustomer.customerName) {
+      const account = await AccountHead.findById(existingCustomer.glAccount);
+      if (account) {
+        account.name = updateData.customerName;
+        await account.save();
+      }
+    }
 
     // Remove _id from updateData if present
     delete updateData._id;
 
     const updatedCustomer = await Customer.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
       .populate("glAccount")
-      .populate("assignedAgents", "name email");
+      .populate("assignedAgents", "name email")
+      .populate("slaPolicyId", "name description");
 
     return NextResponse.json({ success: true, data: updatedCustomer }, { status: 200 });
   } catch (error) {
@@ -166,6 +272,7 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
     }
     // Optionally delete Cloudinary images here (iterate over deleted.attachments URLs)
+    // Also optionally delete the linked AccountHead? Usually you keep it for accounting history.
     return NextResponse.json({ success: true, message: "Customer deleted" }, { status: 200 });
   } catch (error) {
     console.error(error);

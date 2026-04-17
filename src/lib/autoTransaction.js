@@ -69,29 +69,66 @@ async function findAccount(companyId, name) {
 // Receivable Dr ↑ (Asset)   →  Customer owes us money
 // Sales Cr      ↑ (Income)  →  We earned revenue
 // ════════════════════════════════════════════════════════════
-export async function autoSalesInvoice({ companyId, amount, partyId, partyName, referenceId, referenceNumber, narration, date, createdBy }) {
-  const [receivable, sales] = await Promise.all([
-    findAccount(companyId, "Accounts Receivable"),
-    findAccount(companyId, "Sales Revenue"),
-  ]);
+export async function autoSalesInvoice({
+  companyId,
+  amount,
+  partyId,
+  partyName,
+  referenceId,
+  referenceNumber,
+  narration,
+  date,
+  createdBy,
+}) {
+  // 1. Validate required fields
+  if (!companyId || !amount || amount <= 0 || !partyId || !partyName || !referenceId || !createdBy) {
+    throw new Error("Missing required fields for autoSalesInvoice");
+  }
 
-  const txnNumber = await genNumber(companyId, "Sales Invoice");
-  const txn = await Transaction.create({
-    companyId, transactionNumber: txnNumber,
-    type: "Sales Invoice",
-    date: date || new Date(),
-    totalAmount: amount,
-    lines: [
-      { accountId: receivable._id, accountName: receivable.name, type: "Debit",  amount },
-      { accountId: sales._id,      accountName: sales.name,      type: "Credit", amount },
-    ],
-    partyType: "Customer", partyId, partyName,
-    referenceType: "SalesInvoice", referenceId, referenceNumber,
-    narration: narration || `Sales Invoice ${referenceNumber}`,
-    status: "Posted", createdBy,
-  });
-  await postLedger(txn);
-  return txn;
+  try {
+    // 2. Find or create required accounts (Receivable & Sales Revenue)
+    const [receivable, sales] = await Promise.all([
+      findAccount(companyId, "Accounts Receivable"),
+      findAccount(companyId, "Sales Revenue"),
+    ]);
+
+    if (!receivable || !sales) {
+      throw new Error("Required accounts (Accounts Receivable / Sales Revenue) not found");
+    }
+
+    // 3. Generate transaction number
+    const txnNumber = await genNumber(companyId, "Sales Invoice");
+
+    // 4. Create transaction
+    const txn = await Transaction.create({
+      companyId,
+      transactionNumber: txnNumber,
+      type: "Sales Invoice",
+      date: date || new Date(),
+      totalAmount: amount,
+      lines: [
+        { accountId: receivable._id, accountName: receivable.name, type: "Debit", amount },
+        { accountId: sales._id, accountName: sales.name, type: "Credit", amount },
+      ],
+      partyType: "Customer",
+      partyId,
+      partyName,
+      referenceType: "SalesInvoice",
+      referenceId,
+      referenceNumber,
+      narration: narration || `Sales Invoice ${referenceNumber}`,
+      status: "Posted",
+      createdBy,
+    });
+
+    // 5. Post to ledger (await the promise)
+    await postLedger(txn);
+
+    return txn;
+  } catch (error) {
+    console.error("autoSalesInvoice failed:", error);
+    throw new Error(`Failed to create auto sales invoice: ${error.message}`);
+  }
 }
 
 // ════════════════════════════════════════════════════════════
