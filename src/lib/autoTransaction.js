@@ -292,3 +292,67 @@ export async function autoGRN({ companyId, amount, partyId, partyName, reference
   await postLedger(txn);
   return txn;
 }
+
+
+// 4. PAYMENT (Supplier ko paisa diya)
+export async function autoPaymentPaid({
+  companyId,
+  amount,
+  partyId,
+  partyName,
+  bankAccountName = "Bank Account",
+  referenceId,
+  referenceNumber,
+  narration,
+  date,
+  createdBy,
+  paymentMode
+}) {
+  const [bank, payable] = await Promise.all([
+    findAccount(companyId, bankAccountName),
+    findAccount(companyId, "Accounts Payable"),
+  ]);
+
+  const txnNumber = await genNumber(companyId, "Payment");
+
+  const txn = await Transaction.create({
+    companyId,
+    transactionNumber: txnNumber,
+    type: "Payment",
+    date: date || new Date(),
+    totalAmount: amount,
+
+    lines: [
+      {
+        accountId: payable._id,
+        accountName: payable.name,
+        type: "Debit",
+        amount
+      },
+      {
+        accountId: bank._id,
+        accountName: bank.name,
+        type: "Credit",
+        amount
+      }
+    ],
+
+    partyType: "Supplier",
+    partyId,
+    partyName,
+
+    paymentMode: paymentMode || "Bank Transfer",
+    bankAccountId: bank._id,
+
+    referenceType: "Manual",
+    referenceId,
+    referenceNumber,
+
+    narration: narration || `Payment made to ${partyName}`,
+    status: "Posted",
+    createdBy,
+  });
+
+  await postLedger(txn);
+  return txn;
+}
