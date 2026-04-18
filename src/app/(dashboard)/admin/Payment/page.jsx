@@ -1,315 +1,567 @@
-
 "use client";
+
 import { useEffect, useState, useRef, useMemo } from "react";
+import CustomerSearch from "@/components/CustomerSearch";
+import SupplierSearch from "@/components/SupplierSearch";
 
-const fmtINR = n => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
+const fmtINR = (n) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
 
-function Toast({ toasts }) {
-  return (
-    <div style={{ position:"fixed",top:24,right:24,zIndex:9999,display:"flex",flexDirection:"column",gap:10 }}>
-      {toasts.map(t=>(
-        <div key={t.id} style={{ background:t.type==="success"?"#0a1628":"#1a0a0a",border:`1px solid ${t.type==="success"?"#22c55e55":"#ef444455"}`,color:t.type==="success"?"#22c55e":"#ef4444",padding:"12px 20px",borderRadius:12,fontSize:13,fontFamily:"'DM Mono',monospace",display:"flex",alignItems:"center",gap:10,minWidth:260,animation:"pe-slide 0.3s ease" }}>
-          <span>{t.type==="success"?"✦":"✕"}</span>{t.message}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const TYPE_CFG = {
-  Payment: { color:"#ef4444", bg:"rgba(239,68,68,0.1)",  icon:"↓", label:"Payment (Money Out)" },
-  Receipt: { color:"#22c55e", bg:"rgba(34,197,94,0.1)",  icon:"↑", label:"Receipt (Money In)"  },
-};
-
-const PAYMENT_MODES = ["Cash","Bank Transfer","Cheque","UPI","Card","Other"];
-
-const INPUT_STYLE = { width:"100%",padding:"9px 12px",borderRadius:9,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"#e2e8f0",fontFamily:"'DM Mono',monospace",fontSize:13,outline:"none" };
+const PAYMENT_MODES = ["Cash", "Bank Transfer", "Cheque", "UPI", "Card", "Other"];
 
 export default function PaymentEntryPage() {
-  const token = ()=>typeof window!=="undefined"?localStorage.getItem("token")||"":"";
-  const [accounts, setAccounts]   = useState([]);
-  const [payments, setPayments]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [toasts, setToasts]       = useState([]);
-  const [tab, setTab]             = useState("list");
+  const token = () => localStorage.getItem("token") || "";
+  const [accounts, setAccounts] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const [tab, setTab] = useState("list");
   const [filterType, setFilterType] = useState("All");
-  const toastId = useRef(0);
 
+  // Form state
   const [form, setForm] = useState({
-    type:           "Payment",
-    date:           new Date().toISOString().slice(0,10),
-    amount:         "",
-    bankAccountId:  "",
-    partyAccountId: "",
-    partyType:      "Supplier",
-    partyName:      "",
-    paymentMode:    "Bank Transfer",
-    narration:      "",
-    chequeNumber:   "",
-    utrNumber:      "",
-    referenceNumber:"",
+    type: "Payment", // "Payment" or "Receipt"
+    date: new Date().toISOString().slice(0, 10),
+    amount: "",
+    bankAccountId: "",
+    partyType: "Supplier", // "Supplier" or "Customer"
+    partyId: "",
+    partyName: "",
+    paymentMode: "Bank Transfer",
+    narration: "",
+    chequeNumber: "",
+    utrNumber: "",
   });
 
-  const addToast = (msg, type="success") => {
-    const id=++toastId.current;
-    setToasts(p=>[...p,{id,message:msg,type}]);
-    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),3500);
+  const [invoices, setInvoices] = useState([]);           // outstanding invoices from backend
+  const [selectedInvoices, setSelectedInvoices] = useState([]); // { id, number, due, selectedAmount }
+
+  // --- Toast helper ---
+  const addToast = (msg, type = "success") => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message: msg, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   };
 
-  useEffect(()=>{ fetchAccounts(); fetchPayments(); },[]);
+  // --- Fetch accounts & existing payments ---
+  useEffect(() => {
+    fetchAccounts();
+    fetchPayments();
+  }, []);
 
   const fetchAccounts = async () => {
-    const res  = await fetch("/api/accounts/heads",{headers:{Authorization:`Bearer ${token()}`}});
-    const data = await res.json();
-    if (data.success) setAccounts(data.data||[]);
+    try {
+      const res = await fetch("/api/accounts/heads", { headers: { Authorization: `Bearer ${token()}` } });
+      const data = await res.json();
+      if (data.success) setAccounts(data.data || []);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchPayments = async () => {
     setLoading(true);
     try {
-      const [pRes,rRes] = await Promise.all([
-        fetch("/api/accounts/payment?type=Payment",{headers:{Authorization:`Bearer ${token()}`}}),
-        fetch("/api/accounts/payment?type=Receipt",{headers:{Authorization:`Bearer ${token()}`}}),
+      const [pRes, rRes] = await Promise.all([
+        fetch("/api/accounts/payment?type=Payment", { headers: { Authorization: `Bearer ${token()}` } }),
+        fetch("/api/accounts/payment?type=Receipt", { headers: { Authorization: `Bearer ${token()}` } }),
       ]);
-      const [p,r] = await Promise.all([pRes.json(),rRes.json()]);
-      setPayments([...(p.data||[]),...(r.data||[])].sort((a,b)=>new Date(b.date)-new Date(a.date)));
-    } catch { addToast("Failed to load","error"); }
-    finally { setLoading(false); }
+      const [p, r] = await Promise.all([pRes.json(), rRes.json()]);
+      setPayments([...(p.data || []), ...(r.data || [])].sort((a, b) => new Date(b.date) - new Date(a.date)));
+    } catch (err) {
+      addToast("Failed to load payments", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const bankAccounts    = accounts.filter(a=>a.group==="Current Asset"&&(a.name.toLowerCase().includes("bank")||a.name.toLowerCase().includes("cash")));
-  const payableAccounts = accounts.filter(a=>a.group==="Current Liability"||a.group==="Current Asset");
+  // Bank/cash accounts
+  const bankAccounts = accounts.filter(
+    (a) => a.group === "Current Asset" && (a.name.toLowerCase().includes("bank") || a.name.toLowerCase().includes("cash"))
+  );
 
+  // --- Fetch outstanding invoices when party changes ---
+  useEffect(() => {
+    if (form.partyId && form.partyType) {
+      fetchOutstandingInvoices();
+    } else {
+      setInvoices([]);
+      setSelectedInvoices([]);
+      setForm((prev) => ({ ...prev, amount: "" }));
+    }
+  }, [form.partyId, form.partyType]);
+
+  const fetchOutstandingInvoices = async () => {
+    try {
+      const url = `/api/invoices?partyType=${form.partyType}&partyId=${form.partyId}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token()}` } });
+      const data = await res.json();
+      if (data.success) {
+        setInvoices(data.data);
+        setSelectedInvoices([]);
+      } else {
+        setInvoices([]);
+      }
+    } catch (err) {
+      console.error(err);
+      setInvoices([]);
+    }
+  };
+
+  // --- Party selection from search ---
+  const handlePartySelect = (party) => {
+    const partyId = party._id;
+    const partyName = form.partyType === "Supplier" ? party.supplierName : party.customerName;
+    setForm((prev) => ({ ...prev, partyId, partyName }));
+  };
+
+  // --- Invoice selection toggling ---
+  const toggleInvoice = (inv) => {
+    const exists = selectedInvoices.find((i) => i.id === inv._id);
+    if (exists) {
+      setSelectedInvoices((prev) => prev.filter((i) => i.id !== inv._id));
+    } else {
+      setSelectedInvoices((prev) => [
+        ...prev,
+        {
+          id: inv._id,
+          number: inv.invoiceNumber,
+          due: inv.dueAmount,
+          selectedAmount: inv.dueAmount,
+        },
+      ]);
+    }
+  };
+
+  // Update per‑invoice amount
+  const updateInvoiceAmount = (id, newAmount) => {
+    setSelectedInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === id ? { ...inv, selectedAmount: Math.min(inv.due, Math.max(0, newAmount)) } : inv
+      )
+    );
+  };
+
+  // Auto‑calculate total amount from selected invoices
+  useEffect(() => {
+    const total = selectedInvoices.reduce((sum, inv) => sum + (inv.selectedAmount || 0), 0);
+    setForm((prev) => ({ ...prev, amount: total.toString() }));
+  }, [selectedInvoices]);
+
+  // --- Submit payment ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.amount||Number(form.amount)<=0) { addToast("Amount must be greater than 0","error"); return; }
-    if (!form.bankAccountId)  { addToast("Select a bank/cash account","error"); return; }
-    if (!form.partyAccountId) { addToast("Select a party account","error"); return; }
+    if (!form.amount || Number(form.amount) <= 0) {
+      addToast("Amount must be greater than 0", "error");
+      return;
+    }
+    if (!form.bankAccountId) {
+      addToast("Select a bank/cash account", "error");
+      return;
+    }
+    if (!form.partyId) {
+      addToast(`Select a ${form.partyType}`, "error");
+      return;
+    }
+    if (selectedInvoices.length === 0) {
+      addToast("Select at least one invoice to apply payment", "error");
+      return;
+    }
+
     setSaving(true);
     try {
-      const res  = await fetch("/api/accounts/payment",{
-        method:"POST",
-        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token()}`},
-        body: JSON.stringify({ ...form, amount:Number(form.amount) }),
+      const payload = {
+        ...form,
+        amount: Number(form.amount),
+        appliedInvoices: selectedInvoices.map((inv) => ({
+          invoiceId: inv.id,
+          invoiceNumber: inv.number,
+          amount: inv.selectedAmount,
+        })),
+      };
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        addToast(`${form.type} entry posted successfully`);
-        setForm({ type:"Payment",date:new Date().toISOString().slice(0,10),amount:"",bankAccountId:"",partyAccountId:"",partyType:"Supplier",partyName:"",paymentMode:"Bank Transfer",narration:"",chequeNumber:"",utrNumber:"",referenceNumber:"" });
-        setTab("list"); fetchPayments();
-      } else addToast(data.message||"Failed","error");
-    } catch { addToast("Failed to save","error"); }
-    finally { setSaving(false); }
+        addToast(`${form.type} recorded successfully`);
+        // Reset form
+        setForm({
+          type: "Payment",
+          date: new Date().toISOString().slice(0, 10),
+          amount: "",
+          bankAccountId: "",
+          partyType: "Supplier",
+          partyId: "",
+          partyName: "",
+          paymentMode: "Bank Transfer",
+          narration: "",
+          chequeNumber: "",
+          utrNumber: "",
+        });
+        setSelectedInvoices([]);
+        setInvoices([]);
+        setTab("list");
+        fetchPayments();
+      } else {
+        addToast(data.message || "Failed", "error");
+      }
+    } catch (err) {
+      addToast("Error saving payment", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const typeCfg = TYPE_CFG[form.type];
-  const filtered = useMemo(()=>payments.filter(p=>filterType==="All"||p.type===filterType),[payments,filterType]);
+  const typeConfig = {
+    Payment: { color: "#dc2626", bg: "#fee2e2", icon: "↓", label: "Payment (Out)" },
+    Receipt: { color: "#16a34a", bg: "#dcfce7", icon: "↑", label: "Receipt (In)" },
+  };
+
+  const filteredPayments = useMemo(
+    () => payments.filter((p) => filterType === "All" || p.type === filterType),
+    [payments, filterType]
+  );
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
-        @keyframes pe-slide { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes pe-fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pe-spin { to{transform:rotate(360deg)} }
-        @keyframes pe-shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
-        .pe-page * { box-sizing:border-box; }
-        .pe-page { min-height:100vh; background:#060b14; font-family:'Syne',sans-serif; color:#e2e8f0; padding:32px 20px 60px; }
-        .pe-skeleton { background:linear-gradient(90deg,#1e293b 25%,#2d3f55 50%,#1e293b 75%); background-size:400px 100%; animation:pe-shimmer 1.4s infinite; border-radius:8px; }
-        .pe-row { border-bottom:1px solid rgba(255,255,255,0.04); transition:background 0.15s; }
-        .pe-row:hover { background:rgba(255,255,255,0.025); }
-        .pe-tab { padding:9px 20px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); background:transparent; color:#64748b; font-family:'DM Mono',monospace; font-size:12px; cursor:pointer; transition:all 0.2s; }
-        .pe-tab.active { background:rgba(99,102,241,0.12); border-color:#6366f155; color:#818cf8; }
-        .pe-filter { padding:6px 14px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); background:transparent; color:#64748b; font-family:'DM Mono',monospace; font-size:11px; cursor:pointer; transition:all 0.2s; }
-        .pe-filter.active { background:rgba(99,102,241,0.1); border-color:#6366f155; color:#818cf8; }
-        table { border-collapse:collapse; width:100%; }
-      `}</style>
-      <Toast toasts={toasts} />
-
-      <div className="pe-page">
-        <div style={{ maxWidth:1000,margin:"0 auto" }}>
-
-          {/* Header */}
-          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28,flexWrap:"wrap",gap:16,animation:"pe-fadeUp 0.4s ease" }}>
-            <div>
-              <div style={{ fontFamily:"'DM Mono',monospace",fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:2,marginBottom:4 }}>Accounts</div>
-              <h1 style={{ fontSize:32,fontWeight:800,color:"#f8fafc",margin:0 }}>Payment Entry</h1>
-              <p style={{ margin:"6px 0 0",fontFamily:"'DM Mono',monospace",fontSize:13,color:"#475569" }}>Record payments & receipts</p>
-            </div>
-            <div style={{ display:"flex",gap:8 }}>
-              <button className={`pe-tab${tab==="list"?" active":""}`} onClick={()=>setTab("list")}>≡ All Entries</button>
-              <button className={`pe-tab${tab==="new"?" active":""}`} onClick={()=>setTab("new")}
-                style={{ background:tab==="new"?"linear-gradient(135deg,#1d4ed8,#3b82f6)":"transparent",color:tab==="new"?"#fff":"#64748b",border:tab==="new"?"none":"1px solid rgba(255,255,255,0.08)" }}>
-                + New Entry
-              </button>
-            </div>
+    <div className="min-h-screen bg-gray-50 font-sans">
+      {/* Toast container */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`px-4 py-2 rounded-lg shadow-lg text-sm font-medium ${
+              t.type === "success" ? "bg-green-100 text-green-800 border-l-4 border-green-500" : "bg-red-100 text-red-800 border-l-4 border-red-500"
+            }`}
+          >
+            {t.message}
           </div>
+        ))}
+      </div>
 
-          {/* ── NEW ENTRY FORM ── */}
-          {tab==="new" && (
-            <div style={{ background:"#0d1829",border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,padding:"28px",marginBottom:20,animation:"pe-fadeUp 0.4s ease" }}>
-              <form onSubmit={handleSubmit}>
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Payment Entry</h1>
+            <p className="text-sm text-gray-500 mt-1">Record payments & receipts against invoices</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setTab("list")}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                tab === "list" ? "bg-indigo-600 text-white shadow" : "bg-white text-gray-700 border hover:bg-gray-50"
+              }`}
+            >
+              All Entries
+            </button>
+            <button
+              onClick={() => setTab("new")}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                tab === "new" ? "bg-indigo-600 text-white shadow" : "bg-white text-gray-700 border hover:bg-gray-50"
+              }`}
+            >
+              + New Entry
+            </button>
+          </div>
+        </div>
 
-                {/* Type toggle */}
-                <div style={{ marginBottom:22 }}>
-                  <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:10 }}>Type *</label>
-                  <div style={{ display:"flex",gap:10 }}>
-                    {Object.entries(TYPE_CFG).map(([t,c])=>(
-                      <button type="button" key={t} onClick={()=>setForm(p=>({...p,type:t,partyType:t==="Payment"?"Supplier":"Customer"}))}
-                        style={{ flex:1,padding:"14px",borderRadius:12,border:`1px solid ${form.type===t?c.color:"rgba(255,255,255,0.07)"}`,background:form.type===t?c.bg:"transparent",color:form.type===t?c.color:"#475569",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:15,cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",justifyContent:"center",gap:10 }}>
-                        <span style={{fontSize:22}}>{c.icon}</span>{c.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16 }}>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Date *</label>
-                    <input type="date" required value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{ ...INPUT_STYLE,colorScheme:"dark" }} />
-                  </div>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Amount ₹ *</label>
-                    <input type="number" min="1" required value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="0"
-                      style={{ ...INPUT_STYLE,border:`1px solid ${typeCfg.color}33`,fontSize:16,fontWeight:700 }} />
-                  </div>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Bank / Cash Account *</label>
-                    <select required value={form.bankAccountId} onChange={e=>setForm(p=>({...p,bankAccountId:e.target.value}))} style={{ ...INPUT_STYLE,colorScheme:"dark" }}>
-                      <option value="">-- Select Bank/Cash --</option>
-                      {bankAccounts.map(a=><option key={a._id} value={a._id}>{a.name}</option>)}
-                      {bankAccounts.length===0&&accounts.filter(a=>a.type==="Asset").map(a=><option key={a._id} value={a._id}>{a.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>
-                      {form.type==="Payment"?"Payable Account *":"Receivable Account *"}
-                    </label>
-                    <select required value={form.partyAccountId} onChange={e=>setForm(p=>({...p,partyAccountId:e.target.value}))} style={{ ...INPUT_STYLE,colorScheme:"dark" }}>
-                      <option value="">-- Select Account --</option>
-                      {accounts.map(a=><option key={a._id} value={a._id}>{a.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Party Name</label>
-                    <input value={form.partyName} onChange={e=>setForm(p=>({...p,partyName:e.target.value}))} placeholder="Customer / Supplier name" style={INPUT_STYLE} />
-                  </div>
-                  <div>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Payment Mode</label>
-                    <select value={form.paymentMode} onChange={e=>setForm(p=>({...p,paymentMode:e.target.value}))} style={{ ...INPUT_STYLE,colorScheme:"dark" }}>
-                      {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  {form.paymentMode==="Cheque"&&(
-                    <div>
-                      <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Cheque No.</label>
-                      <input value={form.chequeNumber} onChange={e=>setForm(p=>({...p,chequeNumber:e.target.value}))} placeholder="e.g. 123456" style={INPUT_STYLE} />
-                    </div>
-                  )}
-                  {form.paymentMode==="Bank Transfer"&&(
-                    <div>
-                      <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>UTR / Ref No.</label>
-                      <input value={form.utrNumber} onChange={e=>setForm(p=>({...p,utrNumber:e.target.value}))} placeholder="e.g. UTR123456789" style={INPUT_STYLE} />
-                    </div>
-                  )}
-                  <div style={{ gridColumn:"1/-1" }}>
-                    <label style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:1.5,display:"block",marginBottom:7 }}>Narration</label>
-                    <input value={form.narration} onChange={e=>setForm(p=>({...p,narration:e.target.value}))} placeholder={`e.g. ${form.type==="Payment"?"Payment to supplier for Invoice #123":"Received from customer against Invoice #456"}`} style={INPUT_STYLE} />
-                  </div>
-                </div>
-
-                {/* Entry preview */}
-                {form.amount>0&&form.bankAccountId&&form.partyAccountId&&(
-                  <div style={{ background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:"14px 16px",marginBottom:20 }}>
-                    <div style={{ fontFamily:"'DM Mono',monospace",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:2,marginBottom:10 }}>Entry Preview</div>
-                    {(form.type==="Payment"
-                      ?[{t:"Debit",a:accounts.find(a=>a._id===form.partyAccountId)?.name,c:"#38bdf8"},{t:"Credit",a:accounts.find(a=>a._id===form.bankAccountId)?.name,c:"#a78bfa"}]
-                      :[{t:"Debit",a:accounts.find(a=>a._id===form.bankAccountId)?.name,c:"#38bdf8"},{t:"Credit",a:accounts.find(a=>a._id===form.partyAccountId)?.name,c:"#a78bfa"}]
-                    ).map((row,i)=>(
-                      <div key={i} style={{ display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i===0?"1px solid rgba(255,255,255,0.04)":"none" }}>
-                        <span style={{ fontFamily:"'DM Mono',monospace",fontSize:13,color:row.c }}>{row.t}: {row.a||"—"}</span>
-                        <span style={{ fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:row.c }}>{fmtINR(Number(form.amount))}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
-                  <button type="button" onClick={()=>setTab("list")} style={{ padding:"11px 20px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#64748b",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer" }}>Cancel</button>
-                  <button type="submit" disabled={saving}
-                    style={{ padding:"11px 28px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${typeCfg.color}cc,${typeCfg.color})`,color:"#fff",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1,display:"flex",alignItems:"center",gap:8 }}>
-                    {saving?<span style={{ width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"pe-spin 0.7s linear infinite" }} />:`${typeCfg.icon} Post ${form.type}`}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* ── LIST ── */}
-          {tab==="list" && (
-            <div style={{ background:"#0d1829",border:"1px solid rgba(255,255,255,0.07)",borderRadius:20,overflow:"hidden",animation:"pe-fadeUp 0.4s ease 0.05s both" }}>
-              <div style={{ padding:"18px 20px 14px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
-                <div>
-                  <h2 style={{ fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:17,color:"#f1f5f9",margin:0 }}>Payment & Receipt Entries</h2>
-                  <div style={{ fontFamily:"'DM Mono',monospace",fontSize:11,color:"#475569",marginTop:3 }}>{filtered.length} entries</div>
-                </div>
-                <div style={{ display:"flex",gap:6 }}>
-                  {["All","Payment","Receipt"].map(f=>(
-                    <button key={f} className={`pe-filter${filterType===f?" active":""}`} onClick={()=>setFilterType(f)}>{f}</button>
+        {/* New Entry Form */}
+        {tab === "new" && (
+          <div className="bg-white rounded-xl shadow-sm border p-6 mb-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Type Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Type</label>
+                <div className="flex gap-3">
+                  {Object.entries(typeConfig).map(([type, cfg]) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          type,
+                          partyType: type === "Payment" ? "Supplier" : "Customer",
+                          partyId: "",
+                          partyName: "",
+                        }))
+                      }
+                      className={`flex-1 py-2 px-4 rounded-lg border font-medium transition ${
+                        form.type === type
+                          ? `border-${cfg.color} bg-${cfg.bg} text-${cfg.color}`
+                          : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                      style={{
+                        borderColor: form.type === type ? cfg.color : undefined,
+                        backgroundColor: form.type === type ? cfg.bg : undefined,
+                        color: form.type === type ? cfg.color : undefined,
+                      }}
+                    >
+                      {cfg.icon} {cfg.label}
+                    </button>
                   ))}
                 </div>
               </div>
 
-              {loading ? (
-                <div style={{padding:20,display:"flex",flexDirection:"column",gap:10}}>
-                  {[1,2,3].map(i=><div key={i} className="pe-skeleton" style={{height:52}} />)}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.date}
+                    onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
                 </div>
-              ) : filtered.length===0 ? (
-                <div style={{padding:"60px 20px",textAlign:"center"}}>
-                  <div style={{fontSize:36,marginBottom:12}}>◎</div>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#334155"}}>No entries yet</div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bank / Cash Account</label>
+                  <select
+                    required
+                    value={form.bankAccountId}
+                    onChange={(e) => setForm((p) => ({ ...p, bankAccountId: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500"
+                  >
+                    <option value="">-- Select --</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc._id} value={acc._id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ) : (
-                <div style={{overflowX:"auto"}}>
-                  <table>
-                    <thead>
-                      <tr style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-                        {["Ref No","Date","Type","Party","Mode","Amount","Status"].map(h=>(
-                          <th key={h} style={{padding:"11px 16px",textAlign:h==="Amount"?"right":"left",fontFamily:"'DM Mono',monospace",fontSize:10,color:"#334155",textTransform:"uppercase",letterSpacing:1.5,fontWeight:500}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((p,i)=>{
-                        const cfg=TYPE_CFG[p.type]||TYPE_CFG.Payment;
-                        return (
-                          <tr key={p._id} className="pe-row" style={{animation:`pe-fadeUp 0.4s ease ${i*0.04}s both`}}>
-                            <td style={{padding:"12px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#38bdf8"}}>{p.transactionNumber}</td>
-                            <td style={{padding:"12px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#64748b"}}>{new Date(p.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</td>
-                            <td style={{padding:"12px 16px"}}>
-                              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,padding:"3px 9px",borderRadius:20,background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}33`}}>{cfg.icon} {p.type}</span>
-                            </td>
-                            <td style={{padding:"12px 16px",fontFamily:"'Syne',sans-serif",fontSize:13,color:"#e2e8f0"}}>{p.partyName||"—"}</td>
-                            <td style={{padding:"12px 16px",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#475569"}}>{p.paymentMode||"—"}</td>
-                            <td style={{padding:"12px 16px",textAlign:"right",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:cfg.color}}>{fmtINR(p.totalAmount)}</td>
-                            <td style={{padding:"12px 16px"}}>
-                              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,padding:"2px 9px",borderRadius:20,background:p.status==="Posted"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:p.status==="Posted"?"#22c55e":"#ef4444"}}>
-                                {p.status==="Posted"?"✓ Posted":"✕ Cancelled"}
-                              </span>
-                            </td>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {form.type === "Payment" ? "Supplier" : "Customer"}
+                  </label>
+                  {form.partyType === "Supplier" ? (
+                    <SupplierSearch onSelectSupplier={handlePartySelect} />
+                  ) : (
+                    <CustomerSearch onSelectCustomer={handlePartySelect} />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
+                  <select
+                    value={form.paymentMode}
+                    onChange={(e) => setForm((p) => ({ ...p, paymentMode: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    {PAYMENT_MODES.map((m) => (
+                      <option key={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                {form.paymentMode === "Cheque" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cheque No.</label>
+                    <input
+                      value={form.chequeNumber}
+                      onChange={(e) => setForm((p) => ({ ...p, chequeNumber: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="e.g. 123456"
+                    />
+                  </div>
+                )}
+                {form.paymentMode === "Bank Transfer" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">UTR / Ref No.</label>
+                    <input
+                      value={form.utrNumber}
+                      onChange={(e) => setForm((p) => ({ ...p, utrNumber: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      placeholder="e.g. UTR123456789"
+                    />
+                  </div>
+                )}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Narration (Optional)</label>
+                  <input
+                    value={form.narration}
+                    onChange={(e) => setForm((p) => ({ ...p, narration: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    placeholder={`e.g. ${form.type === "Payment" ? "Payment to supplier for invoices" : "Receipt from customer"}`}
+                  />
+                </div>
+              </div>
+
+              {/* Outstanding Invoices Section */}
+              {form.partyId && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Outstanding Invoices</h3>
+                  {invoices.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-700 text-sm">
+                      No outstanding invoices for this {form.partyType === "Supplier" ? "supplier" : "customer"}.
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Select</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice No.</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Due Amount</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Amount to Pay</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {invoices.map((inv) => {
+                            const isSelected = selectedInvoices.some((s) => s.id === inv._id);
+                            const selInv = selectedInvoices.find((s) => s.id === inv._id);
+                            return (
+                              <tr key={inv._id}>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleInvoice(inv)}
+                                    className="h-4 w-4 text-indigo-600 rounded border-gray-300"
+                                  />
+                                </td>
+                                <td className="px-4 py-2 font-mono text-sm text-indigo-600">{inv.invoiceNumber}</td>
+                                <td className="px-4 py-2 text-right font-medium text-gray-800">{fmtINR(inv.dueAmount)}</td>
+                                <td className="px-4 py-2 text-center">
+                                  {isSelected && (
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={selInv.selectedAmount}
+                                      onChange={(e) => updateInvoiceAmount(inv._id, parseFloat(e.target.value))}
+                                      className="w-32 px-2 py-1 border border-gray-300 rounded text-right text-sm"
+                                    />
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Total Amount Preview */}
+              {selectedInvoices.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex justify-between items-center">
+                  <span className="text-green-700 font-medium">Total Payment Amount:</span>
+                  <span className="text-2xl font-bold text-green-700">{fmtINR(Number(form.amount))}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setTab("list")}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || selectedInvoices.length === 0}
+                  className={`px-6 py-2 rounded-lg text-white font-medium ${
+                    saving || selectedInvoices.length === 0
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : form.type === "Payment"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-green-600 hover:bg-green-700"
+                  }`}
+                >
+                  {saving ? "Processing..." : `${form.type === "Payment" ? "↓ Record Payment" : "↑ Record Receipt"}`}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* List View */}
+        {tab === "list" && (
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Payment & Receipt History</h2>
+                <p className="text-sm text-gray-500">{filteredPayments.length} entries</p>
+              </div>
+              <div className="flex gap-2">
+                {["All", "Payment", "Receipt"].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilterType(f)}
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      filterType === f ? "bg-indigo-100 text-indigo-700" : "text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-gray-100 animate-pulse rounded"></div>
+                ))}
+              </div>
+            ) : filteredPayments.length === 0 ? (
+              <div className="p-12 text-center text-gray-400">No entries found</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ref No</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Party</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {filteredPayments.map((p, idx) => {
+                      const cfg = typeConfig[p.type] || typeConfig.Payment;
+                      return (
+                        <tr key={p._id} className="hover:bg-gray-50 transition">
+                          <td className="px-6 py-3 font-mono text-sm text-indigo-600">{p.transactionNumber}</td>
+                          <td className="px-6 py-3 text-sm text-gray-600">
+                            {new Date(p.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="px-6 py-3">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium`}
+                              style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                            >
+                              {cfg.icon} {p.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 text-sm text-gray-800">{p.partyName || "—"}</td>
+                          <td className="px-6 py-3 text-sm text-gray-500">{p.paymentMode || "—"}</td>
+                          <td className="px-6 py-3 text-right font-semibold" style={{ color: cfg.color }}>
+                            {fmtINR(p.totalAmount)}
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                              ✓ Posted
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
   

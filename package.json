@@ -85,7 +85,7 @@
     "sass": "^1.92.1",
     "tailwindcss-animate": "^1.0.7",
     "tesseract.js": "^6.0.1",
-    "twilio": "^5.11.2",
+    "twilio": "^5.13.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
