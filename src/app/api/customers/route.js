@@ -198,8 +198,8 @@ export async function POST(req) {
 
     const populated = await Customer.findById(customer._id)
       .populate("glAccount")
-      .populate("assignedAgents", "name email")
-      .populate("slaPolicyId", "name description");
+      .populate("assignedAgents", "name email");
+      // .populate("slaPolicyId", "name description");
 
     return NextResponse.json({ success: true, data: populated }, { status: 201 });
   } catch (error) {
