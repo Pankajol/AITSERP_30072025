@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+* {
+  font-family: 'Times New Roman', Times, serif !important;
+}
+.input-field {
+  @apply w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+}
+
+.label {
+  @apply block text-gray-700 font-medium mb-2;
+}
+
+.btn-primary {
+  @apply bg-amber-500 text-white px-6 py-2 rounded-lg hover:bg-amber-700 transition shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition shadow-md;
+}
+/* Hide spinner controls in Chrome, Safari, Edge, and Opera */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Hide spinner controls in Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+@media print {
+  body, html {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    width: 210mm;
+    height: auto;
+  }
+
+  .invoice-box {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 20mm;
+    box-shadow: none;
+  }
+
+  .no-print, nav, header, aside, footer {
+    display: none !important;
+  }
+}
+
+.page-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #f3f4f6; /* Light gray for screen preview */
+  padding: 20px;
+}
+
+.invoice-box {
+  background: white;
+  width: 210mm;          /* A4 width */
+  min-height: 297mm;     /* A4 height */
+  padding: 20mm;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  color: black;
+  font-family: Arial, sans-serif;
+}
+
+/* ✅ Screen preview layout */
+.print-layout {
+  display: flex;
+  justify-content: center;
+  align-items: start;
+  min-height: 100vh;
+  padding: 2rem;
+  background: #f3f4f6;
+  box-sizing: border-box;
+}
+
+/* ✅ A4 invoice size */
+.invoice-sheet {
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
+
+/* ✅ Clean print layout */
+@media print {
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 210mm;
+    height: auto;
+    background: white !important;
+  }
+
+  .print-layout {
+    display: block;
+    padding: 0;
+    margin: 0;
+    background: white;
+  }
+
+  .invoice-sheet {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 20mm;
+    margin: 0 auto;
+    box-shadow: none !important;
+    page-break-after: avoid;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+    .invoice-sheet {
+    margin: 0 auto !important;
+    width: 210mm !important;
+  }
+
+  .print-layout {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  header, nav, aside {
+    display: none !important;
+    width: 0 !important;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

@@ -1,0 +1,16 @@
+
+name: Auto Reassign Tickets Cron Job
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Auto Reassign API
+        run: |
+          curl -X GET https://aitserp-30072025.vercel.app/api/cron/auto-reassign
+

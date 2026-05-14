@@ -1,0 +1,283 @@
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Plus, Edit, Trash2 } from "lucide-react";
+
+const MachinePage = () => {
+  const [machines, setMachines] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentMachine, setCurrentMachine] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [modalError, setModalError] = useState(null);
+
+  // 🔑 helper to get token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("token");
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  const fetchMachines = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/ppc/machines?searchQuery=${searchQuery}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!response.ok) throw new Error("Failed to fetch machines");
+      const data = await response.json();
+      setMachines(data.data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    fetchMachines();
+  }, [fetchMachines]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    fetchMachines();
+  };
+
+  const openModal = (machine = null) => {
+    setCurrentMachine(
+      machine
+        ? { ...machine }
+        : { code: "", name: "", model: "", brandName: "", productionCapacity: "" }
+    );
+    setModalError(null);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setCurrentMachine(null);
+    setModalError(null);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setCurrentMachine((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setModalError(null);
+    const method = currentMachine._id ? "PUT" : "POST";
+    const url = currentMachine._id
+      ? `/api/ppc/machines/${currentMachine._id}`
+      : "/api/ppc/machines";
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify(currentMachine),
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || "Failed to save machine");
+      }
+      await fetchMachines();
+      closeModal();
+    } catch (err) {
+      setModalError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this machine?")) {
+      try {
+        const response = await fetch(`/api/ppc/machines/${id}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.message || "Failed to delete machine");
+        }
+        await fetchMachines();
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+  };
+
+  return (
+    <div className="p-8 font-sans bg-gray-50 min-h-screen">
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">Machine Management</h1>
+
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+        <div className="flex justify-between items-center">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by code, name or brand..."
+              className="border p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+            >
+              Search
+            </button>
+          </form>
+          <button
+            onClick={() => openModal()}
+            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center gap-2"
+          >
+            <Plus size={18} />
+            Add Machine
+          </button>
+        </div>
+      </div>
+
+      {isLoading && <p className="text-center">Loading...</p>}
+      {error && (
+        <div
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-4">Code</th>
+                <th className="p-4">Name</th>
+                <th className="p-4">Model</th>
+                <th className="p-4">Brand</th>
+                <th className="p-4">Production Capacity</th>
+                <th className="p-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {machines.map((machine) => (
+                <tr key={machine._id} className="border-b hover:bg-gray-50">
+                  <td className="p-4">{machine.code}</td>
+                  <td className="p-4">{machine.name}</td>
+                  <td className="p-4">{machine.model}</td>
+                  <td className="p-4">{machine.brandName}</td>
+                  <td className="p-4">{machine.productionCapacity}</td>
+                  <td className="p-4 flex gap-2">
+                    <button
+                      onClick={() => openModal(machine)}
+                      className="text-blue-500 hover:text-blue-700"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(machine._id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">
+              {currentMachine?._id ? "Edit Machine" : "Add Machine"}
+            </h2>
+
+            {modalError && (
+              <div
+                className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4"
+                role="alert"
+              >
+                {modalError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <input
+                name="machineCode"
+                type="text"
+                placeholder="Machine Code"
+                value={currentMachine.machineCode}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                name="name"
+                type="text"
+                placeholder="Name"
+                value={currentMachine.name}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                name="model"
+                type="text"
+                placeholder="Model"
+                value={currentMachine.model}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                name="brandName"
+                type="text"
+                placeholder="Brand Name"
+                value={currentMachine.brandName}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded-md"
+              />
+              <input
+                name="productionCapacity"
+                type="number"
+                placeholder="Production Capacity"
+                value={currentMachine.productionCapacity}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-4">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MachinePage;
