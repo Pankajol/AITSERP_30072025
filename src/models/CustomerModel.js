@@ -51,7 +51,7 @@ lastAssignedAgentIndex: {
   },
   emailId: {
     type: String,
-   
+   required: [true, "Customer email is required"],
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email format"]
   },
 //   emailId: {

@@ -82,8 +82,7 @@ const VALIDATORS = {
   1: (d) => {
     const e = {};
     if (!d.customerName?.trim()) e.customerName = "Required";
-    if (!d.emailId?.trim()) e.emailId = "Required";
-    if (!d.mobileNumber?.trim()) e.mobileNumber = "Required";
+
     if (!d.customerGroup?.trim()) e.customerGroup = "Required";
     if (!d.customerType) e.customerType = "Required";
     return e;
@@ -94,7 +93,7 @@ const VALIDATORS = {
       d.emailId &&
       !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(d.emailId)
     )
-      e.emailId = "Invalid email";
+      e.emailId = "Invalid email format";
     if (d.mobileNumber && !/^\d{10}$/.test(d.mobileNumber))
       e.mobileNumber = "10 digits required";
     (d.contactEmails || []).forEach((c, i) => {
@@ -102,7 +101,7 @@ const VALIDATORS = {
         c.email &&
         !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(c.email)
       )
-        e[`ce_${i}`] = "Invalid email";
+        e[`ce_${i}`] = "Invalid email format";
     });
     return e;
   },
@@ -796,7 +795,7 @@ const fetchCustomers = useCallback(async () => {
           <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                {label("Primary Email")}
+                {label("Primary Email", true)}
                 <input
                   className={fi("emailId")}
                   name="emailId"
