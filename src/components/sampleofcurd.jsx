@@ -1009,13 +1009,13 @@ const fetchCustomers = useCallback(async () => {
                 />
               </div>
             </div>
-            <div className="border-t pt-4">
+            {/* <div className="border-t pt-4">
               {label("GL Account")}
               <AccountSearch
                 value={cd.glAccount}
                 onSelect={(sel) => setCd((p) => ({ ...p, glAccount: sel }))}
               />
-            </div>
+            </div> */}
           </div>
         );
       case 5:

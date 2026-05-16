@@ -51,6 +51,18 @@ const VALIDATORS = {
   },
   2: (d) => {
     const e = {};
+    
+  // Email required
+  if (!d.emailId || !d.emailId.trim()) {
+    e.emailId = "Email is required";
+  }
+
+  // Email format validation
+  else if (
+    !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(d.emailId)
+  ) {
+    e.emailId = "Invalid email format";
+  }
     if (d.emailId && !/^[\w.-]+@[a-zA-Z\d.-]+\.[a-zA-Z]{2,}$/.test(d.emailId))
       e.emailId = "Invalid email format";
     if (d.mobileNumber && !/^\d{10}$/.test(d.mobileNumber))
@@ -508,7 +520,7 @@ const handleEdit = async (supplier) => {
               <div><Lbl text="Supplier Name" req /><input className={fi("supplierName")} name="supplierName" value={sd.supplierName || ""} onChange={handleChange} placeholder="e.g. ABC Traders Pvt Ltd" /><Err k="supplierName" /></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><Lbl text="Supplier Group" /><GroupSearch value={sd.supplierGroup} onSelectGroup={name => { setSd(p => ({ ...p, supplierGroup: name })); clearErr("supplierGroup"); }} /></div>
+              <div><Lbl text="Supplier Group"  req/><GroupSearch value={sd.supplierGroup} onSelectGroup={name => { setSd(p => ({ ...p, supplierGroup: name })); clearErr("supplierGroup"); }} /></div>
               <div><Lbl text="Supplier Type" req /><select className={fi("supplierType")} name="supplierType" value={sd.supplierType || ""} onChange={handleChange}><option value="">Select type…</option><option>Manufacturer</option><option>Distributor</option><option>Wholesaler</option><option>Service Provider</option></select><Err k="supplierType" /></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -525,7 +537,7 @@ const handleEdit = async (supplier) => {
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div><Lbl text="Email ID" /><input className={fi("emailId")} name="emailId" type="email" value={sd.emailId || ""} onChange={handleChange} placeholder="supplier@email.com" /><Err k="emailId" /></div>
+              <div><Lbl text="Email ID" req/><input className={fi("emailId")} name="emailId" type="email" value={sd.emailId || ""} onChange={handleChange} placeholder="supplier@email.com" /><Err k="emailId" /></div>
               <div><Lbl text="Mobile Number" /><input className={fi("mobileNumber")} name="mobileNumber" type="text" maxLength={10} placeholder="10-digit" value={sd.mobileNumber || ""} onChange={e => { if (/^\d{0,10}$/.test(e.target.value)) handleChange(e); }} /><Err k="mobileNumber" /></div>
               <div><Lbl text="Contact Person" /><input className={fi("")} name="contactPersonName" value={sd.contactPersonName || ""} onChange={handleChange} placeholder="Full name" /></div>
             </div>

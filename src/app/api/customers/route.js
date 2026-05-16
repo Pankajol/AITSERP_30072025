@@ -152,50 +152,163 @@ export async function GET(req) {
   }
 }
 
-// ------------------- POST /api/customers (create) -------------------
+// ------------------- POST /api/customers -------------------
 export async function POST(req) {
+
   await dbConnect();
+
   const { user, error } = await validateUser(req);
+
   if (error || !isAuthorized(user)) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Unauthorized"
+      },
+      { status: 401 }
+    );
   }
 
   try {
+
     let customerData = {};
     let uploadedUrls = [];
+
     const contentType = req.headers.get("content-type") || "";
 
+    // Multipart
     if (contentType.includes("multipart/form-data")) {
+
       const { files, customerData: data } = await parseMultipart(req);
+
       customerData = data;
+
       for (const file of files) {
+
         const buffer = Buffer.from(await file.arrayBuffer());
+
         const url = await uploadToCloudinary(buffer, file.name);
+
         uploadedUrls.push(url);
       }
+
     } else {
+
       customerData = await req.json();
     }
 
-    // Convert ObjectId fields
-    if (customerData.glAccount) {
-      customerData.glAccount = new mongoose.Types.ObjectId(customerData.glAccount._id || customerData.glAccount);
-    }
-    if (customerData.assignedAgents) {
-      customerData.assignedAgents = customerData.assignedAgents.map(id => new mongoose.Types.ObjectId(id));
+    // Validation
+    if (
+      !customerData.customerName?.trim() ||
+      !customerData.customerGroup?.trim() ||
+      !customerData.customerType?.trim() ||
+      !customerData.pan?.trim()
+    ) {
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Required fields missing"
+        },
+        { status: 400 }
+      );
     }
 
-    customerData.attachments = uploadedUrls.join(","); // or merge if some were sent in JSON
+    // Convert assigned agents
+    if (customerData.assignedAgents?.length) {
+
+      customerData.assignedAgents =
+        customerData.assignedAgents.map(
+          id => new mongoose.Types.ObjectId(id)
+        );
+    }
+
+    // ---------------- GL ACCOUNT ----------------
+
+    let glAccountId = null;
+
+    if (customerData.glAccount) {
+
+      glAccountId = new mongoose.Types.ObjectId(
+        customerData.glAccount._id || customerData.glAccount
+      );
+
+    } else {
+
+      const customerName = customerData.customerName.trim();
+
+      // Find existing account
+      let account = await AccountHead.findOne({
+        companyId: user.companyId,
+        name: {
+          $regex: new RegExp(`^${customerName}$`, "i")
+        }
+      });
+
+      // Create account if not exists
+      if (!account) {
+
+        const accountCode = `CUS-${Date.now()}`;
+
+        account = await AccountHead.create({
+          companyId: user.companyId,
+          name: customerName,
+          code: accountCode,
+          type: "Asset",
+          group: "Accounts Receivable",
+          balanceType: "Debit",
+        });
+      }
+
+      glAccountId = account._id;
+    }
+
+    // Attachments
+    const oldUrls = customerData.attachments
+      ? customerData.attachments.split(",").filter(Boolean)
+      : [];
+
+    customerData.attachments =
+      [...oldUrls, ...uploadedUrls].join(",");
+
+    // Final data
     customerData.companyId = user.companyId;
     customerData.createdBy = user.id;
+    customerData.glAccount = glAccountId;
 
+    // Create customer
     const newCustomer = await Customer.create(customerData);
-    await newCustomer.populate(["glAccount", "assignedAgents"]);
 
-    return NextResponse.json({ success: true, data: newCustomer }, { status: 201 });
+    await newCustomer.populate([
+      {
+        path: "glAccount",
+        select: "name code"
+      },
+      {
+        path: "assignedAgents"
+      }
+    ]);
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: newCustomer
+      },
+      { status: 201 }
+    );
+
   } catch (err) {
+
     console.error(err);
-    return NextResponse.json({ success: false, message: err.message || "Creation failed" }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: err.message || "Creation failed"
+      },
+      { status: 500 }
+    );
   }
 }
 
