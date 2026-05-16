@@ -160,26 +160,36 @@ export async function POST(req) {
     }
 
     // Auto create GL account (Liability)
-    let glAccountId = supplierData.glAccount;
-    if (!glAccountId) {
-      let account = await AccountHead.findOne({
-        companyId: user.companyId,
-        name: supplierData.supplierName,
-        type: "Liability",
-      });
-      if (!account) {
-        account = await AccountHead.create({
-          companyId: user.companyId,
-          name: supplierData.supplierName,
-          type: "Liability",
-          group: "Current Liability",
-          balanceType: "Credit",
-        });
-      }
-      glAccountId = account._id;
-    } else {
-      glAccountId = new mongoose.Types.ObjectId(glAccountId);
-    }
+   // Auto create GL account (Liability)
+let glAccountId = supplierData.glAccount;
+
+if (!glAccountId) {
+
+  let account = await AccountHead.findOne({
+    companyId: user.companyId,
+    accountName: supplierData.supplierName,
+    type: "Liability",
+  });
+
+  if (!account) {
+
+    const accountCode = `SUP-${Date.now()}`;
+
+    account = await AccountHead.create({
+      companyId: user.companyId,
+      name: supplierData.supplierName,
+      code: accountCode,
+      type: "Liability",
+      group: "Current Liability",
+      balanceType: "Credit",
+    });
+  }
+
+  glAccountId = account._id;
+
+} else {
+  glAccountId = new mongoose.Types.ObjectId(glAccountId);
+}
 
     // Merge attachments
     let existingAttachments = supplierData.attachments || "";

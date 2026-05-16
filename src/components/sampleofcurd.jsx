@@ -82,6 +82,8 @@ const VALIDATORS = {
   1: (d) => {
     const e = {};
     if (!d.customerName?.trim()) e.customerName = "Required";
+    if (!d.emailId?.trim()) e.emailId = "Required";
+    if (!d.mobileNumber?.trim()) e.mobileNumber = "Required";
     if (!d.customerGroup?.trim()) e.customerGroup = "Required";
     if (!d.customerType) e.customerType = "Required";
     return e;

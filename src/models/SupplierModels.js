@@ -132,6 +132,7 @@ const SupplierSchema = new mongoose.Schema({
   glAccount: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "AccountHead",
+     default: null,
  
   },
   attachments:{
@@ -150,9 +151,10 @@ const SupplierSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-SupplierSchema.index({ supplierCode: 1 });
-SupplierSchema.index({ emailId: 1 });
-SupplierSchema.index({ mobileNumber: 1 });
+SupplierSchema.index({ companyId: 1, supplierCode: 1 }, { unique: true, sparse: true });
+SupplierSchema.index({ companyId: 1, emailId: 1 }, { unique: true, sparse: true });
+SupplierSchema.index({ companyId: 1, mobileNumber: 1 }, { unique: true, sparse: true });
+SupplierSchema.index({ companyId: 1, pan: 1 }, { unique: true, sparse: true });
 
 SupplierSchema.post("save", function (error, doc, next) {
   if (error.name === "MongoServerError" && error.code === 11000) {

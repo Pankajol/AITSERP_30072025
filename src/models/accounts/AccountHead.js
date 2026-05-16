@@ -75,7 +75,7 @@ const AccountHeadSchema = new mongoose.Schema({
 
 // Indexes
 AccountHeadSchema.index({ companyId: 1, name: 1 }, { unique: true });
-AccountHeadSchema.index({ companyId: 1, code: 1 }, { unique: true, sparse: true });
+AccountHeadSchema.index({ companyId: 1, code: 1 });
 AccountHeadSchema.index({ companyId: 1, type: 1 });
 AccountHeadSchema.index({ companyId: 1, group: 1 });
 AccountHeadSchema.index({ "bankDetails.accountNumber": 1 }, { sparse: true });
