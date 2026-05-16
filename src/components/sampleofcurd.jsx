@@ -87,24 +87,38 @@ const VALIDATORS = {
     if (!d.customerType) e.customerType = "Required";
     return e;
   },
-  2: (d) => {
-    const e = {};
+2: (d) => {
+  const e = {};
+
+  // Email required
+  if (!d.emailId || !d.emailId.trim()) {
+    e.emailId = "Email is required";
+  }
+
+  // Email format validation
+  else if (
+    !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(d.emailId)
+  ) {
+    e.emailId = "Invalid email format";
+  }
+
+  // Mobile validation
+  if (d.mobileNumber && !/^\d{10}$/.test(d.mobileNumber)) {
+    e.mobileNumber = "10 digits required";
+  }
+
+  // Contact emails validation
+  (d.contactEmails || []).forEach((c, i) => {
     if (
-      d.emailId &&
-      !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(d.emailId)
-    )
-      e.emailId = "Invalid email format";
-    if (d.mobileNumber && !/^\d{10}$/.test(d.mobileNumber))
-      e.mobileNumber = "10 digits required";
-    (d.contactEmails || []).forEach((c, i) => {
-      if (
-        c.email &&
-        !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(c.email)
-      )
-        e[`ce_${i}`] = "Invalid email format";
-    });
-    return e;
-  },
+      c.email &&
+      !/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(c.email)
+    ) {
+      e[`ce_${i}`] = "Invalid email format";
+    }
+  });
+
+  return e;
+},
   3: (d) => {
     const e = {};
     (d.billingAddresses || []).forEach((a, i) => {
