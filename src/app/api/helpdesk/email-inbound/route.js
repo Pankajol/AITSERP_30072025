@@ -284,6 +284,12 @@ export async function POST(req) {
     await dbConnect();
 
     const raw = await req.json();
+    
+    
+console.log(`📎 Inbound attachments count: ${raw.attachments?.length || 0}`);
+if (raw.attachments?.length) {
+  console.log("Sample attachment:", JSON.stringify(raw.attachments[0], null, 2));
+}
 
     const from = clean(raw.from);
     const to = clean(raw.to);
