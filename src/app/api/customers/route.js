@@ -131,7 +131,6 @@ export async function GET(req) {
     const skip = (page - 1) * limit;
     const [customers, total] = await Promise.all([
       Customer.find(query)
-        .select("customerName customerCode emailId mobileNumber assignedAgents glAccount customerType customerGroup ")
         .populate("assignedAgents", "name email")
         .populate("glAccount", "accountName accountCode")
 
