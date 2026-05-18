@@ -156,7 +156,8 @@ const AddrBlock = ({
   errs,
 }) => (
   <div>
-    {list.map((addr, i) => (
+    
+   {(list || []).map((addr, i) => {
       <div
         key={i}
         className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3"
@@ -220,7 +221,7 @@ const AddrBlock = ({
           />
         </div>
       </div>
-    ))}
+    })}
     <button
       type="button"
       onClick={() => onAdd(type)}
