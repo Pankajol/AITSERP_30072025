@@ -1,14 +1,16 @@
 "use client";
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
-import { FiPlus, FiTrash2, FiEdit2, FiSearch, FiHome, FiX } from "react-icons/fi";
+import {
+  FiPlus, FiTrash2, FiEdit2, FiSearch, FiHome, FiX
+} from "react-icons/fi";
 
+// ── Booth form fields (without assignedAgent – we'll handle it separately) ──
 const BOOTH_FORM_FIELDS = [
   { name: "boothNumber", label: "Booth Number *", type: "text", required: true },
   { name: "name", label: "Name", type: "text" },
   { name: "constituency", label: "Constituency *", type: "select", required: true, options: [] },
   { name: "address", label: "Address", type: "text" },
-  { name: "assignedAgent", label: "Assigned Agent ID", type: "text" },
 ];
 
 export default function BoothsPage() {
@@ -20,10 +22,12 @@ export default function BoothsPage() {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [constituencies, setConstituencies] = useState([]); // for dropdown
+  const [constituencies, setConstituencies] = useState([]);
+  const [agentList, setAgentList] = useState([]);         // for assigned agent dropdown
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  const fetchData = async () => {
+  // ── Fetch booths ──
+  const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
@@ -33,9 +37,10 @@ export default function BoothsPage() {
       setRecords(data.success ? data.data : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  };
+  }, [token]);
 
-  const fetchConstituencies = async () => {
+  // ── Fetch constituencies (for dropdown) ──
+  const fetchConstituencies = useCallback(async () => {
     try {
       const { data } = await axios.get("/api/election/constituency", {
         headers: { Authorization: `Bearer ${token}` },
@@ -46,13 +51,39 @@ export default function BoothsPage() {
         setConstituencies(list);
       }
     } catch (e) { console.error(e); }
+  }, [token]);
+
+  // ── Fetch workers to show as possible agents (CompanyUser with isWorker:true) ──
+  const fetchAgents = useCallback(async () => {
+    try {
+      const { data } = await axios.get("/api/election/worker", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (data.success) {
+        // Store list of { value: _id, label: name }
+        const list = data.data.map(w => ({ value: w._id, label: w.name }));
+        setAgentList(list);
+      }
+    } catch (e) { console.error(e); }
+  }, [token]);
+
+  useEffect(() => {
+    fetchData();
+    fetchConstituencies();
+    fetchAgents();
+  }, [fetchData, fetchConstituencies, fetchAgents]);
+
+  const resetForm = () => {
+    setForm({});
+    setEditingId(null);
+    setError("");
   };
 
-  useEffect(() => { fetchData(); fetchConstituencies(); }, [token]);
+  const openCreate = () => {
+    resetForm();
+    setModalOpen(true);
+  };
 
-  const resetForm = () => { setForm({}); setEditingId(null); setError(""); };
-
-  const openCreate = () => { resetForm(); setModalOpen(true); };
   const openEdit = (item) => {
     setEditingId(item._id);
     setForm({
@@ -60,7 +91,7 @@ export default function BoothsPage() {
       name: item.name || "",
       constituency: item.constituency?._id || "",
       address: item.address || "",
-      assignedAgent: item.assignedAgent?._id || "",
+      assignedAgent: item.assignedAgent?._id || "",      // CompanyUser ID
     });
     setModalOpen(true);
   };
@@ -68,7 +99,9 @@ export default function BoothsPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!form.boothNumber || !form.constituency) return setError("Booth Number and Constituency are required.");
+    if (!form.boothNumber || !form.constituency) {
+      return setError("Booth Number and Constituency are required.");
+    }
     setSaving(true);
     try {
       if (editingId) {
@@ -118,15 +151,21 @@ export default function BoothsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Booths</h1>
           <p className="text-sm text-gray-400 mt-0.5">{records.length} records</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200">
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200"
+        >
           <FiPlus className="text-base" /> Add Booth
         </button>
       </div>
 
       <div className="relative mb-5 max-w-sm">
         <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm" />
-        <input className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300 transition-all"
-          value={search} onChange={e => setSearch(e.target.value)} placeholder="Search booth number, name..." />
+        <input
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300 transition-all"
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search booth number, name..."
+        />
       </div>
 
       {loading ? (
@@ -160,10 +199,12 @@ export default function BoothsPage() {
                   <p className="text-xs text-gray-400">{item.constituency?.name || "-"}</p>
                 </div>
                 <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(item)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors">
+                  <button onClick={() => openEdit(item)}
+                    className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors">
                     <FiEdit2 className="text-xs" />
                   </button>
-                  <button onClick={() => handleDelete(item._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition-colors">
+                  <button onClick={() => handleDelete(item._id)}
+                    className="w-7 h-7 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition-colors">
                     <FiTrash2 className="text-xs" />
                   </button>
                 </div>
@@ -195,14 +236,22 @@ export default function BoothsPage() {
                   <FiHome className="text-white text-base" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">{editingId ? "Edit Booth" : "New Booth"}</h2>
-                  <p className="text-xs text-gray-400">{editingId ? "Update details" : "Enter booth information"}</p>
+                  <h2 className="text-base font-bold text-gray-900">
+                    {editingId ? "Edit Booth" : "New Booth"}
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    {editingId ? "Update details" : "Enter booth information"}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => { setModalOpen(false); resetForm(); }} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-all">
+              <button
+                onClick={() => { setModalOpen(false); resetForm(); }}
+                className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-all"
+              >
                 <FiX />
               </button>
             </div>
+
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
               <div className="px-6 py-5 space-y-4">
                 {error && (
@@ -211,31 +260,86 @@ export default function BoothsPage() {
                     <p className="text-sm text-red-600 font-medium">{error}</p>
                   </div>
                 )}
+
+                {/* Standard fields */}
                 {BOOTH_FORM_FIELDS.map(field => (
                   <div key={field.name}>
-                    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">{field.label}</label>
+                    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                      {field.label}
+                    </label>
                     {field.type === "select" ? (
-                      <select name={field.name} value={form[field.name] || ""} onChange={handleFieldChange} required={field.required}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all">
+                      <select
+                        name={field.name}
+                        value={form[field.name] || ""}
+                        onChange={handleFieldChange}
+                        required={field.required}
+                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      >
                         <option value="">Select...</option>
                         {field.options?.map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
-                      <input name={field.name} type={field.type} value={form[field.name] || ""} onChange={handleFieldChange} required={field.required}
+                      <input
+                        name={field.name}
+                        type={field.type}
+                        value={form[field.name] || ""}
+                        onChange={handleFieldChange}
+                        required={field.required}
                         className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300 transition-all"
-                        placeholder={`Enter ${field.label.replace(" *","")}`} />
+                        placeholder={`Enter ${field.label.replace(" *","")}`}
+                      />
                     )}
                   </div>
                 ))}
+
+                {/* Assigned Agent dropdown */}
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                    Assigned Agent
+                  </label>
+                  <select
+                    name="assignedAgent"
+                    value={form.assignedAgent || ""}
+                    onChange={handleFieldChange}
+                    className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  >
+                    <option value="">None</option>
+                    {agentList.map(agent => (
+                      <option key={agent.value} value={agent.value}>
+                        {agent.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-all">
+                <button
+                  type="button"
+                  onClick={() => { setModalOpen(false); resetForm(); }}
+                  className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-all"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-white text-sm font-bold transition-all ${saving ? "bg-gray-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200"}`}>
-                  {saving ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>) : (<><FiPlus className="text-sm" /> {editingId ? "Update" : "Create"}</>)}
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-xl text-white text-sm font-bold transition-all ${
+                    saving ? "bg-gray-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200"
+                  }`}
+                >
+                  {saving ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{" "}
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <FiPlus className="text-sm" /> {editingId ? "Update" : "Create"}
+                    </>
+                  )}
                 </button>
               </div>
             </form>

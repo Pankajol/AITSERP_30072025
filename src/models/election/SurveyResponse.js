@@ -2,11 +2,11 @@
 import mongoose from 'mongoose';
 
 const SurveyResponseSchema = new mongoose.Schema({
-    companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
   survey: { type: mongoose.Schema.Types.ObjectId, ref: 'Survey', required: true },
   voter: { type: mongoose.Schema.Types.ObjectId, ref: 'Voter', required: true },
   answers: [{                              // structured answers
-    questionIndex: Number,                // या questionId
+    questionIndex: { type: String },      // ✅ अब String — "0-0" जैसे keys सेव होंगे
     answer: mongoose.Schema.Types.Mixed
   }],
   worker: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },

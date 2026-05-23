@@ -3,18 +3,20 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import EmployeeSearchSelect from "@/components/hr/EmployeeSearchSelect";
-import { FiPlus, FiEdit2, FiSearch, FiUserCheck, FiX } from "react-icons/fi";
+import {
+  FiPlus, FiEdit2, FiSearch, FiUserCheck, FiX, FiLoader
+} from "react-icons/fi";
 
 const WORKER_ROLES = [
-  { value: "BoothAgent",       label: "Booth Agent",       level: "Booth" },
-  { value: "BoothPresident",   label: "Booth President",   level: "Booth" },
-  { value: "Canvasser",        label: "Canvasser",         level: "Ward" },
-  { value: "WardPresident",    label: "Ward President",    level: "Ward" },
-  { value: "BlockPresident",   label: "Block President",   level: "Block" },
-  { value: "DistrictPresident",label: "District President",level: "District" },
-  { value: "DivisionPresident",label: "Division President",level: "Division" },
-  { value: "Coordinator",      label: "Coordinator",       level: "Any" },
-  { value: "MediaHandler",     label: "Media Handler",     level: "Any" },
+  { value: "BoothAgent",        label: "Booth Agent",        level: "Booth" },
+  { value: "BoothPresident",    label: "Booth President",    level: "Booth" },
+  { value: "Canvasser",         label: "Canvasser",          level: "Ward" },
+  { value: "WardPresident",     label: "Ward President",     level: "Ward" },
+  { value: "BlockPresident",    label: "Block President",    level: "Block" },
+  { value: "DistrictPresident", label: "District President", level: "District" },
+  { value: "DivisionPresident", label: "Division President", level: "Division" },
+  { value: "Coordinator",       label: "Coordinator",        level: "Any" },
+  { value: "MediaHandler",      label: "Media Handler",      level: "Any" },
 ];
 
 export default function WorkersPage() {
@@ -33,6 +35,7 @@ export default function WorkersPage() {
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [checkingUser, setCheckingUser] = useState(false);
   const [constituencies, setConstituencies] = useState([]);
   const [boothsList, setBoothsList] = useState([]);
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -85,7 +88,9 @@ export default function WorkersPage() {
       return (
         <>
           <div>
-            <label className="text-xs font-bold uppercase text-gray-500">Constituency</label>
+            <label className="text-xs font-bold uppercase text-gray-500">
+              Constituency
+            </label>
             <select
               value={form.constituencyId}
               onChange={(e) => {
@@ -101,7 +106,9 @@ export default function WorkersPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold uppercase text-gray-500">Booth(s) (multi-select)</label>
+            <label className="text-xs font-bold uppercase text-gray-500">
+              Booth(s) (multi-select)
+            </label>
             <select
               multiple
               value={form.boothIds}
@@ -160,7 +167,7 @@ export default function WorkersPage() {
     setEditingWorker(worker);
     const roleObj = WORKER_ROLES.find(r => r.value === worker.workerRole) || {};
     setForm({
-      employeeId: "", // edit mode में employeeId ज़रूरी नहीं
+      employeeId: "", // edit mode में ज़रूरी नहीं
       companyUserId: worker._id, // worker._id पहले से CompanyUser._id है
       workerRole: worker.workerRole || "",
       level: roleObj.level || "",
@@ -172,24 +179,106 @@ export default function WorkersPage() {
     setModalOpen(true);
   };
 
-  // ─── एम्प्लॉई सिलेक्ट होने पर CompanyUser._id खोजें ───
+  // ─── एम्प्लॉई सिलेक्ट होने पर CompanyUser._id खोजें / बनाएँ (with retry) ───
   const handleEmployeeSelect = async (emp) => {
     setForm(prev => ({ ...prev, employeeId: emp._id }));
-    // अब उस Employee से लिंक्ड CompanyUser ढूँढें
+    setError("");
+    setCheckingUser(true);
+
     try {
+      // 1. पहले employeeId से CompanyUser ढूँढें
       const { data } = await axios.get(`/api/company/users?employeeId=${emp._id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (data.success && data.data.length > 0) {
-        setForm(prev => ({ ...prev, companyUserId: data.data[0]._id }));
-      } else {
-        // अगर CompanyUser नहीं है तो बाद में API खुद बना लेगा या हम एरर दिखाएँगे
+
+      if (Array.isArray(data) && data.length > 0) {
+        setForm(prev => ({ ...prev, companyUserId: data[0]._id }));
+        setCheckingUser(false);
+        return;
+      }
+
+      // 2. नया CompanyUser बनाने की कोशिश करें
+      if (!emp.email || !emp.email.trim()) {
+        setError("This employee does not have an email address. Please add email in Employee record first.");
         setForm(prev => ({ ...prev, companyUserId: "" }));
-        setError("This employee doesn't have a user account yet. Please create one first.");
+        setCheckingUser(false);
+        return;
+      }
+
+      const userForm = {
+        employeeId: emp._id,
+        name: emp.fullName || emp.name || "New Worker",
+        email: emp.email.trim(),
+        password: "Worker@123",
+        roles: ["Employee"],
+        modules: {},
+      };
+
+      try {
+        const createRes = await axios.post("/api/company/users", userForm, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (createRes.data && createRes.data.id) {
+          setForm(prev => ({ ...prev, companyUserId: createRes.data.id }));
+          setError("");
+          setCheckingUser(false);
+          return;
+        }
+
+        // क्रिएट फ़ेल – मैसेज चेक करें
+        const msg = (createRes.data?.message || "").toLowerCase();
+        if (msg.includes("email") && (msg.includes("already") || msg.includes("exists"))) {
+          await handleDuplicateEmail(emp);
+        } else {
+          setError(createRes.data?.message || "Failed to create user account.");
+        }
+      } catch (postErr) {
+        const msg = (postErr.response?.data?.message || "").toLowerCase();
+        if (msg.includes("email") && (msg.includes("already") || msg.includes("exists"))) {
+          await handleDuplicateEmail(emp);
+        } else {
+          setError(postErr.response?.data?.message || "Failed to create user account.");
+        }
       }
     } catch (e) {
+      setError(e.response?.data?.message || "Failed to verify or create user account.");
+    } finally {
+      setCheckingUser(false);
+    }
+  };
+
+  // हेल्पर – डुप्लीकेट ईमेल होने पर मौजूदा यूज़र को एम्प्लॉई से लिंक करें
+  const handleDuplicateEmail = async (emp) => {
+    try {
+      // अब API ?email= पैरामीटर सपोर्ट करता है (एक्ज़ैक्ट मैच)
+      const { data } = await axios.get(`/api/company/users?email=${encodeURIComponent(emp.email.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (Array.isArray(data) && data.length > 0) {
+        const existingUser = data[0];
+        // क्या लिंक किया जा सकता है?
+        if (!existingUser.employeeId || existingUser.employeeId === emp._id) {
+          // employeeId खाली है या पहले से इसी एम्प्लॉई से लिंक्ड है
+          await axios.put(`/api/company/users/${existingUser._id}`, { employeeId: emp._id }, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setForm(prev => ({ ...prev, companyUserId: existingUser._id }));
+          setError("");
+        } else {
+          // किसी और एम्प्लॉई से जुड़ा है – conflict
+          setError("An account with this email already exists for a different employee. Please contact admin.");
+          setForm(prev => ({ ...prev, companyUserId: "" }));
+        }
+      } else {
+        // ईमेल से कोई नहीं मिला – फिर भी डुप्लीकेट एरर आई (अनपेक्षित)
+        setError("Email already exists, but could not locate the account. Please contact admin.");
+        setForm(prev => ({ ...prev, companyUserId: "" }));
+      }
+    } catch (e) {
+      setError("Error while resolving duplicate email. Please try again.");
       setForm(prev => ({ ...prev, companyUserId: "" }));
-      setError("Failed to verify user account.");
     }
   };
 
@@ -210,7 +299,7 @@ export default function WorkersPage() {
     setError("");
     try {
       await axios.put(`/api/election/worker/assign`, {
-        userId: form.companyUserId,          // यह CompanyUser._id है
+        userId: form.companyUserId,
         role: form.workerRole,
         constituencyId: form.constituencyId || null,
         boothIds: form.boothIds,
@@ -234,9 +323,12 @@ export default function WorkersPage() {
 
   return (
     <div className="max-w-screen-xl mx-auto">
+      {/* ─── हैडर ─── */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Election Workers</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
+            Election Workers
+          </h1>
           <p className="text-sm text-gray-400 mt-0.5">{workers.length} workers</p>
         </div>
         <button
@@ -247,6 +339,7 @@ export default function WorkersPage() {
         </button>
       </div>
 
+      {/* ─── सर्च बार ─── */}
       <div className="relative mb-5 max-w-sm">
         <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
         <input
@@ -255,6 +348,7 @@ export default function WorkersPage() {
         />
       </div>
 
+      {/* ─── लोडिंग / खाली / कार्ड व्यू ─── */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array(6).fill(0).map((_, i) => (
@@ -272,19 +366,28 @@ export default function WorkersPage() {
           <p className="text-gray-400 font-medium">
             {search ? "No workers match your search" : "No workers yet"}
           </p>
-          {!search && <p className="text-sm text-gray-300 mt-1">Click "Add Worker" to assign election role</p>}
+          {!search && (
+            <p className="text-sm text-gray-300 mt-1">
+              Click &quot;Add Worker&quot; to assign election role
+            </p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(w => (
-            <div key={w._id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md group">
+            <div
+              key={w._id}
+              className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md group"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-base font-bold text-gray-900">{w.name}</h3>
                   <p className="text-sm text-gray-500">{w.workerRole || "No role"}</p>
                 </div>
-                <button onClick={() => openEdit(w)}
-                  className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100">
+                <button
+                  onClick={() => openEdit(w)}
+                  className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100"
+                >
                   <FiEdit2 className="text-xs" />
                 </button>
               </div>
@@ -305,10 +408,11 @@ export default function WorkersPage() {
         </div>
       )}
 
-      {/* ─── मोडल ─── */}
+      {/* ─── मोडल (Add / Edit) ─── */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            {/* ── मोडल हैडर ── */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
@@ -319,15 +423,21 @@ export default function WorkersPage() {
                     {editingWorker ? "Edit Worker" : "Add Worker"}
                   </h2>
                   <p className="text-xs text-gray-400">
-                    {editingWorker ? `Editing ${editingWorker.name}` : "Assign election role to employee"}
+                    {editingWorker
+                      ? `Editing ${editingWorker.name}`
+                      : "Assign election role to employee"}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setModalOpen(false)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200">
+              <button
+                onClick={() => setModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200"
+              >
                 <FiX />
               </button>
             </div>
 
+            {/* ── मोडल बॉडी ── */}
             <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
               {error && (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -336,17 +446,25 @@ export default function WorkersPage() {
                 </div>
               )}
 
-              {/* एम्प्लॉई सिलेक्ट (सिर्फ ऐड मोड में) */}
+              {/* एम्प्लॉई सिलेक्ट (सिर्फ ऐड मोड) */}
               {!editingWorker && (
                 <div>
-                  <label className="text-xs font-bold uppercase text-gray-500 mb-1.5 block">Select Employee *</label>
+                  <label className="text-xs font-bold uppercase text-gray-500 mb-1.5 block">
+                    Select Employee *
+                  </label>
                   <EmployeeSearchSelect
                     token={token}
                     onSelect={handleEmployeeSelect}
                   />
-                  {/* अगर CompanyUser मिल गया है तो संकेत दिखाएँ */}
-                  {form.companyUserId && (
-                    <p className="text-xs text-emerald-600 mt-1 font-medium">✓ User account found</p>
+                  {checkingUser && (
+                    <p className="text-xs text-indigo-600 mt-1 flex items-center gap-1">
+                      <FiLoader className="animate-spin" /> Checking user account...
+                    </p>
+                  )}
+                  {form.companyUserId && !checkingUser && (
+                    <p className="text-xs text-emerald-600 mt-1 font-medium">
+                      ✓ User account ready
+                    </p>
                   )}
                 </div>
               )}
@@ -354,11 +472,15 @@ export default function WorkersPage() {
               {/* रोल + लेवल */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold uppercase text-gray-500 mb-1 block">Role *</label>
+                  <label className="text-xs font-bold uppercase text-gray-500 mb-1 block">
+                    Role *
+                  </label>
                   <select
                     value={form.workerRole}
                     onChange={(e) => {
-                      const selectedRole = WORKER_ROLES.find(r => r.value === e.target.value);
+                      const selectedRole = WORKER_ROLES.find(
+                        r => r.value === e.target.value
+                      );
                       setForm(prev => ({
                         ...prev,
                         workerRole: e.target.value,
@@ -369,12 +491,16 @@ export default function WorkersPage() {
                   >
                     <option value="">Select Role</option>
                     {WORKER_ROLES.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold uppercase text-gray-500 mb-1 block">Level (auto)</label>
+                  <label className="text-xs font-bold uppercase text-gray-500 mb-1 block">
+                    Level (auto)
+                  </label>
                   <input
                     value={form.level}
                     disabled
@@ -387,15 +513,24 @@ export default function WorkersPage() {
               {/* लेवल के हिसाब से असाइनमेंट */}
               {renderAssignmentFields()}
 
+              {/* ── फ़ुटर बटन ── */}
               <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-gray-100 text-sm font-bold text-gray-600 hover:bg-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-gray-100 text-sm font-bold text-gray-600 hover:bg-gray-200"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving}
+                <button
+                  type="submit"
+                  disabled={saving || checkingUser || !form.companyUserId}
                   className={`flex items-center gap-2 px-6 py-2 rounded-xl text-white text-sm font-bold transition-all ${
-                    saving ? "bg-gray-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200"
-                  }`}>
+                    saving || checkingUser || !form.companyUserId
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200"
+                  }`}
+                >
                   {saving ? (
                     <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db.js";
 import Customer from "@/models/CustomerModel";
 import CompanyUser from "@/models/CompanyUser";
+import SlaPolicy from "@/models/helpdesk/SlaPolicy";
 import AccountHead from "@/models/accounts/AccountHead";
 
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
@@ -58,6 +59,49 @@ async function parseMultipart(req) {
   return { files, customerData };
 }
 
+/**
+ * Normalize assignedAgents array.
+ * Accepts:
+ *   - Array of strings (valid ObjectId)
+ *   - Array of objects with _id or id property
+ *   - Comma-separated string
+ * Returns array of mongoose.Types.ObjectId
+ * Throws error if any entry is invalid.
+ */
+function normalizeAssignedAgents(agents) {
+  if (!agents) return [];
+
+  let agentsArray = agents;
+  if (typeof agentsArray === 'string') {
+    agentsArray = agentsArray.split(',').filter(s => s.trim());
+  }
+  if (!Array.isArray(agentsArray)) {
+    throw new Error("assignedAgents must be an array or comma-separated string");
+  }
+
+  const validIds = [];
+  for (const item of agentsArray) {
+    if (!item) continue;
+    let idStr = null;
+    if (typeof item === 'string') {
+      idStr = item.trim();
+    } else if (typeof item === 'object') {
+      // Extract _id or id property
+      idStr = item._id || item.id;
+      if (idStr && typeof idStr === 'string') idStr = idStr.trim();
+      else if (idStr && typeof idStr === 'object' && idStr.toString) idStr = idStr.toString();
+    }
+    if (!idStr) {
+      throw new Error(`Invalid agent entry: missing id (${JSON.stringify(item)})`);
+    }
+    if (!mongoose.Types.ObjectId.isValid(idStr)) {
+      throw new Error(`Invalid agent ObjectId: ${idStr}`);
+    }
+    validIds.push(new mongoose.Types.ObjectId(idStr));
+  }
+  return validIds;
+}
+
 // ------------------- GET /api/customers -------------------
 export async function GET(req) {
   try {
@@ -72,7 +116,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     
-    // ✅ Get single customer by ID (for editing)
+    // Get single customer by ID
     const id = searchParams.get("id");
     if (id) {
       const customer = await Customer.findOne({ _id: id, companyId: user.companyId })
@@ -85,31 +129,28 @@ export async function GET(req) {
       return NextResponse.json({ success: true, data: customer });
     }
 
- const getStats = searchParams.get("getStats") === "true";
-
-    // Stats only (case‑insensitive)
+    const getStats = searchParams.get("getStats") === "true";
     if (getStats) {
-  const stats = await Customer.aggregate([
-    { $match: { companyId: user.companyId } }, // no isActive filter
-    {
-      $group: {
-        _id: { $toLower: { $ifNull: ["$customerType", "unknown"] } },
-        count: { $sum: 1 }
-      }
+      const stats = await Customer.aggregate([
+        { $match: { companyId: user.companyId } },
+        {
+          $group: {
+            _id: { $toLower: { $ifNull: ["$customerType", "unknown"] } },
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+      const result = { total: 0, Individual: 0, Business: 0, Government: 0 };
+      stats.forEach(s => {
+        if (s._id === "individual") result.Individual = s.count;
+        else if (s._id === "business") result.Business = s.count;
+        else if (s._id === "government") result.Government = s.count;
+        result.total += s.count;
+      });
+      return NextResponse.json({ success: true, data: result });
     }
-  ]);
 
-  const result = { total: 0, Individual: 0, Business: 0, Government: 0 };
-  stats.forEach(s => {
-    if (s._id === "individual") result.Individual = s.count;
-    else if (s._id === "business") result.Business = s.count;
-    else if (s._id === "government") result.Government = s.count;
-    result.total += s.count;
-  });
-  return NextResponse.json({ success: true, data: result });
-}
-
-    // Paginated list (lightweight)
+    // Paginated list
     const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
     const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 100);
     const search = searchParams.get("search") || "";
@@ -133,7 +174,6 @@ export async function GET(req) {
       Customer.find(query)
         .populate("assignedAgents", "name email")
         .populate("glAccount", "accountName accountCode")
-
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -153,49 +193,34 @@ export async function GET(req) {
 
 // ------------------- POST /api/customers -------------------
 export async function POST(req) {
-
   await dbConnect();
-
   const { user, error } = await validateUser(req);
-
   if (error || !isAuthorized(user)) {
-
     return NextResponse.json(
-      {
-        success: false,
-        message: "Unauthorized"
-      },
+      { success: false, message: "Unauthorized" },
       { status: 401 }
     );
   }
 
   try {
-
     let customerData = {};
     let uploadedUrls = [];
-
     const contentType = req.headers.get("content-type") || "";
 
-    // Multipart
     if (contentType.includes("multipart/form-data")) {
-
       const { files, customerData: data } = await parseMultipart(req);
-
       customerData = data;
-
       for (const file of files) {
-
         const buffer = Buffer.from(await file.arrayBuffer());
-
         const url = await uploadToCloudinary(buffer, file.name);
-
         uploadedUrls.push(url);
       }
-
     } else {
-
       customerData = await req.json();
     }
+
+    // Remove _id if present (it's for updates only)
+    delete customerData._id;
 
     // Validation
     if (
@@ -204,52 +229,36 @@ export async function POST(req) {
       !customerData.customerType?.trim() ||
       !customerData.pan?.trim()
     ) {
-
       return NextResponse.json(
-        {
-          success: false,
-          message: "Required fields missing"
-        },
+        { success: false, message: "Required fields missing" },
         { status: 400 }
       );
     }
 
-    // Convert assigned agents
-    if (customerData.assignedAgents?.length) {
-
-      customerData.assignedAgents =
-        customerData.assignedAgents.map(
-          id => new mongoose.Types.ObjectId(id)
-        );
+    // --- Normalize assignedAgents ---
+    try {
+      customerData.assignedAgents = normalizeAssignedAgents(customerData.assignedAgents);
+    } catch (normErr) {
+      return NextResponse.json(
+        { success: false, message: normErr.message },
+        { status: 400 }
+      );
     }
 
     // ---------------- GL ACCOUNT ----------------
-
     let glAccountId = null;
-
     if (customerData.glAccount) {
-
       glAccountId = new mongoose.Types.ObjectId(
         customerData.glAccount._id || customerData.glAccount
       );
-
     } else {
-
       const customerName = customerData.customerName.trim();
-
-      // Find existing account
       let account = await AccountHead.findOne({
         companyId: user.companyId,
-        name: {
-          $regex: new RegExp(`^${customerName}$`, "i")
-        }
+        name: { $regex: new RegExp(`^${customerName}$`, "i") }
       });
-
-      // Create account if not exists
       if (!account) {
-
         const accountCode = `CUS-${Date.now()}`;
-
         account = await AccountHead.create({
           companyId: user.companyId,
           name: customerName,
@@ -259,7 +268,6 @@ export async function POST(req) {
           balanceType: "Debit",
         });
       }
-
       glAccountId = account._id;
     }
 
@@ -267,51 +275,33 @@ export async function POST(req) {
     const oldUrls = customerData.attachments
       ? customerData.attachments.split(",").filter(Boolean)
       : [];
-
-    customerData.attachments =
-      [...oldUrls, ...uploadedUrls].join(",");
+    customerData.attachments = [...oldUrls, ...uploadedUrls].join(",");
 
     // Final data
     customerData.companyId = user.companyId;
     customerData.createdBy = user.id;
     customerData.glAccount = glAccountId;
 
-    // Create customer
     const newCustomer = await Customer.create(customerData);
-
     await newCustomer.populate([
-      {
-        path: "glAccount",
-        select: "name code"
-      },
-      {
-        path: "assignedAgents"
-      }
+      { path: "glAccount", select: "name code" },
+      { path: "assignedAgents" }
     ]);
 
     return NextResponse.json(
-      {
-        success: true,
-        data: newCustomer
-      },
+      { success: true, data: newCustomer },
       { status: 201 }
     );
-
   } catch (err) {
-
     console.error(err);
-
     return NextResponse.json(
-      {
-        success: false,
-        message: err.message || "Creation failed"
-      },
+      { success: false, message: err.message || "Creation failed" },
       { status: 500 }
     );
   }
 }
 
-// ------------------- PUT /api/customers (update) -------------------
+// ------------------- PUT /api/customers -------------------
 export async function PUT(req) {
   await dbConnect();
   const { user, error } = await validateUser(req);
@@ -341,7 +331,19 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, message: "Customer ID required" }, { status: 400 });
     }
 
-    // ✅ Handle glAccount similarly
+    // --- Normalize assignedAgents ---
+    if (updateData.assignedAgents !== undefined) {
+      try {
+        updateData.assignedAgents = normalizeAssignedAgents(updateData.assignedAgents);
+      } catch (normErr) {
+        return NextResponse.json(
+          { success: false, message: normErr.message },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Handle glAccount similarly
     if (updateData.glAccount) {
       if (typeof updateData.glAccount === "string") {
         updateData.glAccount = new mongoose.Types.ObjectId(updateData.glAccount);
@@ -351,10 +353,10 @@ export async function PUT(req) {
         updateData.glAccount = new mongoose.Types.ObjectId(updateData.glAccount.id);
       }
     } else {
-      delete updateData.glAccount; // prevent overwriting with null
+      delete updateData.glAccount;
     }
 
-    // Merge attachments: existing (from updateData.attachments) + newly uploaded
+    // Merge attachments
     let finalAttachments = updateData.attachments || "";
     if (uploadedUrls.length) {
       const existingArr = finalAttachments ? finalAttachments.split(",").filter(Boolean) : [];
@@ -408,28 +410,40 @@ export async function DELETE(req) {
   }
 }
 
+
+
+
+
+
+
 // import { NextResponse } from "next/server";
-// import mongoose from "mongoose";          // ✅ ADD THIS IMPORT
 // import dbConnect from "@/lib/db.js";
 // import Customer from "@/models/CustomerModel";
+// import CompanyUser from "@/models/CompanyUser";
+// import SlaPolicy from "@/models/helpdesk/SlaPolicy";
+
+// import AccountHead from "@/models/accounts/AccountHead";
+
 // import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-// import BankHead from "@/models/BankHead"; // ✅ If you actually need this later, keep it; otherwise remove to avoid unused import
-
-
 // import { v2 as cloudinary } from "cloudinary";
 
-// // Cloudinary config
+// import mongoose from "mongoose";
+
 // cloudinary.config({
 //   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 //   api_key: process.env.CLOUDINARY_API_KEY,
 //   api_secret: process.env.CLOUDINARY_API_SECRET,
 // });
 
-
+// // ------------------- Helpers -------------------
 // function isAuthorized(user) {
 //   if (!user) return false;
 //   if (user.type === "company") return true;
-//   const allowedRoles = ["admin","crm","sales manager","purchase manager","inventory manager","accounts manager","hr manager","support executive","production head","project manager"];
+//   const allowedRoles = [
+//     "admin", "crm", "sales manager", "purchase manager",
+//     "inventory manager", "accounts manager", "hr manager",
+//     "support executive", "production head", "project manager"
+//   ];
 //   const userRoles = Array.isArray(user.roles) ? user.roles : [];
 //   return userRoles.some(role => allowedRoles.includes(role.trim().toLowerCase()));
 // }
@@ -442,279 +456,406 @@ export async function DELETE(req) {
 //   return { user: decoded, error: null };
 // }
 
-// // Helper: Convert the malformed string (e.g. "[{ name: 'file.png', ... }]") into a proper array of objects
-// function normalizeAttachments(input) {
-//   if (!input) return [];
-  
-//   // If it's already an array, ensure each item is an object with required fields
-//   if (Array.isArray(input)) {
-//     return input.map(item => {
-//       if (typeof item === "string") {
-//         return { name: "file", url: item, size: 0, type: "application/octet-stream", uploadedAt: new Date() };
-//       }
-//       return {
-//         name: item.name || "file",
-//         size: item.size || 0,
-//         type: item.type || "application/octet-stream",
-//         url: item.url,
-//         uploadedAt: item.uploadedAt || new Date()
-//       };
-//     });
-//   }
-  
-//   // If it's a string, try to parse it
-//   if (typeof input === "string") {
-//     // First try JSON.parse
-//     try {
-//       const parsed = JSON.parse(input);
-//       if (Array.isArray(parsed)) return normalizeAttachments(parsed);
-//       return normalizeAttachments([parsed]);
-//     } catch {
-//       // Not valid JSON – it's the malformed JS literal
-//       // Extract URLs using regex (safe fallback)
-//       const urls = input.match(/https?:\/\/[^\s'",]+/g) || [];
-//       return urls.map(url => ({
-//         name: "file",
-//         size: 0,
-//         type: "application/octet-stream",
-//         url: url,
-//         uploadedAt: new Date()
-//       }));
-//     }
-//   }
-  
-//   return [];
+// async function uploadToCloudinary(fileBuffer, originalName) {
+//   return new Promise((resolve, reject) => {
+//     const uploadStream = cloudinary.uploader.upload_stream(
+//       {
+//         folder: "customers",
+//         resource_type: "auto",
+//         public_id: `${Date.now()}_${originalName.replace(/\s/g, "_")}`,
+//       },
+//       (error, result) => (error ? reject(error) : resolve(result.secure_url))
+//     );
+//     uploadStream.end(fileBuffer);
+//   });
 // }
 
-// export async function GET(req) {
-//   await dbConnect();
-//   const { user, error } = await validateUser(req);
-//   if (error) return NextResponse.json({ success: false, message: error }, { status: 401 });
-//   if (!isAuthorized(user)) return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+// async function parseMultipart(req) {
+//   const formData = await req.formData();
+//   const files = formData.getAll("attachments").filter(f => f && f.size > 0);
+//   const dataField = formData.get("data");
+//   let customerData = dataField ? JSON.parse(dataField) : {};
+//   return { files, customerData };
+// }
 
+// // ------------------- GET /api/customers -------------------
+// export async function GET(req) {
 //   try {
-//     const customers = await Customer.find({ companyId: user.companyId })
-//       .populate("assignedAgents", "name email")
-//       .populate("glAccount", "accountName accountCode");
-//     return NextResponse.json({ success: true, data: customers }, { status: 200 });
+//     await dbConnect();
+//     const { user, error } = await validateUser(req);
+//     if (error || !isAuthorized(user)) {
+//       return NextResponse.json(
+//         { success: false, message: error || "Forbidden" },
+//         { status: error ? 401 : 403 }
+//       );
+//     }
+
+//     const { searchParams } = new URL(req.url);
+    
+//     // ✅ Get single customer by ID (for editing)
+//     const id = searchParams.get("id");
+//     if (id) {
+//       const customer = await Customer.findOne({ _id: id, companyId: user.companyId })
+//         .populate("assignedAgents", "name email")
+//         .populate("glAccount", "accountName accountCode")
+//         .lean();
+//       if (!customer) {
+//         return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+//       }
+//       return NextResponse.json({ success: true, data: customer });
+//     }
+
+//  const getStats = searchParams.get("getStats") === "true";
+
+//     // Stats only (case‑insensitive)
+//     if (getStats) {
+//   const stats = await Customer.aggregate([
+//     { $match: { companyId: user.companyId } }, // no isActive filter
+//     {
+//       $group: {
+//         _id: { $toLower: { $ifNull: ["$customerType", "unknown"] } },
+//         count: { $sum: 1 }
+//       }
+//     }
+//   ]);
+
+//   const result = { total: 0, Individual: 0, Business: 0, Government: 0 };
+//   stats.forEach(s => {
+//     if (s._id === "individual") result.Individual = s.count;
+//     else if (s._id === "business") result.Business = s.count;
+//     else if (s._id === "government") result.Government = s.count;
+//     result.total += s.count;
+//   });
+//   return NextResponse.json({ success: true, data: result });
+// }
+
+//     // Paginated list (lightweight)
+//     const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
+//     const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 100);
+//     const search = searchParams.get("search") || "";
+//     const customerType = searchParams.get("customerType");
+
+//     const query = { companyId: user.companyId };
+//     if (search) {
+//       query.$or = [
+//         { customerName: { $regex: search, $options: "i" } },
+//         { customerCode: { $regex: search, $options: "i" } },
+//         { emailId: { $regex: search, $options: "i" } },
+//         { mobileNumber: { $regex: search, $options: "i" } },
+//       ];
+//     }
+//     if (customerType && customerType !== "All") {
+//       query.customerType = customerType;
+//     }
+
+//     const skip = (page - 1) * limit;
+//     const [customers, total] = await Promise.all([
+//       Customer.find(query)
+//         .populate("assignedAgents", "name email")
+//         .populate("glAccount", "accountName accountCode")
+
+//         .skip(skip)
+//         .limit(limit)
+//         .lean(),
+//       Customer.countDocuments(query)
+//     ]);
+
+//     return NextResponse.json({
+//       success: true,
+//       data: customers,
+//       meta: { page, limit, total, pages: Math.ceil(total / limit) }
+//     });
 //   } catch (err) {
 //     console.error(err);
-//     return NextResponse.json({ success: false, message: "Failed to fetch customers" }, { status: 500 });
+//     return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
 //   }
 // }
 
+// // ------------------- POST /api/customers -------------------
 // export async function POST(req) {
-//   await dbConnect();
-  // const { user, error } = await validateUser(req);
-  // if (error || !isAuthorized(user)) {
-  //   return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-  // }
 
-//   try {
-//     // Parse multipart form data
-//     const formData = await req.formData();
-//     const files = formData.getAll("attachments"); // array of File objects
-//     const dataField = formData.get("data");       // JSON string of other fields
-
-//     let customerData = dataField ? JSON.parse(dataField) : {};
-
-//     // Upload files to Cloudinary
-//     const uploadedAttachments = [];
-//     for (const file of files) {
-//       if (!file.size) continue;
-//       const arrayBuffer = await file.arrayBuffer();
-//       const buffer = Buffer.from(arrayBuffer);
-      
-//       const result = await new Promise((resolve, reject) => {
-//         const uploadStream = cloudinary.uploader.upload_stream(
-//           {
-//             folder: "customers",
-//             resource_type: "auto",
-//             public_id: `${Date.now()}_${file.name.replace(/\s/g, "_")}`,
-//           },
-//           (error, result) => {
-//             if (error) reject(error);
-//             else resolve(result);
-//           }
-//         );
-//         uploadStream.end(buffer);
-//       });
-
-//       uploadedAttachments.push({
-//         name: file.name,
-//         size: file.size,
-//         type: file.type,
-//         url: result.secure_url,
-//         public_id: result.public_id,
-//         uploadedAt: new Date(),
-//       });
-//     }
-
-//     // Merge with existing attachments if any (for edit case)
-//     let existingAttachments = customerData.attachments || [];
-//     if (typeof existingAttachments === "string") {
-//       try { existingAttachments = JSON.parse(existingAttachments); } catch { existingAttachments = []; }
-//     }
-//     const allAttachments = [...existingAttachments, ...uploadedAttachments];
-
-//     // Prepare final payload
-//     const payload = {
-//       ...customerData,
-//       attachments: allAttachments,
-//       companyId: user.companyId,
-//       createdBy: user.id,
-//     };
-
-//     let customer;
-//     if (customerData._id) {
-//       // Update existing
-//       customer = await Customer.findByIdAndUpdate(customerData._id, payload, { new: true });
-//     } else {
-//       // Create new
-//       customer = new Customer(payload);
-//       await customer.save();
-//     }
-
-//     const populated = await Customer.findById(customer._id).populate("glAccount");
-//     return NextResponse.json({ success: true, data: populated }, { status: 200 });
-//   } catch (error) {
-//     console.error(error);
-//     return NextResponse.json({ success: false, message: "Failed to save customer" }, { status: 500 });
-//   }
-// }
-
-
-
-// import { NextResponse } from "next/server";
-// import dbConnect from "@/lib/db.js";
-// import Customer from "@/models/CustomerModel";
-// import CompanyUser from "@/models/CompanyUser";
-// import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-// // If you actually need these later you can keep them; otherwise remove to avoid unused imports
-// import BankHead from "@/models/BankHead";
-// import Country from "@/app/api/countries/schema.js";
-// import State from "../states/schema.js";
-
-// export const runtime = "nodejs";
-
-// /* -------------------------------
-//    🔐 Role-Based Access Check
-// -------------------------------- */
-// function isAuthorized(user) {
-//   if (!user) return false;
-
-//   if (user.type === "company") return true;
-
-//   const allowedRoles = [
-//     "admin",
-//     "crm",
-//     "sales manager",
-//     "purchase manager",
-//     "inventory manager",
-//     "accounts manager",
-//     "hr manager",
-//     "support executive",
-//     "production head",
-//     "project manager",
-//   ];
-
-//   const userRoles = Array.isArray(user.roles)
-//     ? user.roles
-//     : [];
-
-//   return userRoles.some(role =>
-//     allowedRoles.includes(role.trim().toLowerCase())
-//   );
-// }
-
-// /* ✅ Validate User Helper */
-// async function validateUser(req) {
-//   try {
-//     const token = getTokenFromHeader(req);
-//     if (!token) return { error: "No token provided", status: 401 };
-
-//     const decoded = verifyJWT(token);
-//     if (!decoded) return { error: "Invalid token", status: 401 };
-
-//     return { user: decoded, error: null, status: 200 };
-//   } catch (err) {
-//     console.log("validateUser error:", err);
-//     return { error: "Authentication failed", status: 401 };
-//   }
-// }
-
-// export async function GET(req) {
 //   await dbConnect();
 
-//   const { user, error, status } = await validateUser(req);
-//   if (error)
-//     return NextResponse.json({ success: false, message: error }, { status });
+//   const { user, error } = await validateUser(req);
 
-//   // Authorization: ensure user has access to customers
-//   if (!isAuthorized(user)) {
+//   if (error || !isAuthorized(user)) {
+
 //     return NextResponse.json(
-//       { success: false, message: "Forbidden: insufficient permissions" },
-//       { status: 403 }
+//       {
+//         success: false,
+//         message: "Unauthorized"
+//       },
+//       { status: 401 }
 //     );
 //   }
 
 //   try {
-//     // Restrict populated fields to avoid extra data
-//     const customers = await Customer.find({
-//       companyId: user.companyId,
-//     })
-//     .populate("assignedAgents", "name email")
-//     .populate("glAccount", "accountName accountCode");
 
-//     return NextResponse.json({ success: true, data: customers }, { status: 200 });
-//   } catch (err) {
-//     console.error("GET /customers error:", err);
+//     let customerData = {};
+//     let uploadedUrls = [];
+
+//     const contentType = req.headers.get("content-type") || "";
+
+//     // Multipart
+//     if (contentType.includes("multipart/form-data")) {
+
+//       const { files, customerData: data } = await parseMultipart(req);
+
+//       customerData = data;
+
+//       for (const file of files) {
+
+//         const buffer = Buffer.from(await file.arrayBuffer());
+
+//         const url = await uploadToCloudinary(buffer, file.name);
+
+//         uploadedUrls.push(url);
+//       }
+
+//     } else {
+
+//       customerData = await req.json();
+//     }
+
+//     // Validation
+//     if (
+//       !customerData.customerName?.trim() ||
+//       !customerData.customerGroup?.trim() ||
+//       !customerData.customerType?.trim() ||
+//       !customerData.pan?.trim()
+//     ) {
+
+//       return NextResponse.json(
+//         {
+//           success: false,
+//           message: "Required fields missing"
+//         },
+//         { status: 400 }
+//       );
+//     }
+
+//   // --- Safe conversion for assignedAgents ---
+// let agentsArray = customerData.assignedAgents;
+// if (typeof agentsArray === 'string') {
+//   // handle comma-separated string from multipart form-data
+//   agentsArray = agentsArray.split(',').filter(s => s.trim());
+// }
+// if (!Array.isArray(agentsArray)) agentsArray = [];
+
+// const validAgentIds = [];
+// for (const id of agentsArray) {
+//   if (!id) continue;
+//   const idStr = String(id).trim();
+//   if (mongoose.Types.ObjectId.isValid(idStr)) {
+//     validAgentIds.push(new mongoose.Types.ObjectId(idStr));
+//   } else {
+//     console.warn(`Invalid agent ObjectId skipped: ${idStr}`);
+//     // optional: return 400 error here
+//   }
+// }
+// customerData.assignedAgents = validAgentIds;
+
+//     // ---------------- GL ACCOUNT ----------------
+
+//     let glAccountId = null;
+
+//     if (customerData.glAccount) {
+
+//       glAccountId = new mongoose.Types.ObjectId(
+//         customerData.glAccount._id || customerData.glAccount
+//       );
+
+//     } else {
+
+//       const customerName = customerData.customerName.trim();
+
+//       // Find existing account
+//       let account = await AccountHead.findOne({
+//         companyId: user.companyId,
+//         name: {
+//           $regex: new RegExp(`^${customerName}$`, "i")
+//         }
+//       });
+
+//       // Create account if not exists
+//       if (!account) {
+
+//         const accountCode = `CUS-${Date.now()}`;
+
+//         account = await AccountHead.create({
+//           companyId: user.companyId,
+//           name: customerName,
+//           code: accountCode,
+//           type: "Asset",
+//           group: "Accounts Receivable",
+//           balanceType: "Debit",
+//         });
+//       }
+
+//       glAccountId = account._id;
+//     }
+
+//     // Attachments
+//     const oldUrls = customerData.attachments
+//       ? customerData.attachments.split(",").filter(Boolean)
+//       : [];
+
+//     customerData.attachments =
+//       [...oldUrls, ...uploadedUrls].join(",");
+
+//     // Final data
+//     customerData.companyId = user.companyId;
+//     customerData.createdBy = user.id;
+//     customerData.glAccount = glAccountId;
+
+//     // Create customer
+//     const newCustomer = await Customer.create(customerData);
+
+//     await newCustomer.populate([
+//       {
+//         path: "glAccount",
+//         select: "name code"
+//       },
+//       {
+//         path: "assignedAgents"
+//       }
+//     ]);
+
 //     return NextResponse.json(
-//       { success: false, message: "Failed to fetch customers" },
+//       {
+//         success: true,
+//         data: newCustomer
+//       },
+//       { status: 201 }
+//     );
+
+//   } catch (err) {
+
+//     console.error(err);
+
+//     return NextResponse.json(
+//       {
+//         success: false,
+//         message: err.message || "Creation failed"
+//       },
 //       { status: 500 }
 //     );
 //   }
 // }
 
-
-// /* ========================================
-//    ✏️ POST /api/customers
-//    Access: Admin, Sales Manager, Company
-// ======================================== */
-// export async function POST(req) {
+// // ------------------- PUT /api/customers (update) -------------------
+// export async function PUT(req) {
 //   await dbConnect();
+//   const { user, error } = await validateUser(req);
+//   if (error || !isAuthorized(user)) {
+//     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+//   }
 
 //   try {
-//     const token = getTokenFromHeader(req);
-//     const user = await verifyJWT(token);
-
-//     if (!user || !isAuthorized(user)) {
-//       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-//     }
-
+//     let customerData = {};
+//     let uploadedUrls = [];
 //     const contentType = req.headers.get("content-type") || "";
-//     if (!contentType.includes("application/json")) {
-//       return NextResponse.json({ success: false, message: "Invalid content type" }, { status: 400 });
+
+//     if (contentType.includes("multipart/form-data")) {
+//       const { files, customerData: data } = await parseMultipart(req);
+//       customerData = data;
+//       for (const file of files) {
+//         const buffer = Buffer.from(await file.arrayBuffer());
+//         const url = await uploadToCloudinary(buffer, file.name);
+//         uploadedUrls.push(url);
+//       }
+//     } else {
+//       customerData = await req.json();
 //     }
 
-//     const body = await req.json();
+//     const { _id, ...updateData } = customerData;
+//     // --- Safe conversion for assignedAgents in PUT ---
+// let agentsArray = updateData.assignedAgents;
+// if (typeof agentsArray === 'string') {
+//   agentsArray = agentsArray.split(',').filter(s => s.trim());
+// }
+// if (!Array.isArray(agentsArray)) {
+//   delete updateData.assignedAgents; // remove if not an array
+// } else {
+//   const validAgentIds = [];
+//   for (const id of agentsArray) {
+//     if (!id) continue;
+//     const idStr = String(id).trim();
+//     if (mongoose.Types.ObjectId.isValid(idStr)) {
+//       validAgentIds.push(new mongoose.Types.ObjectId(idStr));
+//     } else {
+//       console.warn(`Invalid agent ObjectId skipped on update: ${idStr}`);
+//     }
+//   }
+//   updateData.assignedAgents = validAgentIds;
+// }
+//     if (!_id) {
+//       return NextResponse.json({ success: false, message: "Customer ID required" }, { status: 400 });
+//     }
 
-//     const customer = new Customer({
-//       ...body,
-//       companyId: user.companyId,
-//       createdBy: user.id,
-//     });
+//     // ✅ Handle glAccount similarly
+//     if (updateData.glAccount) {
+//       if (typeof updateData.glAccount === "string") {
+//         updateData.glAccount = new mongoose.Types.ObjectId(updateData.glAccount);
+//       } else if (updateData.glAccount._id) {
+//         updateData.glAccount = new mongoose.Types.ObjectId(updateData.glAccount._id);
+//       } else if (updateData.glAccount.id) {
+//         updateData.glAccount = new mongoose.Types.ObjectId(updateData.glAccount.id);
+//       }
+//     } else {
+//       delete updateData.glAccount; // prevent overwriting with null
+//     }
 
-//     await customer.save();
+//     // Merge attachments: existing (from updateData.attachments) + newly uploaded
+//     let finalAttachments = updateData.attachments || "";
+//     if (uploadedUrls.length) {
+//       const existingArr = finalAttachments ? finalAttachments.split(",").filter(Boolean) : [];
+//       finalAttachments = [...existingArr, ...uploadedUrls].join(",");
+//     }
+//     updateData.attachments = finalAttachments;
 
-//     const populated = await Customer.findById(customer._id).populate("glAccount");
+//     const updated = await Customer.findOneAndUpdate(
+//       { _id, companyId: user.companyId },
+//       { ...updateData, updatedBy: user.id },
+//       { new: true, runValidators: true }
+//     )
+//       .populate("glAccount", "accountName accountCode")
+//       .populate("assignedAgents", "name email")
+//       .populate("slaPolicyId", "name");
 
-//     return NextResponse.json({ success: true, data: populated }, { status: 201 });
+//     if (!updated) {
+//       return NextResponse.json({ success: false, message: "Customer not found" }, { status: 404 });
+//     }
 
-//   } catch (error) {
-//     console.error("POST /customers error:", error);
-//     return NextResponse.json({ success: false, message: "Failed to create customer" }, { status: 500 });
+//     return NextResponse.json({ success: true, data: updated });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Failed to update customer" }, { status: 500 });
 //   }
 // }
 
+// // ------------------- DELETE /api/customers -------------------
+// export async function DELETE(req) {
+//   await dbConnect();
+//   const { user, error } = await validateUser(req);
+//   if (error || !isAuthorized(user)) {
+//     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+//   }
 
+//   const { searchParams } = new URL(req.url);
+//   const id = searchParams.get("id");
+//   if (!id) {
+//     return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
+//   }
+
+//   try {
+//     const deleted = await Customer.findOneAndDelete({ _id: id, companyId: user.companyId });
+//     if (!deleted) {
+//       return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+//     }
+//     return NextResponse.json({ success: true, message: "Deleted" });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });
+//   }
+// }

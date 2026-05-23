@@ -85,6 +85,7 @@ const ROLE_OPTIONS = {
     "Responses",
     "Lead Generation",
     "Opportunity",
+
   ],
   "Production Head": [
     "BoM",
@@ -95,6 +96,65 @@ const ROLE_OPTIONS = {
     "Project",
     "Task",
   ],
+  "Election Admin": [
+    "Election Dashboard",
+    "Voters",
+    "Booths",
+    "Constituencies",
+    "Election Expenses",
+    "Election Analytics",
+    "Election Campaign",
+    "Election Surveys",
+    "Election Reports",
+    "Election Communication",
+    "Election GIS",
+    "Election Settings"
+  ],
+  "Election Manager": [
+    "Election Dashboard",
+    "Voters",
+    "Booths",
+    "Constituencies",
+    "Election Expenses",
+    "Election Analytics",
+    "Election Campaign",
+    "Election Surveys",
+    "Election Reports",
+    "Election Communication"
+  ],
+  "Election Agent": [
+    "Voters",
+    "Booths",
+    "Election Surveys",
+    "Election Campaign",
+    "Election Communication",
+    "Voter Offline Entry"
+  ],
+  "Booth Worker": [
+    "Voters",
+    "Booths",
+    "Election Surveys",
+    "Voter Offline Entry",
+    "Election Communication"
+  ],
+  "Surveyor": [
+    "Election Surveys",
+    "Voters",
+    "Offline Survey"
+  ],
+  "Campaign Manager": [
+    "Election Campaign",
+    "Election Communication",
+    "Election Reports",
+    "Media Impact"
+  ],
+  "Election Analyst": [
+    "Election Analytics",
+    "Election Reports",
+    "Voters",
+    "Constituencies"
+  ],
+
 };
 
 const PERMISSIONS = [

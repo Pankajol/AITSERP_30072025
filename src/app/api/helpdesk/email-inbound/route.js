@@ -233,21 +233,20 @@ async function uploadAttachments(raw = [], ticketId) {
       const filename = String(a?.filename || a?.name || "").toLowerCase();
       const type = String(a?.contentType || "").toLowerCase();
 
-      /* ================= 🔥 SIGNATURE IMAGE BLOCKER ================= */
-
+      // 🚫 Only skip if it's 100% a signature (name or contentId clearly indicates it)
       const isSignature =
-        a?.isInline === true ||
-        a?.contentDisposition === "inline" ||
-        !!a?.contentId ||                     // Outlook CID image
-        filename.startsWith("image00") ||    // Outlook signature pattern
-        filename.includes("logo") ||         // company logo
-        (type.startsWith("image/") && (a?.size || 0) < 25000); // tiny image
+        filename.startsWith("image00") ||      // Outlook default signature image
+        filename.includes("signature") ||
+        filename.includes("logo") ||
+        (!!a.contentId && filename === "");    // CID image with no filename → likely signature
 
       if (isSignature) {
         console.log("🚫 Signature image skipped:", filename);
         continue;
       }
 
+      // Do NOT skip based on isInline, contentDisposition, or small size
+      // If it has content, try to upload it
       if (!a?.content || !a?.contentType) continue;
 
       const buffer = Buffer.from(a.content, "base64");
@@ -286,6 +285,10 @@ export async function POST(req) {
     await dbConnect();
 
     const raw = await req.json();
+console.log(`📎 Inbound attachments count: ${raw.attachments?.length || 0}`);
+if (raw.attachments?.length) {
+  console.log("Sample attachment:", JSON.stringify(raw.attachments[0], null, 2));
+}
 
     const from = clean(raw.from);
     const to = clean(raw.to);

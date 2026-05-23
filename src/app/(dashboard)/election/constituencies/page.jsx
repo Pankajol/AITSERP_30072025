@@ -7,9 +7,17 @@ const CONSTITUENCY_FORM_FIELDS = [
   { name: "name", label: "Name *", type: "text", required: true },
   { name: "type", label: "Type *", type: "select", required: true,
     options: [
-      { value: "Parliamentary", label: "Parliamentary" },
-      { value: "Assembly", label: "Assembly" },
-      { value: "Ward", label: "Ward" },
+      { value: "Lok Sabha", label: "Lok Sabha" },
+    { value: "Vidhan Sabha", label: "Vidhan Sabha" },
+    { value: "Nagar Panchayat", label: "Nagar Panchayat" },
+    { value: "Municipal Corporation", label: "Municipal Corporation" },
+    { value: "Zila Parishad", label: "Zila Parishad" },
+    { value: "Jila Panchayat", label: "Jila Panchayat" },
+    { value: "Pradhani", label: "Pradhani" },
+    { value: "BDC", label: "BDC" },
+    { value: "Ward", label: "Ward" },
+    { value: "Other", label: "Other" },
+
     ]
   },
   { name: "district", label: "District", type: "text" },

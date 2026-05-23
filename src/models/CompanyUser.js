@@ -29,57 +29,66 @@ const ModuleSchema = new mongoose.Schema(
 const CompanyUserSchema = new mongoose.Schema(
   {
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
-      employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
 
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true, trim: true },
 
     password: { type: String, required: true },
     roles: [{ type: String }],
-     // 🔥 AGENT STATUS
-  isActive: { type: Boolean, default: true },
+    // 🔥 AGENT STATUS
+    isActive: { type: Boolean, default: true },
 
-  onLeave: { type: Boolean, default: false },
+    onLeave: { type: Boolean, default: false },
 
-  holidays: [
-    {
-      from: Date,
-      to: Date,
-    }
-  ],
-   // 🔁 for fair assignment
-  lastAssignedAt: { type: Date },
+    holidays: [
+      {
+        from: Date,
+        to: Date,
+      }
+    ],
+    // 🔁 for fair assignment
+    lastAssignedAt: { type: Date },
     modules: {
       type: Map,
-      of: ModuleSchema, // ✅ modules per module name
+      of: ModuleSchema,
       default: {},
     },
-      // ... existing
-  isWorker: { type: Boolean, default: false },
-  workerRole: {
-    type: String,
-    enum: ['BoothAgent', 'Canvasser', 'Coordinator', 'MediaHandler'],
-    default: null
-  },
-  assignedConstituency: { type: mongoose.Schema.Types.ObjectId, ref: 'Constituency' },
-  assignedBooths: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Booth' }],
-  workerReports: [{
-    date: Date,
-    activities: [{
-      type: { type: String, enum: ['DoorToDoor', 'PhoneCall', 'Rally', 'Meeting'] },
-      votersContacted: Number,
-      newSurveys: Number,
-      summary: String
+
+    // ⭐ Election Worker Fields
+    isWorker: { type: Boolean, default: false },
+    workerRole: {
+      type: String,
+      enum: [
+        "BoothAgent",
+        "BoothPresident",
+        "Canvasser",
+        "WardPresident",
+        "BlockPresident",
+        "DistrictPresident",
+        "DivisionPresident",
+        "Coordinator",
+        "MediaHandler",
+      ],
+      default: null
+    },
+    assignedConstituency: { type: mongoose.Schema.Types.ObjectId, ref: "Constituency" },
+    assignedBooths: [{ type: mongoose.Schema.Types.ObjectId, ref: "Booth" }],
+    workerReports: [{
+      date: Date,
+      activities: [{
+        type: { type: String, enum: ["DoorToDoor", "PhoneCall", "Rally", "Meeting"] },
+        votersContacted: Number,
+        newSurveys: Number,
+        summary: String,
+      }]
     }]
-  }]
   },
   { timestamps: true }
 );
 
 export default mongoose.models.CompanyUser ||
   mongoose.model("CompanyUser", CompanyUserSchema);
-
-
 
 // import mongoose from "mongoose";
 

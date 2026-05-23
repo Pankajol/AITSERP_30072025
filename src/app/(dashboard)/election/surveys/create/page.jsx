@@ -1,8 +1,10 @@
+// app/(dashboard)/election/surveys/create/page.js
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { FiPlus, FiTrash2, FiMove, FiX, FiCheck } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiX, FiCheck } from "react-icons/fi";
+import { SearchableSelect } from "@/components/SearchableSelect"; // ✅ अब उपलब्ध है
 
 export default function CreateSurveyPage() {
   const router = useRouter();
@@ -12,7 +14,26 @@ export default function CreateSurveyPage() {
   const [questions, setQuestions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Constituency dropdown options
+  const [constituencyOptions, setConstituencyOptions] = useState([]);
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  // Fetch constituencies for dropdown
+  useEffect(() => {
+    if (!token) return;
+    const load = async () => {
+      try {
+        const { data } = await axios.get("/api/election/constituency", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (data.success) {
+          setConstituencyOptions(data.data.map((c) => ({ value: c._id, label: c.name })));
+        }
+      } catch (e) { console.error(e); }
+    };
+    load();
+  }, [token]);
 
   const addQuestion = () => {
     setQuestions([...questions, { questionText: "", type: "SingleSelect", options: [""], required: false }]);
@@ -56,8 +77,8 @@ export default function CreateSurveyPage() {
         title,
         description,
         constituency: constituencyId || null,
-        questionGroups: [{ sectionName: "Default", questions }], // हमारा schema questionGroups का array है
-        status: "Draft"
+        questionGroups: [{ sectionName: "Default", questions }],
+        status: "Draft",
       };
       await axios.post("/api/election/survey", payload, {
         headers: { Authorization: `Bearer ${token}` },
@@ -81,18 +102,22 @@ export default function CreateSurveyPage() {
 
         <div>
           <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Survey Title *</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Booth Level Opinion"
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Booth Level Opinion"
             className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-sm" required />
         </div>
         <div>
           <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Description</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
             className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Constituency ID (optional)</label>
-          <input value={constituencyId} onChange={e => setConstituencyId(e.target.value)} placeholder="Select Constituency"
-            className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-sm" />
+          <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Constituency (optional)</label>
+          <SearchableSelect
+            options={constituencyOptions}
+            value={constituencyId}
+            onChange={(val) => setConstituencyId(val)}
+            placeholder="Search constituency..."
+          />
         </div>
 
         <div>
@@ -114,14 +139,14 @@ export default function CreateSurveyPage() {
                 <span className="text-sm font-bold text-gray-500">Q{qIndex + 1}</span>
                 <input
                   value={q.questionText}
-                  onChange={e => updateQuestion(qIndex, "questionText", e.target.value)}
+                  onChange={(e) => updateQuestion(qIndex, "questionText", e.target.value)}
                   placeholder="Enter question"
                   className="flex-1 py-2 px-3 rounded-lg border border-gray-200 text-sm"
                   required
                 />
                 <select
                   value={q.type}
-                  onChange={e => updateQuestion(qIndex, "type", e.target.value)}
+                  onChange={(e) => updateQuestion(qIndex, "type", e.target.value)}
                   className="py-2 px-3 rounded-lg border border-gray-200 text-sm"
                 >
                   <option value="SingleSelect">Single Select</option>
@@ -141,7 +166,7 @@ export default function CreateSurveyPage() {
                     <div key={oIndex} className="flex items-center gap-2">
                       <input
                         value={opt}
-                        onChange={e => updateOption(qIndex, oIndex, e.target.value)}
+                        onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
                         placeholder={`Option ${oIndex + 1}`}
                         className="flex-1 py-1.5 px-3 rounded-lg border border-gray-200 text-sm"
                       />
@@ -163,7 +188,7 @@ export default function CreateSurveyPage() {
                   <input
                     type="checkbox"
                     checked={q.required}
-                    onChange={e => updateQuestion(qIndex, "required", e.target.checked)}
+                    onChange={(e) => updateQuestion(qIndex, "required", e.target.checked)}
                     className="rounded text-indigo-600"
                   />
                   Required
