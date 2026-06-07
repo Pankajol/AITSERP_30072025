@@ -17,7 +17,7 @@ export async function POST(req) {
     }
 
     await dbConnect();
-    const company = await Company.findOne({ email });
+    const company = await Company.findOne({ email }).select("+password");
 
     if (!company) {
       return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
@@ -34,6 +34,8 @@ export async function POST(req) {
         email: company.email,
         name: company.name,
         type: 'company',
+        modules: company.modules,
+        
         companyName: company.companyName,
         companyId: company._id, 
       },

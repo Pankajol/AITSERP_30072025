@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Voter from "@/models/election/Voter";
 import Booth from "@/models/election/Booth";
-import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
+import { getTokenFromHeader, verifyJWT, hasPermission, hasRole } from "@/lib/auth";
 
 async function getUser(req) {
   const token = getTokenFromHeader(req);
@@ -18,7 +18,10 @@ export async function GET(req) {
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  if (!hasPermission(user, "Voters", "view")) {
+  // Allow users with Voters module permission OR election workers
+  const hasVotersView = hasPermission(user, "Voters", "view");
+  const isElectionWorker = hasRole(user, "Booth Worker") || hasRole(user, "Election Agent") || hasRole(user, "Surveyor") || hasRole(user, "Election Analyst");
+  if (!hasVotersView && !isElectionWorker) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
 
@@ -28,7 +31,6 @@ export async function GET(req) {
     const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
     const limit = Math.min(parseInt(searchParams.get("limit")) || 20, 200);
     const search = searchParams.get("search") || "";
-
     const booth = searchParams.get("booth");
     const supportLevel = searchParams.get("supportLevel");
     const caste = searchParams.get("caste");
@@ -36,19 +38,15 @@ export async function GET(req) {
     const phone = searchParams.get("phone");
     const voterId = searchParams.get("voterId");
 
-    if (id) {
-      const voter = await Voter.findOne({ _id: id, companyId: user.companyId })
-        .populate("booth", "boothNumber name constituency")
-        .populate("contactHistory.createdBy", "name")
-        .populate("surveys.survey", "title")
-        .populate("surveys.surveyedBy", "name")
-        .lean();
-      if (!voter) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-      return NextResponse.json({ success: true, data: voter });
+    let query = { companyId: user.companyId };
+
+    // If booth worker, restrict to assigned booths (from JWT)
+    if (hasRole(user, "Booth Worker") && user.assignedBooths?.length) {
+      query.booth = { $in: user.assignedBooths };
+    } else if (booth) {
+      query.booth = booth;
     }
 
-    const query = { companyId: user.companyId };
-    if (booth) query.booth = booth;
     if (supportLevel) query.supportLevel = supportLevel;
     if (caste) query.caste = caste;
     if (gender) query.gender = gender;
@@ -62,6 +60,17 @@ export async function GET(req) {
         { voterId: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
       ];
+    }
+
+    if (id) {
+      const voter = await Voter.findOne({ _id: id, companyId: user.companyId })
+        .populate("booth", "boothNumber name constituency")
+        .populate("contactHistory.createdBy", "name")
+        .populate("surveys.survey", "title")
+        .populate("surveys.surveyedBy", "name")
+        .lean();
+      if (!voter) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+      return NextResponse.json({ success: true, data: voter });
     }
 
     const skip = (page - 1) * limit;
@@ -85,6 +94,8 @@ export async function GET(req) {
     return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }
+
+
 
 export async function POST(req) {
   await dbConnect();

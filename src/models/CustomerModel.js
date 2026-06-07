@@ -114,7 +114,21 @@ contactEmails: [
   slaPolicyId:{
   type: mongoose.Schema.Types.ObjectId,
   ref:"SlaPolicy"
-}
+},
+// models/Customer.js – add inside the schema object
+siteType: {
+  type: String,
+  enum: ["Society", "Office", "Apartment", "Mall", "Warehouse", null],
+  default: null,
+},
+geofence: {
+  latitude: Number,
+  longitude: Number,
+  radius: { type: Number, default: 100 }, // meters
+},
+totalFlats: { type: Number, default: null },
+secretaryName: String,
+amenities: [String],
 }, {
   timestamps: true,
   collection: "customers"
@@ -123,11 +137,33 @@ contactEmails: [
 customerSchema.index({ companyId: 1, customerCode: 1 }, { unique: true, sparse: true });
 customerSchema.index({ companyId: 1, emailId: 1 }, { unique: true, sparse: true });
 customerSchema.index({ mobileNumber: 1 });
-
+customerSchema.index(
+  {
+    customerName: "text",
+    emailId: "text",
+    mobileNumber: "text",
+    customerCode: "text",
+    gstNumber: "text",
+    pan: "text",
+    "contactEmails.email": "text",
+  },
+  {
+    name: "customer_text_search",
+    weights: {
+      customerName: 10,
+      emailId: 8,
+      mobileNumber: 8,
+      customerCode: 6,
+      gstNumber: 5,
+      pan: 5,
+      "contactEmails.email": 4,
+    },
+  }
+);
 customerSchema.post("save", function (error, doc, next) {
   if (error.name === "MongoServerError" && error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
-    next(new Error(`${field} already exists`));
+    const fields = Object.keys(error.keyPattern).join(', ');
+    next(new Error(`Duplicate value for ${fields}`));
   } else {
     next(error);
   }

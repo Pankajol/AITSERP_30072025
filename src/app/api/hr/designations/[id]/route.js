@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
-import Designation from "@/models//hr/Designation";
+import Designation from "@/models/hr/Designation";
 
 export async function GET(req, { params }) {
   try {

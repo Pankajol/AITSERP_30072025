@@ -1,124 +1,39 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { 
-  FaUser, FaBuilding, FaPhoneAlt, FaMapMarkerAlt, 
-  FaInfoCircle, FaSave, FaArrowLeft, FaCheckCircle 
+  FaUser, FaBuilding, FaPhoneAlt, FaInfoCircle, 
+  FaSave, FaArrowLeft, FaCheckCircle, FaPlus
 } from "react-icons/fa";
 import DynamicCustomFields from "@/components/DynamicCustomFields";
 
-const LeadDetailsForm = ({ leadId, initialData = null }) => {
-  const router = useRouter();
+// --- Static color mapping (no dynamic Tailwind classes) ---
+const colorMap = {
+  indigo: "bg-indigo-50/40",
+  blue: "bg-blue-50/40",
+  purple: "bg-purple-50/40",
+  amber: "bg-amber-50/40",
+  gray: "bg-gray-50/40",
+};
 
-  const initialFormState = {
-    salutation: "", jobTitle: "", leadOwner: "", firstName: "",
-    gender: "", middleName: "", source: "", lastName: "",
-    email: "", mobileNo: "", phone: "", website: "",
-    whatsapp: "", phoneExt: "", organizationName: "", annualRevenue: "",
-    territory: "", employees: "", industry: "", fax: "",
-    marketSegment: "", city: "", state: "", county: "",
-    qualificationStatus: "", qualifiedBy: "", qualifiedOn: "",
-    status: "", leadType: "", requestType: "", customFields: {}
-  };
+const iconColorMap = {
+  indigo: "text-indigo-500 bg-indigo-100",
+  blue: "text-blue-500 bg-blue-100",
+  purple: "text-purple-500 bg-purple-100",
+  amber: "text-amber-500 bg-amber-100",
+  gray: "text-gray-500 bg-gray-100",
+};
 
-  const [formData, setFormData] = useState(initialFormState);
-  const [errors, setErrors] = useState({});
-  const [customFieldsConfig, setCustomFieldsConfig] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [confirmation, setConfirmation] = useState({ isVisible: false, message: "" });
-
-  const isEditMode = Boolean(leadId);
-
-  // Fetch Custom Fields Configuration
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    axios.get("/api/custom-fields?module=lead", {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then(res => setCustomFieldsConfig(res.data.data));
-  }, []);
-
-  // Prefill Data
-  useEffect(() => {
-    if (initialData) {
-      setFormData(prev => ({ ...prev, ...initialData }));
-    } else if (isEditMode) {
-      const fetchLead = async () => {
-        try {
-          const token = localStorage.getItem("token");
-          const res = await axios.get(`/api/lead/${leadId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setFormData(res.data);
-        } catch (err) {
-          console.error("Error fetching lead:", err);
-        }
-      };
-      fetchLead();
-    }
-  }, [leadId, initialData, isEditMode]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleCustomChange = (e, name) => {
-    setFormData(prev => ({
-      ...prev,
-      customFields: { ...prev.customFields, [name]: e.target.value }
-    }));
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-    if (!formData.firstName) newErrors.firstName = "First Name is required.";
-    if (!formData.email) newErrors.email = "Email is required.";
-    if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Invalid email.";
-    if (!formData.mobileNo) newErrors.mobileNo = "Mobile No. is required.";
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
-    if (!validateForm()) return;
-
-    setSubmitting(true);
-    const token = localStorage.getItem("token");
-    const config = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } };
-
-    try {
-      if (isEditMode) {
-        await axios.put(`/api/lead/${leadId}`, formData, config);
-        setConfirmation({ isVisible: true, message: "Lead updated successfully!" });
-      } else {
-        await axios.post("/api/lead", formData, config);
-        setConfirmation({ isVisible: true, message: "Lead created successfully!" });
-      }
-      setTimeout(() => router.push("/admin/leads-list"), 1500);
-    } catch (error) {
-      alert("Failed to save lead.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // --- UI Helpers ---
-  const Lbl = ({ text, req }) => (
-    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-      {text}{req && <span className="text-red-500 ml-0.5">*</span>}
-    </label>
-  );
-
-  const fi = "w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300";
-
-  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+// --- Memoized Section Card (prevents unnecessary re-renders) ---
+const SectionCard = React.memo(({ icon: Icon, title, subtitle, children, color = "indigo" }) => {
+  const bgClass = colorMap[color] || colorMap.indigo;
+  const iconClass = iconColorMap[color] || iconColorMap.indigo;
+  return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
-      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
-        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}>
+      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 ${bgClass}`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconClass}`}>
           <Icon className="text-sm" />
         </div>
         <div>
@@ -129,44 +44,185 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
       <div className="px-6 py-5">{children}</div>
     </div>
   );
+});
+SectionCard.displayName = "SectionCard";
+
+// --- Memoized Label component ---
+const Lbl = React.memo(({ text, req }) => (
+  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+    {text}{req && <span className="text-red-500 ml-0.5">*</span>}
+  </label>
+));
+Lbl.displayName = "Lbl";
+
+// --- Main Form Component ---
+const LeadDetailsForm = ({ leadId, initialData = null }) => {
+  const router = useRouter();
+
+  const initialFormState = useMemo(() => ({
+    salutation: "", jobTitle: "", leadOwner: "", firstName: "",
+    gender: "", middleName: "", source: "", lastName: "",
+    email: "", mobileNo: "", phone: "", website: "",
+    whatsapp: "", phoneExt: "", organizationName: "", annualRevenue: "",
+    territory: "", employees: "", industry: "", fax: "",
+    marketSegment: "", city: "", state: "", county: "",
+    qualificationStatus: "", qualifiedBy: "", qualifiedOn: "",
+    status: "", leadType: "", requestType: "", customFields: {}
+  }), []);
+
+  const [formData, setFormData] = useState(initialFormState);
+  const [errors, setErrors] = useState({});
+  const [customFieldsConfig, setCustomFieldsConfig] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [confirmation, setConfirmation] = useState({ isVisible: false, message: "" });
+
+  const isEditMode = Boolean(leadId);
+
+  // Fetch Custom Fields Configuration (once)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    axios.get("/api/custom-fields?module=lead", {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(res => {
+      if (res.data?.data) setCustomFieldsConfig(res.data.data);
+    }).catch(err => console.error("Failed to load custom fields", err));
+  }, []);
+
+  // Prefill Data for edit mode
+  useEffect(() => {
+    if (initialData) {
+      setFormData(prev => ({ ...prev, ...initialData }));
+    } else if (isEditMode && leadId) {
+      const fetchLead = async () => {
+        setLoading(true);
+        try {
+          const token = localStorage.getItem("token");
+          const res = await axios.get(`/api/crm/lead/${leadId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setFormData(res.data);
+        } catch (err) {
+          console.error("Error fetching lead:", err);
+          alert("Failed to load lead data.");
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchLead();
+    }
+  }, [leadId, initialData, isEditMode]);
+
+  // --- Stable event handlers (prevents unnecessary re-renders) ---
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error for this field if exists
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: "" }));
+    }
+  }, [errors]);
+
+  const handleCustomChange = useCallback((e, fieldName) => {
+    setFormData(prev => ({
+      ...prev,
+      customFields: { ...prev.customFields, [fieldName]: e.target.value }
+    }));
+  }, []);
+
+  // Validation
+  const validateForm = useCallback(() => {
+    const newErrors = {};
+    if (!formData.firstName?.trim()) newErrors.firstName = "First Name is required.";
+    if (!formData.email?.trim()) newErrors.email = "Email is required.";
+    if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Invalid email.";
+    if (!formData.mobileNo?.trim()) newErrors.mobileNo = "Mobile No. is required.";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [formData.firstName, formData.email, formData.mobileNo]);
+
+  // Submit handler
+  const handleSubmit = useCallback(async (e) => {
+    if (e) e.preventDefault();
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("No authentication token found");
+      setSubmitting(false);
+      return;
+    }
+    const config = { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } };
+
+    try {
+      if (isEditMode) {
+        await axios.put(`/api/crm/lead/${leadId}`, formData, config);
+        setConfirmation({ isVisible: true, message: "Lead updated successfully!" });
+      } else {
+        await axios.post("/api/crm/lead", formData, config);
+        setConfirmation({ isVisible: true, message: "Lead created successfully!" });
+      }
+      setTimeout(() => router.push("/admin/crm/leads-view"), 1500);
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "Failed to save lead.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [validateForm, isEditMode, leadId, formData, router]);
+
+  // --- Helper for input classes (does NOT change on every keystroke) ---
+  const getInputClass = useCallback((fieldName) => {
+    const hasError = errors[fieldName];
+    return `w-full px-3 py-2.5 rounded-lg border ${hasError ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-200'} bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300`;
+  }, [errors]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Loading lead data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
-      {/* ── Sticky Header ── */}
+      {/* Sticky Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-6 py-4 mb-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 font-bold text-sm hover:text-indigo-600 transition-colors">
             <FaArrowLeft size={12} /> Back
           </button>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={handleSubmit} 
-              disabled={submitting}
-              className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all disabled:opacity-50"
-            >
-              {submitting ? "Processing..." : <><FaSave size={12} /> {isEditMode ? "Update Lead" : "Save Lead"}</>}
-            </button>
-          </div>
+          <button 
+            onClick={handleSubmit} 
+            disabled={submitting}
+            className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all disabled:opacity-50"
+          >
+            {submitting ? "Processing..." : <><FaSave size={12} /> {isEditMode ? "Update Lead" : "Save Lead"}</>}
+          </button>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4">
         {/* Success Alert */}
         {confirmation.isVisible && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500 text-white font-bold flex items-center animate-bounce shadow-lg">
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500 text-white font-bold flex items-center shadow-lg">
             <FaCheckCircle className="mr-3 text-xl" />
             {confirmation.message}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          
           {/* Section 1: Basic Info */}
           <SectionCard icon={FaUser} title="Primary Contact" subtitle="Basic identity and job details" color="indigo">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Lbl text="Salutation" />
-                <select name="salutation" value={formData.salutation} onChange={handleChange} className={fi}>
+                <select name="salutation" value={formData.salutation} onChange={handleChange} className={getInputClass("salutation")}>
                   <option value="">None</option>
                   <option value="Mr.">Mr.</option>
                   <option value="Ms.">Ms.</option>
@@ -176,20 +232,20 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
               </div>
               <div>
                 <Lbl text="First Name" req />
-                <input name="firstName" value={formData.firstName} onChange={handleChange} className={fi} placeholder="Enter First Name" />
+                <input name="firstName" value={formData.firstName} onChange={handleChange} className={getInputClass("firstName")} placeholder="Enter First Name" />
                 {errors.firstName && <p className="text-[10px] text-red-500 mt-1 font-bold">{errors.firstName}</p>}
               </div>
               <div>
                 <Lbl text="Last Name" />
-                <input name="lastName" value={formData.lastName} onChange={handleChange} className={fi} placeholder="Enter Last Name" />
+                <input name="lastName" value={formData.lastName} onChange={handleChange} className={getInputClass("lastName")} placeholder="Enter Last Name" />
               </div>
               <div>
                 <Lbl text="Job Title" />
-                <input name="jobTitle" value={formData.jobTitle} onChange={handleChange} className={fi} placeholder="e.g. CEO" />
+                <input name="jobTitle" value={formData.jobTitle} onChange={handleChange} className={getInputClass("jobTitle")} placeholder="e.g. CEO" />
               </div>
               <div>
                 <Lbl text="Gender" />
-                <select name="gender" value={formData.gender} onChange={handleChange} className={fi}>
+                <select name="gender" value={formData.gender} onChange={handleChange} className={getInputClass("gender")}>
                   <option value="">Select</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
@@ -198,7 +254,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
               </div>
               <div>
                 <Lbl text="Lead Owner" />
-                <input name="leadOwner" value={formData.leadOwner} onChange={handleChange} className={fi} placeholder="Owner Name" />
+                <input name="leadOwner" value={formData.leadOwner} onChange={handleChange} className={getInputClass("leadOwner")} placeholder="Owner Name" />
               </div>
             </div>
           </SectionCard>
@@ -208,29 +264,29 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Lbl text="Email Address" req />
-                <input type="email" name="email" value={formData.email} onChange={handleChange} className={fi} placeholder="example@mail.com" />
+                <input type="email" name="email" value={formData.email} onChange={handleChange} className={getInputClass("email")} placeholder="example@mail.com" />
                 {errors.email && <p className="text-[10px] text-red-500 mt-1 font-bold">{errors.email}</p>}
               </div>
               <div>
                 <Lbl text="Mobile Number" req />
-                <input name="mobileNo" value={formData.mobileNo} onChange={handleChange} className={fi} placeholder="10-digit number" />
+                <input name="mobileNo" value={formData.mobileNo} onChange={handleChange} className={getInputClass("mobileNo")} placeholder="10-digit number" />
                 {errors.mobileNo && <p className="text-[10px] text-red-500 mt-1 font-bold">{errors.mobileNo}</p>}
               </div>
               <div>
                 <Lbl text="WhatsApp" />
-                <input name="whatsapp" value={formData.whatsapp} onChange={handleChange} className={fi} />
+                <input name="whatsapp" value={formData.whatsapp} onChange={handleChange} className={getInputClass("whatsapp")} />
               </div>
               <div>
                 <Lbl text="Website" />
-                <input name="website" value={formData.website} onChange={handleChange} className={fi} placeholder="https://..." />
+                <input name="website" value={formData.website} onChange={handleChange} className={getInputClass("website")} placeholder="https://..." />
               </div>
               <div>
                 <Lbl text="Phone" />
-                <input name="phone" value={formData.phone} onChange={handleChange} className={fi} />
+                <input name="phone" value={formData.phone} onChange={handleChange} className={getInputClass("phone")} />
               </div>
               <div>
                 <Lbl text="Phone Ext" />
-                <input name="phoneExt" value={formData.phoneExt} onChange={handleChange} className={fi} />
+                <input name="phoneExt" value={formData.phoneExt} onChange={handleChange} className={getInputClass("phoneExt")} />
               </div>
             </div>
           </SectionCard>
@@ -240,19 +296,19 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Lbl text="Organization Name" />
-                <input name="organizationName" value={formData.organizationName} onChange={handleChange} className={fi} />
+                <input name="organizationName" value={formData.organizationName} onChange={handleChange} className={getInputClass("organizationName")} />
               </div>
               <div>
                 <Lbl text="Industry" />
-                <input name="industry" value={formData.industry} onChange={handleChange} className={fi} placeholder="e.g. Technology" />
+                <input name="industry" value={formData.industry} onChange={handleChange} className={getInputClass("industry")} placeholder="e.g. Technology" />
               </div>
               <div>
                 <Lbl text="Annual Revenue" />
-                <input name="annualRevenue" value={formData.annualRevenue} onChange={handleChange} className={fi} />
+                <input name="annualRevenue" value={formData.annualRevenue} onChange={handleChange} className={getInputClass("annualRevenue")} />
               </div>
               <div>
                 <Lbl text="Number of Employees" />
-                <input name="employees" value={formData.employees} onChange={handleChange} className={fi} />
+                <input name="employees" value={formData.employees} onChange={handleChange} className={getInputClass("employees")} />
               </div>
             </div>
           </SectionCard>
@@ -262,8 +318,11 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Lbl text="Status" req />
-                <select name="status" value={formData.status} onChange={handleChange} className={fi} required>
+                <select name="status" value={formData.status} onChange={handleChange} className={getInputClass("status")} required>
                   <option value="">Select Status</option>
+                  <option value="New">New</option>
+                  <option value="Qualified">Qualified</option>
+                  <option value="Contacted">Contacted</option>
                   <option value="Lead">Lead</option>
                   <option value="Open">Open</option>
                   <option value="Opportunity">Opportunity</option>
@@ -273,7 +332,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
               </div>
               <div>
                 <Lbl text="Lead Type" />
-                <select name="leadType" value={formData.leadType} onChange={handleChange} className={fi}>
+                <select name="leadType" value={formData.leadType} onChange={handleChange} className={getInputClass("leadType")}>
                   <option value="">Select Type</option>
                   <option value="Client">Client</option>
                   <option value="Channel Partner">Channel Partner</option>
@@ -282,7 +341,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
               </div>
               <div>
                 <Lbl text="Source" />
-                <input name="source" value={formData.source} onChange={handleChange} className={fi} placeholder="e.g. Google, Referral" />
+                <input name="source" value={formData.source} onChange={handleChange} className={getInputClass("source")} placeholder="e.g. Google, Referral" />
               </div>
             </div>
           </SectionCard>
@@ -294,11 +353,10 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
                 fields={customFieldsConfig}
                 values={formData.customFields}
                 onChange={handleCustomChange}
-                formFieldClass={fi}
+                formFieldClass="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
               />
             </SectionCard>
           )}
-
         </form>
       </div>
     </div>
@@ -306,7 +364,6 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
 };
 
 export default LeadDetailsForm;
-
 
 // "use client";
 

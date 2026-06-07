@@ -5,7 +5,7 @@ import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 import EmailCampaign from "@/models/EmailCampaign";
 import EmailLog from "@/models/EmailLog";
 import Customer from "@/models/CustomerModel";
-import Lead from "@/models/load";
+import Lead from "@/models/crm/load";
 import EmailMaster from "@/models/emailMaster/emailMaster";
 import nodemailer from "nodemailer";
 import crypto from "crypto";

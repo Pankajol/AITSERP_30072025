@@ -78,6 +78,7 @@ const ROLE_OPTIONS = {
     "leaves",
     "payroll",
     "salary",
+    "task",
   ],
 
   Agent: [
@@ -96,64 +97,96 @@ const ROLE_OPTIONS = {
     "Project",
     "Task",
   ],
-  "Election Admin": [
-    "Election Dashboard",
-    "Voters",
-    "Booths",
-    "Constituencies",
-    "Election Expenses",
-    "Election Analytics",
-    "Election Campaign",
-    "Election Surveys",
-    "Election Reports",
-    "Election Communication",
-    "Election GIS",
-    "Election Settings"
+  "Task": [
+    "Task",
+
+  ],
+   "Election Admin": [
+    "Election Dashboard", "Voters", "Booths", "Constituencies",
+    "Election Expenses", "Election Analytics", "Election Campaign",
+    "Election Surveys", "Election Reports", "Election Communication",
+    "Parties / Candidates", "Workers"
   ],
   "Election Manager": [
-    "Election Dashboard",
-    "Voters",
-    "Booths",
-    "Constituencies",
-    "Election Expenses",
-    "Election Analytics",
-    "Election Campaign",
-    "Election Surveys",
-    "Election Reports",
-    "Election Communication"
+    "Election Dashboard", "Voters", "Booths", "Constituencies",
+    "Election Expenses", "Election Analytics", "Election Campaign",
+    "Election Surveys", "Election Reports"
   ],
   "Election Agent": [
-    "Voters",
-    "Booths",
-    "Election Surveys",
-    "Election Campaign",
-    "Election Communication",
-    "Voter Offline Entry"
+    "Election Dashboard", "Voters", "Booths", "Election Surveys",
+    "Election Communication", "Voter Offline Entry"
   ],
   "Booth Worker": [
-    "Voters",
-    "Booths",
-    "Election Surveys",
-    "Voter Offline Entry",
-    "Election Communication"
+    "Election Dashboard", "Voters", "Booths", "Election Surveys",
+    "Voter Offline Entry"
   ],
   "Surveyor": [
-    "Election Surveys",
-    "Voters",
-    "Offline Survey"
+    "Election Dashboard", "Election Surveys", "Voters"
   ],
   "Campaign Manager": [
-    "Election Campaign",
-    "Election Communication",
-    "Election Reports",
-    "Media Impact"
+    "Election Dashboard", "Election Campaign", "Election Communication",
+    "Media Campaigns", "Rallies"
   ],
   "Election Analyst": [
-    "Election Analytics",
-    "Election Reports",
-    "Voters",
-    "Constituencies"
+    "Election Dashboard", "Election Analytics", "Election Reports",
+    "Voters", "Constituencies"
   ],
+  "Society Manager": [
+  "Society",
+  "Flat",
+  "Resident",
+  "Complaint",
+  "Maintenance Bill",
+  "Deployment",
+  "Guard Entry",
+  "Guard Assignment",
+  "Gate Entry",
+  "Notice Board",
+  "Visitor Pass",
+  "Dashboard",
+  "Building Entry",
+   "employees",   // ✅ ये दोनों जोड़ो
+  "Shift",       // ✅ एकदम यही नाम (capital S, एकवचन)
+   "Staff",
+   "Building"    
+],
+"Guard": [
+  "Guard Entry",      // पंच देखना और करना
+  "Gate Entry",       // विज़िटर एंट्री करना
+  "Building Entry",   // बिल्डिंग एंट्री
+  "Society",          // सोसाइटी की जानकारी देखना (जियोफेंस, चेकपॉइंट)
+  "GuardAssignment",
+  "Flat",
+  "Resident",
+  "Complaint",
+  "Maintenance Bill",
+
+  "Notice Board",
+  "Visitor Pass",
+
+  // अपनी असाइनमेंट देखना
+],
+"Housekeeper": [
+  "Building Entry",
+  "Society",
+  "GuardAssignment",
+  "Flat",
+  "Resident",
+  "Complaint",
+  "Maintenance Bill",
+  "Deployment",
+  "Notice Board",
+  "Visitor Pass",
+],
+"Resident": [
+  "Flat",
+  "Resident",
+  "Complaint",
+  "Maintenance Bill",
+  "Deployment",
+  "Notice Board",
+  "Visitor Pass",
+],
 
 };
 
@@ -183,6 +216,16 @@ const ROLE_COLORS = {
   "Production Head":   { bg: "bg-orange-50",  text: "text-orange-600",  border: "border-orange-200",  dot: "bg-orange-500" },
   "Project Manager":   { bg: "bg-teal-50",    text: "text-teal-600",    border: "border-teal-200",    dot: "bg-teal-500" },
   Employee:            { bg: "bg-gray-50",    text: "text-gray-600",    border: "border-gray-200",    dot: "bg-gray-400" },
+  "Election Admin":    { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+  "Election Manager":  { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+  "Election Agent":    { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Booth Worker":    { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Surveyor":        { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Campaign Manager": { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Election Analyst": { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Society Manager":  { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    "Guard":            { bg: "bg-green-50",   text: "text-green-600",   border: "border-green-200",   dot: "bg-green-500" },
+    
 };
 
 const defaultColor = { bg: "bg-gray-50", text: "text-gray-600", border: "border-gray-200", dot: "bg-gray-400" };

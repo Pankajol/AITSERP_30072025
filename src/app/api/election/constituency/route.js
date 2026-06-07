@@ -1,9 +1,8 @@
-// app/api/election/constituency/route.js
+// app/api/election/constituency/route.js (only GET method, others unchanged)
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Constituency from "@/models/election/Constituency";
-import Booth from "@/models/election/Booth";
-import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
+import { getTokenFromHeader, verifyJWT, hasPermission, hasRole } from "@/lib/auth";
 
 async function getUser(req) {
   const token = getTokenFromHeader(req);
@@ -18,7 +17,10 @@ export async function GET(req) {
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  if (!hasPermission(user, "Constituencies", "view")) {
+  // Allow if user has Constituencies view permission OR is an election worker
+  const hasConstView = hasPermission(user, "Constituencies", "view");
+  const isElectionWorker = hasRole(user, "Booth Worker") || hasRole(user, "Election Agent") || hasRole(user, "Surveyor") || hasRole(user, "Election Analyst");
+  if (!hasConstView && !isElectionWorker) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
 
@@ -29,15 +31,20 @@ export async function GET(req) {
     const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 100);
     const search = searchParams.get("search") || "";
 
-    if (id) {
-      const constituency = await Constituency.findOne({ _id: id, companyId: user.companyId })
-        .populate("booths")
-        .lean();
-      if (!constituency) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-      return NextResponse.json({ success: true, data: constituency });
+    let query = { companyId: user.companyId };
+
+    // For Booth Worker: only constituencies that contain their assigned booths
+    if (hasRole(user, "Booth Worker") && user.assignedBooths?.length) {
+      const constituenciesWithBooths = await Constituency.find({
+        companyId: user.companyId,
+        booths: { $in: user.assignedBooths }
+      }).distinct("_id");
+      if (constituenciesWithBooths.length === 0) {
+        return NextResponse.json({ success: true, data: [], meta: { total: 0 } });
+      }
+      query._id = { $in: constituenciesWithBooths };
     }
 
-    const query = { companyId: user.companyId };
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -46,14 +53,15 @@ export async function GET(req) {
       ];
     }
 
+    if (id) {
+      const constituency = await Constituency.findOne({ _id: id, companyId: user.companyId }).lean();
+      if (!constituency) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+      return NextResponse.json({ success: true, data: constituency });
+    }
+
     const skip = (page - 1) * limit;
     const [constituencies, total] = await Promise.all([
-      Constituency.find(query)
-        .populate("booths", "boothNumber name")
-        .skip(skip)
-        .limit(limit)
-        .sort({ createdAt: -1 })
-        .lean(),
+      Constituency.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
       Constituency.countDocuments(query),
     ]);
 

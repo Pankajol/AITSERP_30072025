@@ -30,10 +30,10 @@ const CompanyUserSchema = new mongoose.Schema(
   {
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
-
+    societyId: { type: mongoose.Schema.Types.ObjectId, ref: "Society" }, // for society users
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true, trim: true },
-
+    phone: { type: String, trim: true },
     password: { type: String, required: true },
     roles: [{ type: String }],
     // 🔥 AGENT STATUS
@@ -61,14 +61,22 @@ const CompanyUserSchema = new mongoose.Schema(
       type: String,
       enum: [
         "BoothAgent",
-        "BoothPresident",
-        "Canvasser",
-        "WardPresident",
-        "BlockPresident",
-        "DistrictPresident",
-        "DivisionPresident",
-        "Coordinator",
-        "MediaHandler",
+    "BoothPresident",
+    "BoothWorker",   // ✅ add this
+    "Canvasser",
+    "WardPresident",
+    "BlockPresident",
+    "DistrictPresident",
+    "DivisionPresident",
+    "Coordinator",
+    "MediaHandler",
+    "SocialMediaManager",
+    "StatePresident", 
+    "StateSecretary",
+    "StateSpokesperson",
+    "NationalPresident",
+    "NationalSecretary",
+    "NationalSpokesperson",
       ],
       default: null
     },

@@ -17,6 +17,8 @@ export function signToken(user) {
 
       // ✅ OPTIONAL (employee linking)
       employeeId: user.employeeId || null,
+        roles: user.roles || [],                 // ✅ Add roles array
+      assignedBooths: user.assignedBooths || [], // ✅ Add assigned booths
     },
     SECRET,
     { expiresIn: "1d" }
@@ -63,8 +65,15 @@ export function hasPermission(user, moduleName, action) {
     user.modules?.[moduleName.toLowerCase()];
 
   if (!module || !module.selected) return false;
-
+  if (action === "read") action = "view";
   return module.permissions?.[action] === true;
+}
+
+
+// ✅ Helper to check if user has a specific role
+export function hasRole(user, roleName) {
+  if (!user || !user.roles) return false;
+  return user.roles.includes(roleName);
 }
 // export function hasPermission(user, moduleName, action) {
 //   if (!user) return false;

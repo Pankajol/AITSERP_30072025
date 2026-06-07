@@ -131,8 +131,9 @@ export async function POST(req) {
   }
 }
 
+
 // ──────────────────────────────────────────────────────────────
-// ─── GET (list or single)
+// ─── GET (list, single, or multiple by ids)
 // ──────────────────────────────────────────────────────────────
 export async function GET(req) {
   try {
@@ -146,13 +147,14 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    const ids = searchParams.get("ids");                 // 👈 NEW: comma‑separated IDs
     const page = parseInt(searchParams.get("page")) || 1;
     const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 100);
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status");
     const companyId = decoded.companyId;
 
-    // Single quotation by ID
+    // 1) Single quotation by ID
     if (id) {
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
@@ -167,15 +169,27 @@ export async function GET(req) {
       return NextResponse.json({ success: true, data: quotation });
     }
 
-    // Build query for list
+    // 2) Multiple quotations by IDs (used for opportunity quotations)
+    if (ids) {
+      const idArray = ids.split(",").filter(id => mongoose.Types.ObjectId.isValid(id));
+      if (idArray.length === 0) {
+        return NextResponse.json({ success: true, data: [] });
+      }
+      const quotations = await SalesQuotation.find({
+        _id: { $in: idArray },
+        companyId: companyId
+      })
+        .populate("customer", "customerCode customerName contactPerson")
+        .populate("items.item", "itemCode itemName unitPrice imageUrl variants")
+        .populate("items.warehouse", "warehouseName warehouseCode");
+      return NextResponse.json({ success: true, data: quotations });
+    }
+
+    // 3) Paginated list (your existing code) – unchanged
     const query = { companyId };
-    
-    // Filter by status
     if (status && status !== "All" && status !== "") {
       query.status = status;
     }
-    
-    // Search by customer name, document number, or reference number
     if (search) {
       query.$or = [
         { customerName: { $regex: search, $options: "i" } },
@@ -183,7 +197,6 @@ export async function GET(req) {
         { refNumber: { $regex: search, $options: "i" } },
       ];
     }
-
     const skip = (page - 1) * limit;
     const [quotations, total] = await Promise.all([
       SalesQuotation.find(query)

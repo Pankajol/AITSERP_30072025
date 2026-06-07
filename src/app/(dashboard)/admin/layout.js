@@ -114,10 +114,10 @@ const MODULE_ROUTE_MAP = {
     { label: "BoM View",           path: "/admin/bom-view",                   needsView: true },
   ],
   "Lead Generation": [
-    { label: "Lead Generation",    path: "/admin/leads-view",                 needsView: true },
+    { label: "Lead Generation",    path: "/admin/crm/leads-view",                 needsView: true },
   ],
   "Opportunity": [
-    { label: "Opportunity",        path: "/admin/opportunities",              needsView: true },
+    { label: "Opportunity",        path: "/admin/crm/opportunities",              needsView: true },
   ],
   "Campaign": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
@@ -128,8 +128,8 @@ const MODULE_ROUTE_MAP = {
 
   "CRM Agent": [
     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
-    { label: "Opportunity",        path: "/admin/opportunities",              needsView: true },
-    { label: "Lead Generation",    path: "/admin/leads-view",                 needsView: true },
+    { label: "Opportunity",        path: "/admin/crm/opportunities",              needsView: true },
+    { label: "Lead Generation",    path: "/admin/crm/leads-view",                 needsView: true },
     { label: "Email Templates",      path: "/admin/email-templates",            needsView: true },  
   ],
   "Project": [
@@ -402,8 +402,10 @@ export default function Layout({ children }) {
                 <Item href="/admin/tasks/board" icon={<HiPuzzle />}    label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/tasks/board")} />
               </Section>
               <Section title="CRM" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
-                <Item href="/admin/leads-view"    icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/leads-view")} />
-                <Item href="/admin/opportunities" icon={<HiPuzzle />}    label="Opportunity"     onClick={closeSidebar} isActive={isActive("/admin/opportunities")} />
+                <Item href="/admin/crm/leads-view"    icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/crm/leads-view")} />
+                <Item href="/admin/email-templates"      icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+                <Item href="/admin/crm/lead-pipeline" icon={<HiPuzzle />}    label="Lead Pipeline"   onClick={closeSidebar} isActive={isActive("/admin/crm/lead-pipeline")} />
+                <Item href="/admin/crm/opportunities" icon={<HiPuzzle />}    label="Opportunity"     onClick={closeSidebar} isActive={isActive("/admin/crm/opportunities")} />
                 <Item href="/admin/crm/campaign"  icon={<HiPuzzle />}    label="Campaign"        onClick={closeSidebar} isActive={isActive("/admin/crm/campaign")} />
                 <Item href="/admin/crm/calls"     icon={<HiPuzzle />}    label="Calls"           onClick={closeSidebar} isActive={isActive("/admin/crm/calls")} />
               </Section>

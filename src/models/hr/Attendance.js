@@ -5,6 +5,9 @@ const AttendanceSchema = new mongoose.Schema({
 
   // 🔥 IMPORTANT: CompanyUser use kar raha hai tu → correct
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "CompanyUser" },
+  // models/Attendance.js (add inside schema)
+customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+deploymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Deployment" },
 
   date: { type: String, required: true }, // YYYY-MM-DD
 

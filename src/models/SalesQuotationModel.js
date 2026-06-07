@@ -50,10 +50,10 @@ const ItemSchema = new Schema(
 const SalesQuotationSchema = new Schema(
   {
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true },
-    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
-    customer: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
-    customerCode: { type: String, required: true },
-    customerName: { type: String, required: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "companyUser" },
+    customer: { type: Schema.Types.ObjectId, ref: "Customer", required: false },
+    customerCode: { type: String, required: false },
+    customerName: { type: String, required: false },
     contactPerson: { type: String, default: "" },
     refNumber: { type: String, default: "" },
     status: { type: String, default: "Draft" },
@@ -90,7 +90,16 @@ const SalesQuotationSchema = new Schema(
 );
 
 SalesQuotationSchema.index({ documentNumberQuatation: 1, companyId: 1 }, { unique: true });
-
+SalesQuotationSchema.index(
+  {
+    documentNumberQuatation: "text",
+    customerName: "text",
+    "items.itemName": "text",
+  },
+  {
+    name: "quote_text_search",
+  }
+);
 export default mongoose.models.SalesQuotation ||
   mongoose.model("SalesQuotation", SalesQuotationSchema);
 

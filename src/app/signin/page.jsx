@@ -63,32 +63,83 @@ export default function LoginPage() {
 
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-      toast.success(`Welcome back, ${finalUser.name || "User"}!`);
+      toast.success(`Welcome back, ${finalUser.name && finalUser.companyName || "User"}!`);
 
-      let redirect = "/admin";
+  //     let redirect = "/admin";
 
-      if (mode === "Customer") {
-        redirect = "/customer-dashboard";
-      } 
-      else if (mode === "User") {
-        const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+  //     if (mode === "Customer") {
+  //       redirect = "/customer-dashboard";
+  //     } 
+  //     else if (mode === "User") {
+  //       const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
         
-        // 🗳️ ELECTION FLOW: Check for election roles first
-        if (hasElectionRole(finalUser.roles)) {
-          redirect = "/election";
-        }
-        // Existing ERP roles
-        else if (roles.includes("employee")) {
-          redirect = "/admin/hr/employees";
-        } 
-        else if (roles.includes("admin")) {
-          redirect = "/admin";
-        }
-        // If no specific role but user exists, go to dashboard
-        else {
-          redirect = "/admin";
-        }
-      }
+  //       // 🗳️ ELECTION FLOW: Check for election roles first
+  //       if (hasElectionRole(finalUser.roles)) {
+  //         redirect = "/election";
+  //       }
+  //         // 🔥 गार्ड/हाउसकीपर को सबसे पहले चेक करो
+  //       else if (roles.includes("guard") || roles.includes("housekeeper")) {
+  //         redirect = "/societymanagement/guard";
+  //       }
+  //        else if (roles.includes("society manager")) {
+  //   redirect = "/societymanagement";   // यह अपने आप dashboard पर रीडायरेक्ट करता है
+  // }
+  //       // Existing ERP roles
+  //       else if (roles.includes("employee")) {
+  //         redirect = "/admin/hr/employees";
+  //       } 
+  //       else if (roles.includes("admin")) {
+  //         redirect = "/admin";
+  //       }
+  //       // If no specific role but user exists, go to dashboard
+  //       else {
+  //         redirect = "/admin";
+  //       }
+  //     }
+
+let redirect = "/admin";
+
+if (mode === "Customer") {
+  redirect = "/customer-dashboard";
+} 
+else if (mode === "User") {
+  const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+  
+  if (hasElectionRole(finalUser.roles)) {
+    redirect = "/election";
+  } else if (roles.includes("guard") || roles.includes("housekeeper")) {
+    redirect = "/societymanagement/guard";
+  } else if (roles.includes("resident")) {
+    redirect = "/societymanagement/residentdashboard"; // New resident dashboard route
+  }
+  
+  else if (roles.includes("society manager")) {
+    redirect = "/societymanagement";
+  } else if (roles.includes("employee")) {
+    redirect = "/admin/hr/employees";
+  } else if (roles.includes("admin")) {
+    redirect = "/admin";
+  } else {
+    redirect = "/admin";
+  }
+} 
+else if (mode === "Company") {
+  // ✅ NEW: redirect based on managementType
+  const managementType = finalUser?.managementType?.toLowerCase() || "erp";
+  if (managementType === "society") {
+    redirect = "/societymanagement";
+  } else if (managementType === "healthcare") {
+    redirect = "/healthcare-dashboard";
+  } else if (managementType === "education") {
+    redirect = "/education-dashboard";
+  } else if (managementType === "retail") {
+    redirect = "/retail-dashboard";
+  } else if (managementType === "election") {
+    redirect = "/election";
+  } else {
+    redirect = "/admin"; // default for ERP
+  }
+}
 
       router.push(redirect);
 

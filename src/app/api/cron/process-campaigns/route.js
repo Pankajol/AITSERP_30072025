@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 
 import dbConnect from "@/lib/db";
 import EmailCampaign from "@/models/EmailCampaign";
-import Lead from "@/models/load"; // adjust if your file name is different (you earlier used load / load typo)
+import Lead from "@/models/crm/load"; // adjust if your file name is different (you earlier used load / load typo)
 import Customer from "@/models/CustomerModel";
 import EmailLog from "@/models/EmailLog";
 import EmailMaster from "@/models/emailMaster/emailMaster";

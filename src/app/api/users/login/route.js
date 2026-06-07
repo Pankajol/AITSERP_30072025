@@ -120,7 +120,7 @@ export async function POST(req) {
         roles: Array.isArray(user.roles) ? user.roles : [],
         modules,
         type: 'user',
-        employeeId: user.employeeId?._id,
+        employeeId: user.employeeId?._id || user.employeeId, // Handle both populated and non-populated cases
       },
       SECRET,
       { expiresIn: '1d' }
@@ -134,7 +134,7 @@ export async function POST(req) {
     // ✅ Remove sensitive fields
     const { password: _, __v, ...safeUser } = user.toObject();
     safeUser.modules = modules;
-
+    safeUser.employeeId = user.employeeId?._id || user.employeeId;
     console.log(jwtDecode(token));
     console.log(JSON.stringify(user.modules, null, 2));
 

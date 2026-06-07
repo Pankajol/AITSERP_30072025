@@ -20,6 +20,17 @@ const VALID_ROLES = [
   "Production Head",
   "Project Manager",
   "Employee",
+    // 🗳️ Election roles (new)
+  "Election Admin",
+  "Election Manager",
+  "Election Agent",
+  "Booth Worker",
+  "Surveyor",
+  "Campaign Manager",
+  "Election Analyst",
+   "Society Manager",
+  "Guard" ,
+  "Resident"
 ];
 
 // ─── Helper — company aur normal user dono allow ───

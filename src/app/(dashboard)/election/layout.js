@@ -1,31 +1,59 @@
 // app/(dashboard)/election/layout.js
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
   FiLayout, FiFlag, FiMapPin, FiHome, FiUsers, FiUserCheck,
-  FiClipboard, FiMic, FiDollarSign, FiRadio, FiMenu, FiX,
-  FiUpload, FiList, FiCheckSquare, FiTrendingUp, FiShield, FiLogOut
+  FiClipboard, FiMic, FiDollarSign, FiRadio, FiMenu,
+  FiUpload, FiList, FiCheckSquare, FiTrendingUp, FiShield, FiLogOut,
+  FiChevronDown, FiUser, FiKey
 } from "react-icons/fi";
 import NotificationBell from "@/components/election/NotificationBell";
 
 const sidebarItems = [
+  // Dashboard – sabko dikhega
   { href: "/election", label: "Dashboard", icon: FiLayout, requiredRoles: [] },
+
+  // Parties – sirf Admin/Manager
   { href: "/election/parties", label: "Parties / Candidates", icon: FiFlag, requiredRoles: ["Election Admin", "Election Manager"] },
+
+  // Constituencies – Admin/Manager/Analyst
   { href: "/election/constituencies", label: "Constituencies", icon: FiMapPin, requiredRoles: ["Election Admin", "Election Manager", "Election Analyst"] },
-  { href: "/election/booths", label: "Booths", icon: FiHome, requiredRoles: ["Election Admin", "Election Manager", "Election Agent", "Booth Worker"] },
+
+  // Booths – Admin/Manager/Agent (Booth Worker nahi)
+  { href: "/election/booths", label: "Booths", icon: FiHome, requiredRoles: ["Election Admin", "Election Manager", "Election Agent"] },
+
+  // Voters – Admin/Manager/Agent/Booth Worker/Surveyor/Analyst
   { href: "/election/voters", label: "Voters", icon: FiUsers, requiredRoles: ["Election Admin", "Election Manager", "Election Agent", "Booth Worker", "Surveyor", "Election Analyst"] },
+
+  // Import Voters – sirf Admin/Manager
   { href: "/election/voter-import", label: "Import Voters", icon: FiUpload, requiredRoles: ["Election Admin", "Election Manager"] },
+
+  // Workers – sirf Admin/Manager (worker list aur assignment)
   { href: "/election/workers", label: "Workers", icon: FiUserCheck, requiredRoles: ["Election Admin", "Election Manager"] },
+
+  // Worker Activity – Admin/Manager/Agent
   { href: "/election/worker-activity", label: "Worker Activity", icon: FiList, requiredRoles: ["Election Admin", "Election Manager", "Election Agent"] },
+
+  // Surveys – Admin/Manager/Surveyor
   { href: "/election/surveys", label: "Surveys", icon: FiClipboard, requiredRoles: ["Election Admin", "Election Manager", "Surveyor"] },
-  { href: "/election/survey-response", label: "Fill Survey", icon: FiCheckSquare, requiredRoles: ["Election Admin", "Election Manager", "Surveyor", "Election Agent"] },
+
+  // Fill Survey – Admin/Manager/Surveyor/Agent
+  { href: "/election/survey-response", label: "Fill Survey", icon: FiCheckSquare, requiredRoles: ["Election Admin", "Election Manager", "Surveyor", "Election Agent","Booth Worker"] },
+
+  // Rallies – Admin/Manager/Campaign Manager
   { href: "/election/rallies", label: "Rallies & Events", icon: FiMic, requiredRoles: ["Election Admin", "Election Manager", "Campaign Manager"] },
+
+  // Expenses – Admin/Manager
   { href: "/election/expenses", label: "Election Expenses", icon: FiDollarSign, requiredRoles: ["Election Admin", "Election Manager"] },
+
+  // Media Campaigns – Admin/Manager/Campaign Manager
   { href: "/election/media", label: "Media Campaigns", icon: FiRadio, requiredRoles: ["Election Admin", "Election Manager", "Campaign Manager"] },
+
+  // Analytics – Admin/Manager/Analyst
   { href: "/election/analytics", label: "Analytics", icon: FiTrendingUp, requiredRoles: ["Election Admin", "Election Manager", "Election Analyst"] },
 ];
 
@@ -38,6 +66,97 @@ function decodeTokenPayload(token) {
   } catch {
     return null;
   }
+}
+
+function UserMenu({ user: layoutUser }) {
+  const [open, setOpen] = useState(false);
+  const [user, setUser] = useState({ name: "", email: "" });
+  const menuRef = useRef(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      const parsed = stored ? JSON.parse(stored) : {};
+      setUser({
+        name: parsed.contactName || parsed.companyName || parsed.name || layoutUser?.name || "User",
+        email: parsed.email || layoutUser?.email || "",
+      });
+    } catch {
+      setUser({
+        name: layoutUser?.name || "User",
+        email: layoutUser?.email || "",
+      });
+    }
+  }, [layoutUser]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    router.push("/signin");
+  };
+
+  const initials = user.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none"
+      >
+        <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+          {initials || "U"}
+        </div>
+        <span className="hidden sm:inline-block max-w-[140px] truncate">{user.name}</span>
+        <FiChevronDown className={`text-xs transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
+          <div className="px-4 py-2 border-b border-gray-100">
+            <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+          </div>
+          <Link
+            href="/election/profile"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => setOpen(false)}
+          >
+            <FiUser className="text-base" /> My Profile
+          </Link>
+          <Link
+            href="/election/change-password"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => setOpen(false)}
+          >
+            <FiKey className="text-base" /> Change Password
+          </Link>
+          <button
+            onClick={() => {
+              setOpen(false);
+              handleLogout();
+            }}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left"
+          >
+            <FiLogOut className="text-base" /> Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ElectionLayout({ children }) {
@@ -88,7 +207,7 @@ export default function ElectionLayout({ children }) {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.push("/login");
+      router.push("/signin");
       return;
     }
     const currentItem = sidebarItems.find(item => item.href === pathname);
@@ -100,12 +219,6 @@ export default function ElectionLayout({ children }) {
       if (!hasAccess) router.push("/election");
     }
   }, [pathname, user, loading, router, isFullAccess]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/signin");
-  };
 
   if (loading) {
     return (
@@ -183,13 +296,7 @@ export default function ElectionLayout({ children }) {
           </h2>
           <div className="flex items-center gap-4">
             <NotificationBell />
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 transition-colors"
-            >
-              <FiLogOut className="h-4 w-4" />
-              Logout
-            </button>
+            <UserMenu user={user} />
           </div>
         </header>
         <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
