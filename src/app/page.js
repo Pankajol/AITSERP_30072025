@@ -198,7 +198,6 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
             <p style={{ fontSize: 14, color: "#64748B" }}>Full platform access. Auto-deactivated after 14 days — no surprise charges.</p>
           </div>
 
-          {/* Two-column fields */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
             {fieldConfig.map(({ k, label, type, placeholder }) => (
               <div key={k}>
@@ -213,7 +212,6 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
             ))}
           </div>
 
-          {/* Select fields */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
             {selectFields.map(({ k, label, options }) => (
               <div key={k}>
@@ -228,7 +226,6 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
             ))}
           </div>
 
-          {/* Password */}
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Create Password</label>
             <div style={{ position: "relative" }}>
@@ -244,7 +241,6 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
             {errors.password && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{errors.password}</p>}
           </div>
 
-          {/* Plan selector */}
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Trial Plan</label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -456,6 +452,50 @@ export default function LandingPage() {
         .tag-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 100px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
 
         select option { background: #ffffff; color: #0F172A; }
+
+        /* Responsive Styles */
+        @media (max-width: 1024px) {
+          .grid-3-cols { grid-template-columns: repeat(2, 1fr) !important; }
+          .grid-4-cols { grid-template-columns: repeat(2, 1fr) !important; }
+          .pricing-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 24px !important; }
+          .pricing-card-popular { transform: scale(1) !important; }
+          .stats-container { padding: 0 24px !important; }
+          .workflow-line { display: none !important; }
+          .workflow-step { flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 16px !important; }
+          .workflow-step > div:first-child { order: 2; text-align: center !important; width: 100% !important; }
+          .workflow-step > div:last-child { display: none; }
+          .contact-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .footer-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 32px !important; }
+        }
+
+        @media (max-width: 768px) {
+          .nav-desktop { display: none !important; }
+          .nav-mobile-toggle { display: flex !important; }
+          .nav-mobile-menu { display: block; position: absolute; top: 100%; left: 0; right: 0; background: rgba(248,250,252,0.98); backdrop-filter: blur(16px); border-bottom: 1px solid #E2E8F0; padding: 20px 24px; z-index: 99; }
+          .grid-3-cols { grid-template-columns: 1fr !important; }
+          .grid-4-cols { grid-template-columns: 1fr !important; }
+          .pricing-grid { grid-template-columns: 1fr !important; max-width: 400px; margin: 0 auto; }
+          .pricing-card-popular { transform: scale(1) !important; }
+          .stats-container { grid-template-columns: 1fr 1fr !important; gap: 24px; }
+          .contact-grid { grid-template-columns: 1fr !important; }
+          .footer-grid { grid-template-columns: 1fr !important; text-align: center; gap: 28px !important; }
+          .footer-brand { text-align: center; align-items: center; }
+          .hero-buttons { flex-direction: column; align-items: stretch; gap: 12px; }
+          .hero-buttons button, .hero-buttons a { justify-content: center; }
+          .section-padding { padding: 60px 24px !important; }
+          .cta-banner { padding: 40px 24px !important; }
+          .navbar-padding { padding: 12px 24px !important; }
+          .trial-status-bar { padding: 8px 16px !important; flex-wrap: wrap; gap: 8px; }
+          .trial-status-bar > span:first-child { font-size: 12px; }
+        }
+
+        @media (max-width: 640px) {
+          .stats-container { grid-template-columns: 1fr !important; gap: 16px; }
+          .stats-container > div { border-right: none !important; border-bottom: 1px solid #F1F5F9; padding: 24px 16px !important; }
+          .hero-title { font-size: 36px !important; line-height: 1.2 !important; }
+          .hero-subtitle { font-size: 16px !important; }
+          .workflow-step > div:first-child { padding: 20px !important; }
+        }
       `}</style>
 
       <AnimatePresence>
@@ -466,7 +506,7 @@ export default function LandingPage() {
 
       {/* ─── TRIAL STATUS BAR ─── */}
       {trialRecord && (
-        <div style={{ background: trialActive ? "#FFF7ED" : "#FEF2F2", borderBottom: `1px solid ${trialActive ? "#FED7AA" : "#FECACA"}`, padding: "10px 48px", display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
+        <div className="trial-status-bar" style={{ background: trialActive ? "#FFF7ED" : "#FEF2F2", borderBottom: `1px solid ${trialActive ? "#FED7AA" : "#FECACA"}`, padding: "10px 48px", display: "flex", alignItems: "center", gap: 12, fontSize: 13, flexWrap: "wrap" }}>
           {trialActive ? (
             <>
               <FiClock size={14} style={{ color: "#EA580C" }} />
@@ -488,13 +528,15 @@ export default function LandingPage() {
 
       {/* ─── NAVBAR ─── */}
       <motion.nav initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        className="navbar-padding"
         style={{ position: "sticky", top: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 48px", background: "rgba(248,250,252,0.92)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(226,232,240,0.8)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif" }}>PKE</div>
           <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 17, letterSpacing: "-0.03em", color: "#0F172A" }}>Pankajal <span style={{ color: "#EA580C" }}>ERP</span></span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+        {/* Desktop Navigation */}
+        <div className="nav-desktop" style={{ display: "flex", alignItems: "center", gap: 32 }}>
           {[["Modules","#modules"], ["Workflow","#workflow"], ["Pricing","#pricing"], ["Contact","#contact"]].map(([item, href]) => (
             <a key={item} href={href} className="nav-link">{item}</a>
           ))}
@@ -505,21 +547,39 @@ export default function LandingPage() {
           <button onClick={() => setShowModal(true)} className="btn-primary" style={{ padding: "9px 18px", fontSize: 13 }}>
             {trialActive ? `${daysLeft}d left` : "Free Trial"} <FiArrowRight size={14} />
           </button>
+          <button className="nav-mobile-toggle" onClick={() => setMobileNav(!mobileNav)} style={{ display: "none", background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A" }}>
+            <FiMenu />
+          </button>
         </div>
+
+        {/* Mobile Navigation Menu */}
+        <AnimatePresence>
+          {mobileNav && (
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="nav-mobile-menu" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "rgba(248,250,252,0.98)", backdropFilter: "blur(16px)", borderBottom: "1px solid #E2E8F0", padding: "20px 24px", zIndex: 99, display: "none" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {[["Modules","#modules"], ["Workflow","#workflow"], ["Pricing","#pricing"], ["Contact","#contact"]].map(([item, href]) => (
+                  <a key={item} href={href} className="nav-link" style={{ fontSize: 16 }} onClick={() => setMobileNav(false)}>{item}</a>
+                ))}
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <Link href="/signin" className="btn-outline" style={{ flex: 1, textAlign: "center", justifyContent: "center" }}>Sign in</Link>
+                  <button onClick={() => { setShowModal(true); setMobileNav(false); }} className="btn-primary" style={{ flex: 1, justifyContent: "center" }}>Free Trial</button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.nav>
 
       {/* ─── HERO ─── */}
       <section ref={heroRef} style={{ position: "relative", minHeight: "88vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "80px 24px 90px", overflow: "hidden", background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)" }}>
 
-        {/* Background grid */}
         <div style={{ position: "absolute", inset: 0, opacity: 0.4, backgroundImage: "linear-gradient(rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.6) 1px, transparent 1px)", backgroundSize: "64px 64px", pointerEvents: "none" }} />
 
-        {/* Decorative blobs */}
         <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%)", top: "5%", left: "50%", transform: "translateX(-50%)", pointerEvents: "none" }} />
         <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.07) 0%, transparent 70%)", top: "30%", left: "8%", pointerEvents: "none" }} />
         <div style={{ position: "absolute", width: 250, height: 250, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%)", top: "25%", right: "6%", pointerEvents: "none" }} />
 
-        <motion.div style={{ y: heroY, opacity: heroOpacity, position: "relative", zIndex: 1, maxWidth: 800 }}>
+        <motion.div style={{ y: heroY, opacity: heroOpacity, position: "relative", zIndex: 1, maxWidth: 800, width: "100%" }}>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
             style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "6px 16px", marginBottom: 28, fontSize: 13, color: "#C2410C", fontWeight: 600 }}>
@@ -527,17 +587,20 @@ export default function LandingPage() {
           </motion.div>
 
           <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            className="hero-title"
             style={{ fontFamily: "'Sora', sans-serif", fontSize: "clamp(40px, 6.5vw, 76px)", fontWeight: 800, lineHeight: 1.06, letterSpacing: "-0.04em", marginBottom: 22, color: "#0F172A" }}>
             Run your entire<br />
             <span style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent", background: "linear-gradient(135deg, #EA580C, #F97316, #FBBF24)", WebkitBackgroundImage: "linear-gradient(135deg, #EA580C, #F97316, #FBBF24)", backgroundClip: "text" }}>business</span> from one place
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
+            className="hero-subtitle"
             style={{ fontSize: "clamp(15px, 1.8vw, 18px)", color: "#475569", lineHeight: 1.7, maxWidth: 600, margin: "0 auto 40px" }}>
             Procurement, inventory, sales, production, CRM, accounts, HR — and unique modules for elections & marketplaces. One modern cloud ERP purpose-built for Indian businesses.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}
+            className="hero-buttons"
             style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={() => setShowModal(true)} className="btn-primary" style={{ fontSize: 15, padding: "15px 32px" }}>
               Start free trial <FiArrowRight size={15} />
@@ -560,6 +623,7 @@ export default function LandingPage() {
       {/* ─── STATS ─── */}
       <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }} variants={stagger}
+          className="stats-container"
           style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", maxWidth: 1100, margin: "0 auto", padding: "0 48px" }}>
           {stats.map((s, i) => (
             <motion.div key={i} variants={fadeUp} style={{ textAlign: "center", padding: "40px 20px", borderRight: i < 3 ? "1px solid #F1F5F9" : "none" }}>
@@ -574,7 +638,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CORE MODULES ─── */}
-      <section id="modules" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
+      <section id="modules" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 56 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 16 }}>Core Platform</div>
           <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>
@@ -586,6 +650,7 @@ export default function LandingPage() {
         </motion.div>
 
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
+          className="grid-3-cols"
           style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
           {coreModules.map((mod, i) => (
             <motion.div key={i} variants={fadeUp} className="card">
@@ -606,6 +671,7 @@ export default function LandingPage() {
           </motion.div>
 
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
+            className="grid-3-cols"
             style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
             {advancedModules.map((mod, i) => (
               <motion.div key={i} variants={fadeUp} whileHover={{ y: -4 }}
@@ -623,7 +689,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── WORKFLOW ─── */}
-      <section id="workflow" style={{ padding: "96px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      <section id="workflow" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1100, margin: "0 auto" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 60, textAlign: "center" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#1D4ED8", fontWeight: 600, marginBottom: 16 }}>How It Works</div>
           <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>
@@ -635,26 +701,24 @@ export default function LandingPage() {
         </motion.div>
 
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} style={{ position: "relative" }}>
-          {/* Connector line */}
-          <div style={{ position: "absolute", left: "50%", top: 60, bottom: 60, width: 2, background: "linear-gradient(180deg, #FED7AA, #E2E8F0)", transform: "translateX(-50%)", zIndex: 0 }} />
+          <div className="workflow-line" style={{ position: "absolute", left: "50%", top: 60, bottom: 60, width: 2, background: "linear-gradient(180deg, #FED7AA, #E2E8F0)", transform: "translateX(-50%)", zIndex: 0 }} />
 
           {workflow.map((step, i) => (
             <motion.div key={i} variants={fadeUp}
+              className="workflow-step"
               style={{ display: "flex", alignItems: "flex-start", gap: 32, marginBottom: 40, position: "relative", zIndex: 1, flexDirection: i % 2 === 0 ? "row" : "row-reverse" }}>
 
-              {/* Content */}
               <div style={{ flex: 1, background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", textAlign: i % 2 === 0 ? "right" : "left" }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: step.color, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
                 <h3 style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginBottom: 8, letterSpacing: "-0.02em" }}>{step.title}</h3>
                 <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.7 }}>{step.desc}</p>
               </div>
 
-              {/* Step icon */}
               <div style={{ flexShrink: 0, width: 64, height: 64, borderRadius: "50%", background: step.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#FFFFFF", boxShadow: `0 4px 20px ${step.color}40`, zIndex: 2 }}>
                 {step.icon}
               </div>
 
-              <div style={{ flex: 1 }} /> {/* spacer for alternating layout */}
+              <div style={{ flex: 1 }} />
             </motion.div>
           ))}
         </motion.div>
@@ -673,6 +737,7 @@ export default function LandingPage() {
           </motion.div>
 
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
+            className="grid-3-cols"
             style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
             {testimonials.map((t, i) => (
               <motion.div key={i} variants={fadeUp} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 28 }}>
@@ -696,7 +761,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PRICING ─── */}
-      <section id="pricing" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
+      <section id="pricing" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 60 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 16 }}>Pricing</div>
           <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>Simple, transparent pricing</h2>
@@ -704,9 +769,10 @@ export default function LandingPage() {
         </motion.div>
 
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
+          className="pricing-grid"
           style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "start" }}>
           {pricingPlans.map((plan, i) => (
-            <motion.div key={i} variants={fadeUp} style={{ position: "relative", background: plan.popular ? "#FFFFFF" : "#FFFFFF", border: plan.popular ? "2px solid #EA580C" : "1px solid #E2E8F0", borderRadius: 20, padding: 32, transform: plan.popular ? "scale(1.03)" : "scale(1)", boxShadow: plan.popular ? "0 20px 60px rgba(234,88,12,0.12)" : "none" }}>
+            <motion.div key={i} variants={fadeUp} className={plan.popular ? "pricing-card-popular" : ""} style={{ position: "relative", background: "#FFFFFF", border: plan.popular ? "2px solid #EA580C" : "1px solid #E2E8F0", borderRadius: 20, padding: 32, transform: plan.popular ? "scale(1.03)" : "scale(1)", boxShadow: plan.popular ? "0 20px 60px rgba(234,88,12,0.12)" : "none" }}>
               {plan.popular && (
                 <div style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #EA580C, #F97316)", color: "#FFFFFF", fontSize: 11, fontWeight: 700, padding: "6px 18px", borderRadius: 100, whiteSpace: "nowrap", letterSpacing: "0.06em" }}>⭐ MOST POPULAR</div>
               )}
@@ -747,9 +813,8 @@ export default function LandingPage() {
           ))}
         </motion.div>
 
-        {/* Add-ons note */}
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-          style={{ marginTop: 40, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px 32px", display: "flex", alignItems: "flex-start", gap: 16 }}>
+          style={{ marginTop: 40, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px 32px", display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#EA580C", flexShrink: 0 }}>
             <FiCpu />
           </div>
@@ -797,7 +862,7 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CONTACT ─── */}
-      <section id="contact" style={{ padding: "96px 48px" }}>
+      <section id="contact" className="section-padding" style={{ padding: "96px 48px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 52 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 16 }}>Get in Touch</div>
@@ -806,9 +871,9 @@ export default function LandingPage() {
           </motion.div>
 
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
+            className="contact-grid"
             style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
 
-            {/* WhatsApp */}
             <motion.a variants={fadeUp}
               href={`https://wa.me/91${CONTACT.whatsapp}?text=Hi%20Pankajal%20ERP%2C%20I%27d%20like%20to%20know%20more!`}
               target="_blank" rel="noopener noreferrer" whileHover={{ y: -3 }}
@@ -821,7 +886,6 @@ export default function LandingPage() {
               </div>
             </motion.a>
 
-            {/* Email */}
             <motion.a variants={fadeUp}
               href={`mailto:${CONTACT.email}`} whileHover={{ y: -3 }}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "24px 28px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, textDecoration: "none", transition: "all 0.2s" }}>
@@ -833,7 +897,6 @@ export default function LandingPage() {
               </div>
             </motion.a>
 
-            {/* Social */}
             <motion.div variants={fadeUp} style={{ padding: "24px 28px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 16, textTransform: "uppercase", letterSpacing: "0.06em" }}>Follow Us</p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
@@ -860,6 +923,7 @@ export default function LandingPage() {
       {/* ─── CTA BANNER ─── */}
       <section style={{ padding: "0 48px 96px", maxWidth: 1200, margin: "0 auto" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
+          className="cta-banner"
           style={{ background: "linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 50%, #F0FDF4 100%)", border: "1px solid #FED7AA", borderRadius: 24, padding: "64px", textAlign: "center", position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(234,88,12,0.06) 0%, transparent 70%)", top: "-30%", left: "40%", transform: "translateX(-50%)", pointerEvents: "none" }} />
           <div style={{ position: "relative", zIndex: 1 }}>
@@ -884,10 +948,9 @@ export default function LandingPage() {
       {/* ─── FOOTER ─── */}
       <footer style={{ background: "#0F172A", padding: "56px 48px 36px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr 1fr 1fr 1fr", gap: 48, marginBottom: 48 }}>
+          <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr 1fr 1fr 1fr", gap: 48, marginBottom: 48 }}>
 
-            {/* Brand */}
-            <div>
+            <div className="footer-brand">
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif" }}>PKE</div>
                 <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 15, color: "#F8FAFC" }}>Pankajal ERP</span>
@@ -949,7 +1012,6 @@ export default function LandingPage() {
     </main>
   );
 }
- 
 
 
 

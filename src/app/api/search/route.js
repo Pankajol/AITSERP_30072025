@@ -2,8 +2,8 @@ import dbConnect from "@/lib/db";
 import { getCompanyIdFromToken } from "@/lib/auth";
 import Lead from "@/models/crm/load";
 import Opportunity from "@/models/crm/Opportunity";
-import Customer from "@/models/Customer";
-import SalesQuotation from "@/models/SalesQuotation";
+import Customer from "@/models/CustomerModel";
+import SalesQuotation from "@/models/SalesQuotationModel";
 import { NextResponse } from "next/server";
 
 export async function GET(req) {

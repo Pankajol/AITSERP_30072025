@@ -1,8 +1,8 @@
 // app/api/social-media/webhook/route.js
 import dbConnect from "@/lib/db";
 import { getCompanyFromApiKey } from "@/lib/auth"; // you'll need to pass company API key in header
-import Lead from "@/models/Lead";
-import SocialMediaLead from "@/models/SocialMediaLead";
+import Lead from "@/models/crm/load";
+import SocialMediaLead from "@/models/crm/SocialMediaLead";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {

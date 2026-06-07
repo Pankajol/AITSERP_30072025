@@ -1,5 +1,5 @@
 import CompanyUser from "@/models/CompanyUser";
-import Leave from "@/models/society/hr/Leave";
+import Leave from "@/models/hr/Leave";
 import mongoose from "mongoose";
 
 export async function getNextAvailableAgent(customer) {
