@@ -210,6 +210,7 @@ export default function SocietyManagementLayout({ children }) {
         className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 shadow-sm transform transition-transform duration-200 ease-in-out flex flex-col
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           lg:translate-x-0 lg:static lg:z-auto`}
+        style={{ top: 'env(safe-area-inset-top)', bottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100 flex-shrink-0">
           <h1 className="text-lg font-extrabold text-indigo-600">Society Mgmt</h1>
@@ -245,14 +246,15 @@ export default function SocietyManagementLayout({ children }) {
       {/* Overlay for mobile sidebar */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm lg:hidden"
+          className="fixed inset-x-0 z-30 bg-black/30 backdrop-blur-sm lg:hidden"
+          style={{ top: 'env(safe-area-inset-top)', bottom: 'env(safe-area-inset-bottom)' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Main area - full height with scrolling */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
+        <header className="sticky top-0 z-30 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 flex-shrink-0" style={{ top: 'env(safe-area-inset-top)' }}>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
