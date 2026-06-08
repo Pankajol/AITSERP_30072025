@@ -25,15 +25,15 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"></meta>
-    <body
-  className={`${geistSans.variable} ${geistMono.variable} antialiased `}
->
-  <div className="flex-1 overflow-y-auto  bg-gray-50 dark:bg-gray-900">
-    {children}
-  </div>
-  <ToastContainer />
-</body>
-
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased `}
+        style={{ padding: "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)", margin: 0 }}
+      >
+        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+          {children}
+        </div>
+        <ToastContainer />
+      </body>
     </html>
   );
 }
