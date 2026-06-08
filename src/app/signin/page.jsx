@@ -110,7 +110,7 @@ else if (mode === "User") {
   } else if (roles.includes("guard") || roles.includes("housekeeper")) {
     redirect = "/societymanagement/guard";
   } else if (roles.includes("resident")) {
-    redirect = "/societymanagement/residentdashboard"; // New resident dashboard route
+    redirect = "/societymanagement/dashboard"; // New resident dashboard route
   }
   
   else if (roles.includes("society manager")) {
