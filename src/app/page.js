@@ -492,9 +492,19 @@ export default function LandingPage() {
         @media (max-width: 640px) {
           .stats-container { grid-template-columns: 1fr !important; gap: 16px; }
           .stats-container > div { border-right: none !important; border-bottom: 1px solid #F1F5F9; padding: 24px 16px !important; }
-          .hero-title { font-size: 36px !important; line-height: 1.2 !important; }
-          .hero-subtitle { font-size: 16px !important; }
+          .hero-title { font-size: 32px !important; line-height: 1.18 !important; }
+          .hero-subtitle { font-size: 15px !important; max-width: 100% !important; }
           .workflow-step > div:first-child { padding: 20px !important; }
+          .section-padding { padding: 60px 20px !important; }
+          .pricing-grid { margin: 0 auto !important; }
+          .cta-banner { padding: 32px 20px !important; }
+          .footer-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+          .footer-brand { text-align: center; align-items: center; justify-content: center; }
+          .footer-grid > div { width: 100%; }
+          .contact-grid { grid-template-columns: 1fr !important; }
+          .nav-mobile-menu { display: block !important; }
+          .hero-buttons { flex-direction: column !important; gap: 12px !important; }
+          .hero-buttons button, .hero-buttons a { width: 100% !important; padding: 14px 18px !important; }
         }
       `}</style>
 
@@ -547,7 +557,7 @@ export default function LandingPage() {
           <button onClick={() => setShowModal(true)} className="btn-primary" style={{ padding: "9px 18px", fontSize: 13 }}>
             {trialActive ? `${daysLeft}d left` : "Free Trial"} <FiArrowRight size={14} />
           </button>
-          <button className="nav-mobile-toggle" onClick={() => setMobileNav(!mobileNav)} style={{ display: "none", background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A" }}>
+          <button className="nav-mobile-toggle" onClick={() => setMobileNav(!mobileNav)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A" }}>
             <FiMenu />
           </button>
         </div>
@@ -555,7 +565,7 @@ export default function LandingPage() {
         {/* Mobile Navigation Menu */}
         <AnimatePresence>
           {mobileNav && (
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="nav-mobile-menu" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "rgba(248,250,252,0.98)", backdropFilter: "blur(16px)", borderBottom: "1px solid #E2E8F0", padding: "20px 24px", zIndex: 99, display: "none" }}>
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="nav-mobile-menu" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "rgba(248,250,252,0.98)", backdropFilter: "blur(16px)", borderBottom: "1px solid #E2E8F0", padding: "20px 24px", zIndex: 99 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {[["Modules","#modules"], ["Workflow","#workflow"], ["Pricing","#pricing"], ["Contact","#contact"]].map(([item, href]) => (
                   <a key={item} href={href} className="nav-link" style={{ fontSize: 16 }} onClick={() => setMobileNav(false)}>{item}</a>
