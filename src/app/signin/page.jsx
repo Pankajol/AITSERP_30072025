@@ -111,7 +111,7 @@ else if (mode === "User") {
     redirect = "/societymanagement/guard";
   } else if (roles.includes("resident")) {
     redirect = "/societymanagement/dashboard"; // New resident dashboard route
-  }
+  }   // Society manager should go to society management dashboard, which then routes based on their specific role
   
   else if (roles.includes("society manager")) {
     redirect = "/societymanagement";
