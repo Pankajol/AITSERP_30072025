@@ -204,7 +204,12 @@ export default function SocietyManagementLayout({ children }) {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50 overflow-hidden">
+    <div className="flex min-h-screen bg-gray-50 overflow-hidden" style={{
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingRight: 'env(safe-area-inset-right)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      paddingLeft: 'env(safe-area-inset-left)'
+    }}>
       {/* Sidebar - fixed height with scrolling */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 shadow-sm transform transition-transform duration-200 ease-in-out flex flex-col
