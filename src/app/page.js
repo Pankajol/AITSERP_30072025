@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   HiShoppingBag, HiChartBar, HiTruck, HiUserGroup,
   HiDocumentText, HiCog, HiX, HiCheckCircle,
@@ -12,15 +12,15 @@ import {
   FiMessageCircle, FiInstagram, FiTwitter,
   FiLinkedin, FiYoutube, FiAlertCircle,
   FiClock, FiShield, FiEye, FiEyeOff,
-  FiPackage, FiBarChart2, FiUsers, FiSettings,
+  FiBarChart2, FiUsers, FiSettings,
   FiDatabase, FiLock, FiGlobe, FiPhoneCall,
-  FiStar, FiTrendingUp, FiCpu, FiGrid,
-  FiChevronDown, FiChevronRight, FiMenu,
+  FiStar, FiTrendingUp, FiCpu,
+  FiChevronDown, FiMenu, FiX as FiClose,
 } from "react-icons/fi";
 
 /* ═══════════════════════════════════════
    TRIAL UTILITY
-   ═══════════════════════════════════════ */
+═══════════════════════════════════════ */
 export const TRIAL_KEY = "aits_trial";
 export const TRIAL_DAYS = 14;
 
@@ -30,14 +30,14 @@ export function startTrial(userData) {
     trialStart: Date.now(),
     trialEnd: Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
     status: "active",
-    id: crypto.randomUUID(),
+    id: typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36),
   };
-  localStorage.setItem(TRIAL_KEY, JSON.stringify(record));
+  if (typeof localStorage !== "undefined") localStorage.setItem(TRIAL_KEY, JSON.stringify(record));
   return record;
 }
-
 export function getTrialRecord() {
   try {
+    if (typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(TRIAL_KEY);
     if (!raw) return null;
     const record = JSON.parse(raw);
@@ -48,32 +48,20 @@ export function getTrialRecord() {
     return record;
   } catch { return null; }
 }
-
 export function getTrialDaysLeft(record) {
   if (!record) return 0;
-  const ms = record.trialEnd - Date.now();
-  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.ceil((record.trialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
 }
-
 export function isTrialActive(record) {
   return record?.status === "active" && Date.now() <= record.trialEnd;
 }
 
-export function clearTrial() {
-  localStorage.removeItem(TRIAL_KEY);
-}
-
-/* ─── Claude AI helper ─── */
 async function callClaude(messages) {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages,
-      }),
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages }),
     });
     if (!res.ok) return "__SKIP__";
     const data = await res.json();
@@ -81,7 +69,7 @@ async function callClaude(messages) {
   } catch { return "__SKIP__"; }
 }
 
-/* ─── Helpers ─── */
+/* ─── Animated Counter ─── */
 function Counter({ end, suffix = "", duration = 2 }) {
   const [count, setCount] = useState(0);
   const ref = useRef(null);
@@ -104,7 +92,7 @@ function Counter({ end, suffix = "", duration = 2 }) {
   return <span ref={ref}>{count}{suffix}</span>;
 }
 
-/* ─── Trial Modal (Light) ─── */
+/* ─── Trial Modal ─── */
 function TrialModal({ onClose, onSuccess }) {
   const [step, setStep] = useState(1);
   const [showPw, setShowPw] = useState(false);
@@ -114,6 +102,11 @@ function TrialModal({ onClose, onSuccess }) {
     name: "", company: "", email: "", phone: "",
     employees: "", industry: "", password: "", plan: "Professional",
   });
+
+  const setField = useCallback((k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    setErrors(e => ({ ...e, [k]: "" }));
+  }, []);
 
   const validate = () => {
     const e = {};
@@ -130,29 +123,25 @@ function TrialModal({ onClose, onSuccess }) {
   const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
-    setLoading(true);
-    setErrors({});
+    setLoading(true); setErrors({});
     try {
-      const validationRaw = await callClaude([{
+      const raw = await callClaude([{
         role: "user",
         content: `Validate this ERP trial registration. Respond ONLY in JSON (no markdown): {"valid":true,"issues":[]}
 Data — Name:"${form.name}", Company:"${form.company}", Email:"${form.email}", Phone:"${form.phone}", Industry:"${form.industry}".
 Return valid:false with issues array if data looks fake, suspicious, or clearly invalid.`,
       }]);
-
-      if (validationRaw !== "__SKIP__") {
-        let aiResult = { valid: true, issues: [] };
-        try { aiResult = JSON.parse(validationRaw.replace(/```json|```/g, "").trim()); } catch {}
-        if (!aiResult.valid) {
-          setErrors({ general: "Validation failed: " + (aiResult.issues?.join(", ") || "Please check your details.") });
+      if (raw !== "__SKIP__") {
+        let ai = { valid: true, issues: [] };
+        try { ai = JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch {}
+        if (!ai.valid) {
+          setErrors({ general: "Validation failed: " + (ai.issues?.join(", ") || "Please check your details.") });
           setLoading(false); return;
         }
       }
-
       await new Promise(r => setTimeout(r, 1200));
       const record = startTrial(form);
-      setLoading(false);
-      setStep(2);
+      setLoading(false); setStep(2);
       onSuccess?.(record);
     } catch (err) {
       setErrors({ general: err.message || "Something went wrong. Please try again." });
@@ -160,168 +149,166 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
     }
   };
 
+  const inputStyle = (k) => ({
+    width: "100%", padding: "11px 14px", borderRadius: 10,
+    background: errors[k] ? "#FFF5F5" : "#F8FAFC",
+    border: `1.5px solid ${errors[k] ? "#EF4444" : "#E2E8F0"}`,
+    color: "#0F172A", fontSize: 14, outline: "none",
+    fontFamily: "'Plus Jakarta Sans',sans-serif", boxSizing: "border-box",
+  });
+
+  const selectStyle = (k) => ({
+    ...inputStyle(k), cursor: "pointer",
+    color: form[k] ? "#0F172A" : "#94A3B8", appearance: "none",
+  });
+
   const fieldConfig = [
-    { k: "name",     label: "Full Name",       type: "text",  placeholder: "Pankaj Agarwal",         half: true },
-    { k: "company",  label: "Company Name",    type: "text",  placeholder: "Agarwal Enterprises",    half: true },
-    { k: "email",    label: "Work Email",      type: "email", placeholder: "you@company.com",        half: true },
-    { k: "phone",    label: "Phone Number",    type: "tel",   placeholder: "9876543210",             half: true },
+    { k: "name",    label: "Full Name",    type: "text",  placeholder: "Pankaj Agarwal",      col: 1 },
+    { k: "company", label: "Company Name", type: "text",  placeholder: "Agarwal Enterprises", col: 2 },
+    { k: "email",   label: "Work Email",   type: "email", placeholder: "you@company.com",     col: 1 },
+    { k: "phone",   label: "Phone Number", type: "tel",   placeholder: "9876543210",          col: 2 },
   ];
 
-  const selectFields = [
-    { k: "employees", label: "Team Size", options: ["1–5 employees", "6–25 employees", "26–100 employees", "101–500 employees", "500+ employees"] },
-    { k: "industry",  label: "Industry",  options: ["Manufacturing", "Trading / Distribution", "Retail", "Construction", "Healthcare", "Education", "IT / Software", "Food & Beverage", "Other"] },
-  ];
+  const planColors = { Starter: "#475569", Professional: "#C2410C", Enterprise: "#7C3AED" };
+  const planPrices = { Starter: "₹999/mo", Professional: "₹2,499/mo", Enterprise: "Custom" };
 
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
       onClick={e => e.target === e.currentTarget && onClose()}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(15,23,42,0.6)", backdropFilter: "blur(8px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "16px",
+      }}
     >
       <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        initial={{ opacity: 0, y: 28, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
-        style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 20, width: "100%", maxWidth: 560, padding: "36px 36px 28px", position: "relative", fontFamily: "'Plus Jakarta Sans',sans-serif", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.15)" }}
+        style={{
+          background: "#FFFFFF", borderRadius: 20, width: "100%", maxWidth: 560,
+          padding: "clamp(20px, 4vw, 36px)", position: "relative",
+          fontFamily: "'Plus Jakarta Sans',sans-serif",
+          maxHeight: "92vh", overflowY: "auto",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.18)",
+          boxSizing: "border-box",
+        }}
       >
-        <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "#F1F5F9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", color: "#64748B", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <button onClick={onClose}
+          style={{ position: "absolute", top: 14, right: 14, background: "#F1F5F9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", color: "#64748B", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
           <HiX size={16} />
         </button>
 
         {step === 1 && <>
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 16 }}>
-              <FiShield size={12} /> 14-Day Free Trial — No Credit Card Required
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 14 }}>
+              <FiShield size={12} /> 14-Day Free Trial — No Credit Card
             </div>
-            <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 26, fontWeight: 800, color: "#0F172A", letterSpacing: "-0.03em", marginBottom: 6 }}>Activate your free trial</h2>
-            <p style={{ fontSize: 14, color: "#64748B" }}>Full platform access. Auto-deactivated after 14 days — no surprise charges.</p>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(20px,4vw,26px)", fontWeight: 800, color: "#0F172A", letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2 }}>Activate your free trial</h2>
+            <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.6 }}>Full platform access. Auto-deactivated after 14 days — no surprise charges.</p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          {/* Fields grid — 2-col on wider modal, 1-col on small screens */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
             {fieldConfig.map(({ k, label, type, placeholder }) => (
               <div key={k}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</label>
-                <input
-                  type={type} value={form[k]} placeholder={placeholder}
-                  onChange={ev => { setForm(f => ({ ...f, [k]: ev.target.value })); setErrors(er => ({ ...er, [k]: "" })); }}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, background: errors[k] ? "#FFF5F5" : "#F8FAFC", border: `1.5px solid ${errors[k] ? "#EF4444" : "#E2E8F0"}`, color: "#0F172A", fontSize: 14, outline: "none", fontFamily: "'Plus Jakarta Sans',sans-serif", transition: "border-color 0.2s" }}
-                />
-                {errors[k] && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{errors[k]}</p>}
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</label>
+                <input type={type} value={form[k]} placeholder={placeholder} onChange={ev => setField(k, ev.target.value)} style={inputStyle(k)} />
+                {errors[k] && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 3 }}>{errors[k]}</p>}
               </div>
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-            {selectFields.map(({ k, label, options }) => (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
+            {[
+              { k: "employees", label: "Team Size", options: ["1–5 employees", "6–25 employees", "26–100 employees", "101–500 employees", "500+ employees"] },
+              { k: "industry",  label: "Industry",  options: ["Manufacturing", "Trading / Distribution", "Retail", "Construction", "Healthcare", "Education", "IT / Software", "Food & Beverage", "Other"] },
+            ].map(({ k, label, options }) => (
               <div key={k}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</label>
-                <select value={form[k]} onChange={e => { setForm(f => ({ ...f, [k]: e.target.value })); setErrors(er => ({ ...er, [k]: "" })); }}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, background: errors[k] ? "#FFF5F5" : "#F8FAFC", border: `1.5px solid ${errors[k] ? "#EF4444" : "#E2E8F0"}`, color: form[k] ? "#0F172A" : "#94A3B8", fontSize: 14, fontFamily: "'Plus Jakarta Sans',sans-serif", cursor: "pointer" }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</label>
+                <select value={form[k]} onChange={e => setField(k, e.target.value)} style={selectStyle(k)}>
                   <option value="">Select {label}</option>
                   {options.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
-                {errors[k] && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{errors[k]}</p>}
+                {errors[k] && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 3 }}>{errors[k]}</p>}
               </div>
             ))}
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Create Password</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>Create Password</label>
             <div style={{ position: "relative" }}>
-              <input
-                type={showPw ? "text" : "password"} value={form.password} placeholder="Min 8 characters"
-                onChange={ev => { setForm(f => ({ ...f, password: ev.target.value })); setErrors(er => ({ ...er, password: "" })); }}
-                style={{ width: "100%", padding: "10px 40px 10px 12px", borderRadius: 10, background: errors.password ? "#FFF5F5" : "#F8FAFC", border: `1.5px solid ${errors.password ? "#EF4444" : "#E2E8F0"}`, color: "#0F172A", fontSize: 14, outline: "none", fontFamily: "'Plus Jakarta Sans',sans-serif" }}
-              />
-              <button onClick={() => setShowPw(p => !p)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94A3B8", cursor: "pointer" }}>
+              <input type={showPw ? "text" : "password"} value={form.password} placeholder="Min 8 characters"
+                onChange={ev => setField("password", ev.target.value)}
+                style={{ ...inputStyle("password"), paddingRight: 40 }} />
+              <button onClick={() => setShowPw(p => !p)}
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94A3B8", cursor: "pointer", display: "flex" }}>
                 {showPw ? <FiEyeOff size={16} /> : <FiEye size={16} />}
               </button>
             </div>
-            {errors.password && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{errors.password}</p>}
+            {errors.password && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 3 }}>{errors.password}</p>}
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Trial Plan</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              {[
-                { v: "Starter",      price: "₹999/mo",   color: "#475569" },
-                { v: "Professional", price: "₹2,499/mo", color: "#C2410C" },
-                { v: "Enterprise",   price: "Custom",     color: "#7C3AED" },
-              ].map(({ v, price, color }) => (
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Trial Plan</label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {Object.entries(planColors).map(([v, color]) => (
                 <div key={v} onClick={() => setForm(f => ({ ...f, plan: v }))}
-                  style={{ padding: "12px", borderRadius: 10, border: `2px solid ${form.plan === v ? color : "#E2E8F0"}`, cursor: "pointer", background: form.plan === v ? `${color}08` : "#F8FAFC", transition: "all 0.15s" }}>
-                  <p style={{ fontWeight: 700, fontSize: 13, color: form.plan === v ? color : "#374151", marginBottom: 2 }}>{v}</p>
-                  <p style={{ fontSize: 11, color: "#94A3B8" }}>{price}</p>
+                  style={{ padding: "10px 8px", borderRadius: 10, border: `2px solid ${form.plan === v ? color : "#E2E8F0"}`, cursor: "pointer", background: form.plan === v ? `${color}10` : "#F8FAFC", transition: "all 0.15s", textAlign: "center" }}>
+                  <p style={{ fontWeight: 700, fontSize: 12, color: form.plan === v ? color : "#374151", marginBottom: 2 }}>{v}</p>
+                  <p style={{ fontSize: 11, color: "#94A3B8" }}>{planPrices[v]}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {errors.general && (
-            <div style={{ background: "#FFF5F5", border: "1px solid #FCA5A5", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: "#DC2626" }}>
-              <FiAlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-              {errors.general}
+            <div style={{ background: "#FFF5F5", border: "1px solid #FCA5A5", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#DC2626" }}>
+              <FiAlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} /> {errors.general}
             </div>
           )}
 
           <button onClick={handleSubmit} disabled={loading}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, background: loading ? "#FED7AA" : "linear-gradient(135deg, #EA580C, #F97316)", color: "#FFFFFF", fontWeight: 700, fontSize: 15, border: "none", cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "'Plus Jakarta Sans',sans-serif", boxShadow: loading ? "none" : "0 4px 20px rgba(234,88,12,0.35)" }}>
-            {loading ? <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83">
-                  <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
-                </path>
-              </svg>
-              Validating &amp; Activating…
-            </> : <>Activate Free Trial <FiArrowRight size={16} /></>}
+            style={{ width: "100%", padding: "14px", borderRadius: 12, background: loading ? "#FED7AA" : "linear-gradient(135deg, #EA580C, #F97316)", color: "#FFFFFF", fontWeight: 700, fontSize: 15, border: "none", cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 20px rgba(234,88,12,0.35)", transition: "all 0.2s" }}>
+            {loading ? "Validating & Activating…" : <><span>Activate Free Trial</span> <FiArrowRight size={16} /></>}
           </button>
-
-          <p style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", marginTop: 12, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", marginTop: 10, lineHeight: 1.6 }}>
             By signing up you agree to our <a href="#" style={{ color: "#C2410C" }}>Terms</a> and <a href="#" style={{ color: "#C2410C" }}>Privacy Policy</a>
           </p>
         </>}
 
         {step === 2 && (
-          <div style={{ textAlign: "center", padding: "16px 0" }}>
+          <div style={{ textAlign: "center", padding: "8px 0" }}>
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", damping: 14, stiffness: 200, delay: 0.1 }}
-              style={{ width: 80, height: 80, borderRadius: "50%", background: "linear-gradient(135deg, #10B981, #059669)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", fontSize: 36, color: "#FFFFFF" }}>
+              style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg, #10B981, #059669)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 34, color: "#FFFFFF" }}>
               <HiCheckCircle />
             </motion.div>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: 26, fontWeight: 800, color: "#0F172A", marginBottom: 10, letterSpacing: "-0.03em" }}>You're all set! 🎉</h2>
-            <p style={{ color: "#64748B", fontSize: 15, marginBottom: 20, lineHeight: 1.7 }}>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(20px,4vw,26px)", fontWeight: 800, color: "#0F172A", marginBottom: 8, letterSpacing: "-0.03em" }}>You're all set! 🎉</h2>
+            <p style={{ color: "#64748B", fontSize: 15, marginBottom: 18, lineHeight: 1.7 }}>
               Welcome, <strong style={{ color: "#0F172A" }}>{form.name}</strong>.<br />
               Your <strong style={{ color: "#EA580C" }}>{form.plan}</strong> trial is now active for <strong style={{ color: "#EA580C" }}>14 days</strong>.
             </p>
-
-            <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "14px 20px", marginBottom: 16, fontSize: 13, color: "#9A3412" }}>
+            <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "12px 18px", marginBottom: 14, fontSize: 13, color: "#9A3412" }}>
               <FiClock size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
               Trial expires: <strong>{new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong>
             </div>
-
-            <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px", marginBottom: 24, textAlign: "left" }}>
-              <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 10 }}>Your next steps:</p>
-              {[
-                "Set up your company profile & GST details",
-                "Add your team members & assign roles",
-                "Import your vendor/customer master data",
-                "Configure your chart of accounts",
-                "Run your first purchase or sales order",
-              ].map((s, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8, fontSize: 13, color: "#475569" }}>
-                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#EA580C", color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+            <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "14px 18px", marginBottom: 22, textAlign: "left" }}>
+              <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 8 }}>Your next steps:</p>
+              {["Set up your company profile & GST details", "Add team members & assign roles", "Import your vendor/customer master data", "Configure your chart of accounts", "Run your first purchase or sales order"].map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 7, fontSize: 13, color: "#475569" }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#EA580C", color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
                   {s}
                 </div>
               ))}
             </div>
-
             <button onClick={onClose}
-              style={{ background: "linear-gradient(135deg, #EA580C, #F97316)", color: "#fff", border: "none", cursor: "pointer", width: "100%", padding: "14px", borderRadius: 12, fontWeight: 700, fontSize: 15, fontFamily: "'Plus Jakarta Sans',sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(234,88,12,0.3)" }}>
+              style={{ background: "linear-gradient(135deg, #EA580C, #F97316)", color: "#fff", border: "none", cursor: "pointer", width: "100%", padding: "14px", borderRadius: 12, fontWeight: 700, fontSize: 15, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(234,88,12,0.3)" }}>
               Go to Dashboard <FiArrowRight size={16} />
             </button>
-            <p style={{ fontSize: 12, color: "#94A3B8", marginTop: 12 }}>
-              Login details sent to <strong style={{ color: "#64748B" }}>{form.email}</strong>
-            </p>
+            <p style={{ fontSize: 12, color: "#94A3B8", marginTop: 10 }}>Login details sent to <strong style={{ color: "#64748B" }}>{form.email}</strong></p>
           </div>
         )}
       </motion.div>
@@ -331,18 +318,26 @@ Return valid:false with issues array if data looks fake, suspicious, or clearly 
 
 /* ═══════════════════════════════════════
    MAIN PAGE
-   ═══════════════════════════════════════ */
+═══════════════════════════════════════ */
 export default function LandingPage() {
   const heroRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
+  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "18%"]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
+
   const [showModal, setShowModal] = useState(false);
   const [trialRecord, setTrialRecord] = useState(null);
   const [openFaq, setOpenFaq] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
 
   useEffect(() => { setTrialRecord(getTrialRecord()); }, []);
+  useEffect(() => {
+    document.body.style.overflow = (showModal || mobileNav) ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [showModal, mobileNav]);
+
+  const trialActive = isTrialActive(trialRecord);
+  const daysLeft = getTrialDaysLeft(trialRecord);
 
   const CONTACT = {
     whatsapp: "7738961799",
@@ -354,15 +349,15 @@ export default function LandingPage() {
   };
 
   const coreModules = [
-    { icon: <HiShoppingBag />,    title: "Procure to Pay",        desc: "Vendor onboarding, RFQ, purchase orders, GRN, invoice matching, three-way reconciliation, and automated payment scheduling with bank integration.", color: "#EA580C", bg: "#FFF7ED" },
-    { icon: <HiChartBar />,       title: "Inventory Management",  desc: "Real-time stock tracking across multi-warehouse locations. Batch & expiry management, reorder alerts, stock valuation (FIFO/LIFO/Avg), and barcode scanning.", color: "#2563EB", bg: "#EFF6FF" },
-    { icon: <HiTruck />,          title: "Order to Cash",         desc: "Sales quotations, orders, delivery challan, e-way bill generation, GST-compliant invoicing, payment receipts, and ageing follow-up automation.", color: "#059669", bg: "#ECFDF5" },
-    { icon: <HiCog />,            title: "Production & MFG",      desc: "Bill of Materials, production planning & control, work orders, shop-floor management, quality inspection, wastage tracking, and finished-goods costing.", color: "#7C3AED", bg: "#F5F3FF" },
-    { icon: <HiUserGroup />,      title: "CRM & Sales",           desc: "Lead capture from multiple sources, opportunity pipeline, campaign ROI tracking, customer support ticketing, SLA management, and automated follow-up sequences.", color: "#DB2777", bg: "#FDF2F8" },
-    { icon: <HiDocumentText />,   title: "Accounts & Finance",    desc: "Full double-entry accounting, GST returns (GSTR-1/3B), TDS/TCS compliance, P&L, balance sheet, cash-flow statements, and multi-bank reconciliation.", color: "#0891B2", bg: "#ECFEFF" },
-    { icon: <FiUsers />,          title: "HR & Payroll",          desc: "Employee onboarding, attendance via biometric/app, leave management, PF/ESI/PT compliance, salary slips, Form 16, and appraisal workflows.", color: "#D97706", bg: "#FFFBEB" },
-    { icon: <FiBarChart2 />,      title: "Reports & Analytics",   desc: "100+ pre-built reports. Custom dashboards with live KPIs, drill-down capability, scheduled email reports, and export to Excel/PDF.", color: "#16A34A", bg: "#F0FDF4" },
-    { icon: <FiSettings />,       title: "System Administration", desc: "Role-based access control, audit trails, data backup, multi-company & multi-branch support, API access, and white-label customization.", color: "#6366F1", bg: "#EEF2FF" },
+    { icon: <HiShoppingBag />, title: "Procure to Pay", desc: "Vendor onboarding, RFQ, purchase orders, GRN, invoice matching, three-way reconciliation, and automated payment scheduling with bank integration.", color: "#EA580C", bg: "#FFF7ED" },
+    { icon: <HiChartBar />, title: "Inventory Management", desc: "Real-time stock tracking across multi-warehouse locations. Batch & expiry management, reorder alerts, stock valuation (FIFO/LIFO/Avg), and barcode scanning.", color: "#2563EB", bg: "#EFF6FF" },
+    { icon: <HiTruck />, title: "Order to Cash", desc: "Sales quotations, orders, delivery challan, e-way bill generation, GST-compliant invoicing, payment receipts, and ageing follow-up automation.", color: "#059669", bg: "#ECFDF5" },
+    { icon: <HiCog />, title: "Production & MFG", desc: "Bill of Materials, production planning & control, work orders, shop-floor management, quality inspection, wastage tracking, and finished-goods costing.", color: "#7C3AED", bg: "#F5F3FF" },
+    { icon: <HiUserGroup />, title: "CRM & Sales", desc: "Lead capture from multiple sources, opportunity pipeline, campaign ROI tracking, customer support ticketing, SLA management, and automated follow-up sequences.", color: "#DB2777", bg: "#FDF2F8" },
+    { icon: <HiDocumentText />, title: "Accounts & Finance", desc: "Full double-entry accounting, GST returns (GSTR-1/3B), TDS/TCS compliance, P&L, balance sheet, cash-flow statements, and multi-bank reconciliation.", color: "#0891B2", bg: "#ECFEFF" },
+    { icon: <FiUsers />, title: "HR & Payroll", desc: "Employee onboarding, attendance via biometric/app, leave management, PF/ESI/PT compliance, salary slips, Form 16, and appraisal workflows.", color: "#D97706", bg: "#FFFBEB" },
+    { icon: <FiBarChart2 />, title: "Reports & Analytics", desc: "100+ pre-built reports. Custom dashboards with live KPIs, drill-down capability, scheduled email reports, and export to Excel/PDF.", color: "#16A34A", bg: "#F0FDF4" },
+    { icon: <FiSettings />, title: "System Administration", desc: "Role-based access control, audit trails, data backup, multi-company & multi-branch support, API access, and white-label customization.", color: "#6366F1", bg: "#EEF2FF" },
   ];
 
   const advancedModules = [
@@ -381,25 +376,25 @@ export default function LandingPage() {
 
   const pricingPlans = [
     {
-      name: "Starter", price: "₹999", period: "/month",
+      name: "Starter", price: "₹999", period: "/month", popular: false,
       desc: "Perfect for small businesses just getting started.",
-      features: ["Procure to Pay", "Inventory Management", "Order to Cash", "Basic CRM", "GST Invoicing", "Standard Reports", "1 Company • 5 Users", "Email Support"],
+      features: ["Procure to Pay", "Inventory Management", "Order to Cash", "Basic CRM", "GST Invoicing", "Standard Reports", "1 Company · 5 Users", "Email Support"],
       notIncluded: ["HR & Payroll", "Production Module", "Election Module", "Marketplace"],
-      cta: "Start Free Trial", popular: false,
+      cta: "Start Free Trial",
     },
     {
-      name: "Professional", price: "₹2,499", period: "/month",
+      name: "Professional", price: "₹2,499", period: "/month", popular: true,
       desc: "Everything a growing business needs to scale.",
       features: ["All Starter features", "Full Accounts & Finance", "HR & Payroll", "Production & MFG", "Advanced CRM", "Custom Dashboards", "Multi-branch support", "10 Users", "Priority Support", "Election Module (add-on)", "Marketplace (add-on)"],
       notIncluded: [],
-      cta: "Start Free Trial", popular: true,
+      cta: "Start Free Trial",
     },
     {
-      name: "Enterprise", price: "Custom", period: "",
+      name: "Enterprise", price: "Custom", period: "", popular: false,
       desc: "Built around your scale and specific requirements.",
       features: ["All Professional features", "Unlimited Users & Branches", "Dedicated Account Manager", "Custom Integrations (API)", "White Label / Custom Domain", "On-Premise / Private Cloud", "SLA-backed 24/7 Support", "Quarterly Business Reviews"],
       notIncluded: [],
-      cta: "Contact Sales", popular: false,
+      cta: "Contact Sales",
     },
   ];
 
@@ -419,107 +414,110 @@ export default function LandingPage() {
   ];
 
   const stats = [
-    { value: 500,  suffix: "+",       label: "Companies Onboarded",  sub: "Across 14 states" },
-    { value: 12,   suffix: "",        label: "Integrated Modules",    sub: "One unified platform" },
-    { value: 99.9, suffix: "%",       label: "Uptime SLA",            sub: "AWS-powered reliability" },
-    { value: 4.8,  suffix: "/5",      label: "Customer Rating",       sub: "Based on 200+ reviews" },
+    { value: 500, suffix: "+", label: "Companies Onboarded", sub: "Across 14 states" },
+    { value: 12, suffix: "", label: "Integrated Modules", sub: "One unified platform" },
+    { value: 99.9, suffix: "%", label: "Uptime SLA", sub: "AWS-powered reliability" },
+    { value: 4.8, suffix: "/5", label: "Customer Rating", sub: "Based on 200+ reviews" },
   ];
 
   const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
-  const fadeUp  = { hidden: { opacity: 0, y: 28 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } };
+  const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } };
 
-  const trialActive = isTrialActive(trialRecord);
-  const daysLeft    = getTrialDaysLeft(trialRecord);
+  const navLinks = [["Modules", "#modules"], ["Workflow", "#workflow"], ["Pricing", "#pricing"], ["Contact", "#contact"]];
 
   return (
-    <main style={{ minHeight: "100vh", padding: "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)", background: "#F8FAFC", color: "#0F172A", fontFamily: "'Plus Jakarta Sans', sans-serif", overflowX: "hidden" }}>
+    <main style={{ minHeight: "100vh", background: "#F8FAFC", color: "#0F172A", fontFamily: "'Plus Jakarta Sans', sans-serif", overflowX: "hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
 
-        .btn-primary { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #EA580C, #F97316); color: #FFFFFF; padding: 13px 26px; border-radius: 12px; font-weight: 700; font-size: 14px; border: none; cursor: pointer; transition: all 0.2s; text-decoration: none; font-family: 'Plus Jakarta Sans',sans-serif; box-shadow: 0 4px 18px rgba(234,88,12,0.28); }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(234,88,12,0.38); }
-
-        .btn-outline { display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: #374151; padding: 12px 26px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; border: 1.5px solid #E2E8F0; transition: all 0.2s; text-decoration: none; font-family: 'Plus Jakarta Sans',sans-serif; }
-        .btn-outline:hover { border-color: #CBD5E1; background: #F1F5F9; transform: translateY(-1px); }
-
-        .nav-link { color: #64748B; font-size: 14px; font-weight: 500; text-decoration: none; transition: color 0.2s; }
-        .nav-link:hover { color: #0F172A; }
-
-        .card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 28px; transition: all 0.25s; }
-        .card:hover { border-color: #CBD5E1; box-shadow: 0 8px 32px rgba(0,0,0,0.06); transform: translateY(-2px); }
-
-        .tag-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 100px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
-
-        select option { background: #ffffff; color: #0F172A; }
-
-        /* Responsive Styles */
-        @media (max-width: 1024px) {
-          .grid-3-cols { grid-template-columns: repeat(2, 1fr) !important; }
-          .grid-4-cols { grid-template-columns: repeat(2, 1fr) !important; }
-          .pricing-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 24px !important; }
-          .pricing-card-popular { transform: scale(1) !important; }
-          .stats-container { padding: 0 24px !important; }
-          .workflow-line { display: none !important; }
-          .workflow-step { flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 16px !important; }
-          .workflow-step > div:first-child { order: 2; text-align: center !important; width: 100% !important; }
-          .workflow-step > div:last-child { display: none; }
-          .contact-grid { grid-template-columns: repeat(2, 1fr) !important; }
-          .footer-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 32px !important; }
+        .btn-primary {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: linear-gradient(135deg, #EA580C, #F97316);
+          color: #FFFFFF; padding: 12px 24px; border-radius: 12px;
+          font-weight: 700; font-size: 14px; border: none; cursor: pointer;
+          transition: all 0.2s; text-decoration: none; white-space: nowrap;
+          font-family: 'Plus Jakarta Sans',sans-serif;
+          box-shadow: 0 4px 18px rgba(234,88,12,0.28);
         }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(234,88,12,0.38); }
+        .btn-primary:active { transform: scale(0.98); }
 
-        @media (max-width: 768px) {
-          .nav-desktop { display: none !important; }
-          .nav-mobile-toggle { display: flex !important; }
-          .nav-mobile-menu { display: block; position: absolute; top: 100%; left: 0; right: 0; background: rgba(248,250,252,0.98); backdrop-filter: blur(16px); border-bottom: 1px solid #E2E8F0; padding: 20px 24px; z-index: 99; }
-          .grid-3-cols { grid-template-columns: 1fr !important; }
-          .grid-4-cols { grid-template-columns: 1fr !important; }
-          .pricing-grid { grid-template-columns: 1fr !important; max-width: 400px; margin: 0 auto; }
-          .pricing-card-popular { transform: scale(1) !important; }
-          .stats-container { grid-template-columns: 1fr 1fr !important; gap: 24px; }
-          .contact-grid { grid-template-columns: 1fr !important; }
-          .footer-grid { grid-template-columns: 1fr !important; text-align: center; gap: 28px !important; }
-          .footer-brand { text-align: center; align-items: center; }
-          .hero-buttons { flex-direction: column; align-items: stretch; gap: 12px; }
-          .hero-buttons button, .hero-buttons a { justify-content: center; }
-          .section-padding { padding: 60px 24px !important; }
-          .cta-banner { padding: 40px 24px !important; }
-          .navbar-padding { padding: 12px 24px !important; }
-          .trial-status-bar { padding: 8px 16px !important; flex-wrap: wrap; gap: 8px; }
-          .trial-status-bar > span:first-child { font-size: 12px; }
+        .btn-outline {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: #FFFFFF; color: #374151; padding: 11px 24px; border-radius: 12px;
+          font-weight: 600; font-size: 14px; cursor: pointer;
+          border: 1.5px solid #E2E8F0; transition: all 0.2s; text-decoration: none;
+          white-space: nowrap; font-family: 'Plus Jakarta Sans',sans-serif;
+        }
+        .btn-outline:hover { border-color: #CBD5E1; background: #F1F5F9; transform: translateY(-1px); }
+        .btn-outline:active { transform: scale(0.98); }
+
+        .module-card {
+          background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px;
+          padding: 24px; transition: all 0.25s;
+        }
+        .module-card:hover { border-color: #CBD5E1; box-shadow: 0 8px 32px rgba(0,0,0,0.07); transform: translateY(-2px); }
+
+        .section { padding: 72px clamp(20px, 5vw, 64px); }
+        .section-inner { max-width: 1200px; margin: 0 auto; }
+        .section-inner-sm { max-width: 760px; margin: 0 auto; }
+        .section-inner-md { max-width: 1100px; margin: 0 auto; }
+
+        .grid-auto-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 16px; }
+        .grid-auto-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 16px; }
+
+        .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; align-items: start; }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+        .workflow-track { display: flex; flex-direction: column; gap: 0; position: relative; }
+        .workflow-step-row { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: center; gap: 20px; margin-bottom: 32px; }
+        .workflow-connector { position: absolute; left: calc(50% - 1px); top: 64px; bottom: 64px; width: 2px; background: linear-gradient(180deg, #FED7AA, #E2E8F0); pointer-events: none; }
+
+        @media (max-width: 700px) {
+          .workflow-step-row { grid-template-columns: 40px 1fr !important; gap: 14px; }
+          .workflow-step-row .step-card-right { display: none !important; }
+          .workflow-connector { left: 19px !important; }
+          .workflow-step-row .step-icon { width: 40px !important; height: 40px !important; font-size: 18px !important; order: 1 !important; }
+          .workflow-step-row .step-card { order: 2 !important; text-align: left !important; }
         }
 
         @media (max-width: 640px) {
-          .stats-container { grid-template-columns: 1fr !important; gap: 16px; }
-          .stats-container > div { border-right: none !important; border-bottom: 1px solid #F1F5F9; padding: 24px 16px !important; }
-          .hero-title { font-size: 32px !important; line-height: 1.18 !important; }
-          .hero-subtitle { font-size: 15px !important; max-width: 100% !important; }
-          .workflow-step > div:first-child { padding: 20px !important; }
-          .section-padding { padding: 60px 20px !important; }
-          .pricing-grid { margin: 0 auto !important; }
-          .cta-banner { padding: 32px 20px !important; }
-          .footer-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
-          .footer-brand { text-align: center; align-items: center; justify-content: center; }
-          .footer-grid > div { width: 100%; }
-          .contact-grid { grid-template-columns: 1fr !important; }
-          .nav-mobile-menu { display: block !important; }
-          .hero-buttons { flex-direction: column !important; gap: 12px !important; }
-          .hero-buttons button, .hero-buttons a { width: 100% !important; padding: 14px 18px !important; }
+          .section { padding: 56px clamp(16px, 4vw, 24px); }
+          .stats-row { gap: 0 !important; }
+          .stat-item { border-right: none !important; border-bottom: 1px solid #F1F5F9; }
+          .stat-item:last-child { border-bottom: none; }
         }
+
+        .footer-grid { display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 40px; }
+        @media (max-width: 900px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; } }
+        @media (max-width: 500px) { .footer-grid { grid-template-columns: 1fr; gap: 28px; text-align: center; } }
+
+        .contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; }
+
+        .hero-trust { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 12px; color: #94A3B8; }
+
+        input, select, textarea { font-family: 'Plus Jakarta Sans',sans-serif; }
+        select option { background: #fff; color: #0F172A; }
       `}</style>
 
       <AnimatePresence>
-        {showModal && (
-          <TrialModal onClose={() => setShowModal(false)} onSuccess={rec => setTrialRecord(rec)} />
-        )}
+        {showModal && <TrialModal onClose={() => setShowModal(false)} onSuccess={rec => setTrialRecord(rec)} />}
       </AnimatePresence>
 
       {/* ─── TRIAL STATUS BAR ─── */}
       {trialRecord && (
-        <div className="trial-status-bar" style={{ background: trialActive ? "#FFF7ED" : "#FEF2F2", borderBottom: `1px solid ${trialActive ? "#FED7AA" : "#FECACA"}`, padding: "10px 48px", display: "flex", alignItems: "center", gap: 12, fontSize: 13, flexWrap: "wrap" }}>
+        <div style={{
+          background: trialActive ? "#FFF7ED" : "#FEF2F2",
+          borderBottom: `1px solid ${trialActive ? "#FED7AA" : "#FECACA"}`,
+          padding: "9px clamp(16px,4vw,48px)",
+          display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 13,
+        }}>
           {trialActive ? (
             <>
-              <FiClock size={14} style={{ color: "#EA580C" }} />
+              <FiClock size={14} style={{ color: "#EA580C", flexShrink: 0 }} />
               <span style={{ color: "#C2410C" }}>
                 Free trial active — <strong>{daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining</strong>
                 &nbsp;(expires {new Date(trialRecord.trialEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})
@@ -528,7 +526,7 @@ export default function LandingPage() {
             </>
           ) : (
             <>
-              <FiAlertCircle size={14} style={{ color: "#DC2626" }} />
+              <FiAlertCircle size={14} style={{ color: "#DC2626", flexShrink: 0 }} />
               <span style={{ color: "#DC2626" }}>Your trial has expired. <strong>Upgrade to continue.</strong></span>
               <button onClick={() => setShowModal(true)} style={{ marginLeft: "auto", background: "#DC2626", color: "#fff", border: "none", padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Upgrade Now</button>
             </>
@@ -537,41 +535,65 @@ export default function LandingPage() {
       )}
 
       {/* ─── NAVBAR ─── */}
-      <motion.nav initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-        className="navbar-padding"
-        style={{ position: "sticky", top: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 48px", background: "rgba(248,250,252,0.92)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(226,232,240,0.8)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif" }}>PKE</div>
-          <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 17, letterSpacing: "-0.03em", color: "#0F172A" }}>Pankajal <span style={{ color: "#EA580C" }}>ERP</span></span>
+      <motion.nav
+        initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        style={{
+          position: "sticky", top: 0, zIndex: 100,
+          background: "rgba(248,250,252,0.94)", backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(226,232,240,0.9)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px clamp(16px,4vw,48px)", gap: 12 }}>
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif", flexShrink: 0 }}>PKE</div>
+            <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 16, letterSpacing: "-0.03em", color: "#0F172A" }}>
+              Pankajal <span style={{ color: "#EA580C" }}>ERP</span>
+            </span>
+          </div>
+
+          {/* Desktop nav links */}
+          <div style={{ display: "flex", alignItems: "center", gap: 28, flexShrink: 0 }} className="desktop-nav">
+            <style>{`@media(max-width:768px){.desktop-nav{display:none!important;}}`}</style>
+            {navLinks.map(([label, href]) => (
+              <a key={label} href={href} style={{ color: "#64748B", fontSize: 14, fontWeight: 500, textDecoration: "none", transition: "color 0.2s" }}
+                onMouseEnter={e => e.target.style.color = "#0F172A"}
+                onMouseLeave={e => e.target.style.color = "#64748B"}>{label}</a>
+            ))}
+          </div>
+
+          {/* CTA buttons */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <Link href="/signin" className="btn-outline" style={{ padding: "8px 16px", fontSize: 13 }}>Sign in</Link>
+            <button onClick={() => setShowModal(true)} className="btn-primary" style={{ padding: "8px 16px", fontSize: 13 }}>
+              {trialActive ? `${daysLeft}d left` : "Free Trial"} <FiArrowRight size={13} />
+            </button>
+            {/* Mobile hamburger */}
+            <button onClick={() => setMobileNav(p => !p)}
+              className="mobile-hamburger"
+              style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A", display: "none", padding: "4px" }}>
+              <style>{`@media(max-width:768px){.mobile-hamburger{display:flex!important;align-items:center;}}`}</style>
+              {mobileNav ? <FiClose /> : <FiMenu />}
+            </button>
+          </div>
         </div>
 
-        {/* Desktop Navigation */}
-        <div className="nav-desktop" style={{ display: "flex", alignItems: "center", gap: 32 }}>
-          {[["Modules","#modules"], ["Workflow","#workflow"], ["Pricing","#pricing"], ["Contact","#contact"]].map(([item, href]) => (
-            <a key={item} href={href} className="nav-link">{item}</a>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <Link href="/signin" className="btn-outline" style={{ padding: "9px 18px", fontSize: 13 }}>Sign in</Link>
-          <button onClick={() => setShowModal(true)} className="btn-primary" style={{ padding: "9px 18px", fontSize: 13 }}>
-            {trialActive ? `${daysLeft}d left` : "Free Trial"} <FiArrowRight size={14} />
-          </button>
-          <button className="nav-mobile-toggle" onClick={() => setMobileNav(!mobileNav)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A" }}>
-            <FiMenu />
-          </button>
-        </div>
-
-        {/* Mobile Navigation Menu */}
+        {/* Mobile nav menu */}
         <AnimatePresence>
           {mobileNav && (
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="nav-mobile-menu" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "rgba(248,250,252,0.98)", backdropFilter: "blur(16px)", borderBottom: "1px solid #E2E8F0", padding: "20px 24px", zIndex: 99 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {[["Modules","#modules"], ["Workflow","#workflow"], ["Pricing","#pricing"], ["Contact","#contact"]].map(([item, href]) => (
-                  <a key={item} href={href} className="nav-link" style={{ fontSize: 16 }} onClick={() => setMobileNav(false)}>{item}</a>
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+              style={{ overflow: "hidden", borderTop: "1px solid #E2E8F0" }}
+            >
+              <div style={{ padding: "16px clamp(16px,4vw,48px) 20px", display: "flex", flexDirection: "column", gap: 0 }}>
+                {navLinks.map(([label, href]) => (
+                  <a key={label} href={href} onClick={() => setMobileNav(false)}
+                    style={{ color: "#374151", fontSize: 16, fontWeight: 500, textDecoration: "none", padding: "12px 0", borderBottom: "1px solid #F1F5F9" }}>
+                    {label}
+                  </a>
                 ))}
-                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                  <Link href="/signin" className="btn-outline" style={{ flex: 1, textAlign: "center", justifyContent: "center" }}>Sign in</Link>
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  <Link href="/signin" className="btn-outline" style={{ flex: 1, justifyContent: "center" }}>Sign in</Link>
                   <button onClick={() => { setShowModal(true); setMobileNav(false); }} className="btn-primary" style={{ flex: 1, justifyContent: "center" }}>Free Trial</button>
                 </div>
               </div>
@@ -581,36 +603,36 @@ export default function LandingPage() {
       </motion.nav>
 
       {/* ─── HERO ─── */}
-      <section ref={heroRef} style={{ position: "relative", minHeight: "88vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "80px 24px 90px", overflow: "hidden", background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)" }}>
-
-        <div style={{ position: "absolute", inset: 0, opacity: 0.4, backgroundImage: "linear-gradient(rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(226,232,240,0.6) 1px, transparent 1px)", backgroundSize: "64px 64px", pointerEvents: "none" }} />
-
-        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%)", top: "5%", left: "50%", transform: "translateX(-50%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.07) 0%, transparent 70%)", top: "30%", left: "8%", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", width: 250, height: 250, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%)", top: "25%", right: "6%", pointerEvents: "none" }} />
+      <section ref={heroRef} style={{
+        position: "relative", minHeight: "88vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", textAlign: "center",
+        padding: "80px clamp(20px, 5vw, 48px) 90px", overflow: "hidden",
+        background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
+      }}>
+        {/* Grid bg */}
+        <div style={{ position: "absolute", inset: 0, opacity: 0.45, backgroundImage: "linear-gradient(rgba(226,232,240,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(226,232,240,0.5) 1px,transparent 1px)", backgroundSize: "64px 64px", pointerEvents: "none" }} />
+        {/* Glow blobs */}
+        <div style={{ position: "absolute", width: "min(500px,80vw)", height: "min(500px,80vw)", borderRadius: "50%", background: "radial-gradient(circle,rgba(234,88,12,0.08) 0%,transparent 70%)", top: "0%", left: "50%", transform: "translateX(-50%)", pointerEvents: "none" }} />
 
         <motion.div style={{ y: heroY, opacity: heroOpacity, position: "relative", zIndex: 1, maxWidth: 800, width: "100%" }}>
-
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
             style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "6px 16px", marginBottom: 28, fontSize: 13, color: "#C2410C", fontWeight: 600 }}>
             <FiZap size={13} /> Trusted by 500+ businesses across India · Built for GST & Compliance
           </motion.div>
 
-          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-            className="hero-title"
-            style={{ fontFamily: "'Sora', sans-serif", fontSize: "clamp(40px, 6.5vw, 76px)", fontWeight: 800, lineHeight: 1.06, letterSpacing: "-0.04em", marginBottom: 22, color: "#0F172A" }}>
+          <motion.h1
+            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(36px, 7vw, 76px)", fontWeight: 800, lineHeight: 1.06, letterSpacing: "-0.04em", marginBottom: 22, color: "#0F172A" }}>
             Run your entire<br />
-            <span style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent", background: "linear-gradient(135deg, #EA580C, #F97316, #FBBF24)", WebkitBackgroundImage: "linear-gradient(135deg, #EA580C, #F97316, #FBBF24)", backgroundClip: "text" }}>business</span> from one place
+            <span style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", backgroundImage: "linear-gradient(135deg, #EA580C, #F97316, #FBBF24)" }}>business</span>{" "}from one place
           </motion.h1>
 
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-            className="hero-subtitle"
-            style={{ fontSize: "clamp(15px, 1.8vw, 18px)", color: "#475569", lineHeight: 1.7, maxWidth: 600, margin: "0 auto 40px" }}>
+            style={{ fontSize: "clamp(15px, 2vw, 18px)", color: "#475569", lineHeight: 1.7, maxWidth: 600, margin: "0 auto 40px" }}>
             Procurement, inventory, sales, production, CRM, accounts, HR — and unique modules for elections & marketplaces. One modern cloud ERP purpose-built for Indian businesses.
           </motion.p>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}
-            className="hero-buttons"
             style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button onClick={() => setShowModal(true)} className="btn-primary" style={{ fontSize: 15, padding: "15px 32px" }}>
               Start free trial <FiArrowRight size={15} />
@@ -620,24 +642,23 @@ export default function LandingPage() {
             </a>
           </motion.div>
 
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-            style={{ marginTop: 18, fontSize: 12, color: "#94A3B8", display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
-            <span>✓ No credit card</span>
-            <span>✓ 14-day full access trial</span>
-            <span>✓ Auto-locked after expiry</span>
-            <span>✓ Indian data centers</span>
-          </motion.p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+            className="hero-trust" style={{ marginTop: 20 }}>
+            {["No credit card", "14-day full access", "Auto-locked after expiry", "Indian data centers"].map(t => (
+              <span key={t}>✓ {t}</span>
+            ))}
+          </motion.div>
         </motion.div>
       </section>
 
       {/* ─── STATS ─── */}
       <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }} variants={stagger}
-          className="stats-container"
-          style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", maxWidth: 1100, margin: "0 auto", padding: "0 48px" }}>
+          className="stat-grid stats-row" style={{ maxWidth: 1100, margin: "0 auto", padding: "0 clamp(16px,4vw,48px)" }}>
           {stats.map((s, i) => (
-            <motion.div key={i} variants={fadeUp} style={{ textAlign: "center", padding: "40px 20px", borderRight: i < 3 ? "1px solid #F1F5F9" : "none" }}>
-              <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 44, fontWeight: 800, color: "#EA580C", lineHeight: 1.1, letterSpacing: "-0.03em" }}>
+            <motion.div key={i} variants={fadeUp} className="stat-item"
+              style={{ textAlign: "center", padding: "36px 20px", borderRight: i < 3 ? "1px solid #F1F5F9" : "none" }}>
+              <div style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(32px,4vw,44px)", fontWeight: 800, color: "#EA580C", lineHeight: 1.1, letterSpacing: "-0.03em" }}>
                 <Counter end={s.value} suffix={s.suffix} />
               </div>
               <div style={{ fontWeight: 700, fontSize: 14, color: "#0F172A", marginTop: 4, marginBottom: 2 }}>{s.label}</div>
@@ -648,49 +669,41 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CORE MODULES ─── */}
-      <section id="modules" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 56 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 16 }}>Core Platform</div>
-          <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>
-            Every module your operations demand
-          </h2>
-          <p style={{ fontSize: 16, color: "#64748B", maxWidth: 500 }}>
-            Tightly integrated modules that share a single database — no double entry, no sync errors.
-          </p>
-        </motion.div>
-
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-          className="grid-3-cols"
-          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-          {coreModules.map((mod, i) => (
-            <motion.div key={i} variants={fadeUp} className="card">
-              <div style={{ width: 48, height: 48, borderRadius: 14, background: mod.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: mod.color, marginBottom: 18 }}>{mod.icon}</div>
-              <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginBottom: 10, letterSpacing: "-0.02em" }}>{mod.title}</h3>
-              <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.7 }}>{mod.desc}</p>
-            </motion.div>
-          ))}
-        </motion.div>
+      <section id="modules" className="section">
+        <div className="section-inner">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 48 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 14 }}>Core Platform</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px, 4vw, 46px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 10 }}>Every module your operations demand</h2>
+            <p style={{ fontSize: 16, color: "#64748B", maxWidth: 500 }}>Tightly integrated modules that share a single database — no double entry, no sync errors.</p>
+          </motion.div>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="grid-auto-3">
+            {coreModules.map((mod, i) => (
+              <motion.div key={i} variants={fadeUp} className="module-card">
+                <div style={{ width: 46, height: 46, borderRadius: 13, background: mod.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, color: mod.color, marginBottom: 16 }}>{mod.icon}</div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0F172A", marginBottom: 8, letterSpacing: "-0.02em" }}>{mod.title}</h3>
+                <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.7 }}>{mod.desc}</p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
       </section>
 
       {/* ─── ADVANCED MODULES ─── */}
-      <section style={{ padding: "80px 48px", background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 52 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 16 }}>Advanced Modules</div>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.04em", color: "#0F172A" }}>Beyond traditional ERP</h2>
+      <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
+        <div className="section section-inner">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 44 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 14 }}>Advanced Modules</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px, 4vw, 46px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.04em", color: "#0F172A" }}>Beyond traditional ERP</h2>
           </motion.div>
-
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-            className="grid-3-cols"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="grid-auto-3">
             {advancedModules.map((mod, i) => (
               <motion.div key={i} variants={fadeUp} whileHover={{ y: -4 }}
-                style={{ background: mod.bg, border: `1px solid ${mod.borderColor}`, borderRadius: 20, padding: 32 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 16, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: mod.badgeColor }}>{mod.icon}</div>
-                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 100, background: mod.badgeBg, color: mod.badgeColor }}>{mod.badge}</span>
+                style={{ background: mod.bg, border: `1px solid ${mod.borderColor}`, borderRadius: 20, padding: "28px 24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+                  <div style={{ width: 50, height: 50, borderRadius: 14, background: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: mod.badgeColor }}>{mod.icon}</div>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 100, background: mod.badgeBg, color: mod.badgeColor }}>{mod.badge}</span>
                 </div>
-                <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", marginBottom: 12, letterSpacing: "-0.03em", fontFamily: "'Sora',sans-serif" }}>{mod.title}</h3>
+                <h3 style={{ fontSize: 19, fontWeight: 800, color: "#0F172A", marginBottom: 10, letterSpacing: "-0.03em", fontFamily: "'Sora',sans-serif" }}>{mod.title}</h3>
                 <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.75 }}>{mod.desc}</p>
               </motion.div>
             ))}
@@ -699,66 +712,69 @@ export default function LandingPage() {
       </section>
 
       {/* ─── WORKFLOW ─── */}
-      <section id="workflow" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1100, margin: "0 auto" }}>
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 60, textAlign: "center" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#1D4ED8", fontWeight: 600, marginBottom: 16 }}>How It Works</div>
-          <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>
-            Go live in 5 simple steps
-          </h2>
-          <p style={{ fontSize: 16, color: "#64748B", maxWidth: 480, margin: "0 auto" }}>
-            From signup to your first transaction — most businesses are fully operational in 48 hours.
-          </p>
-        </motion.div>
-
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} style={{ position: "relative" }}>
-          <div className="workflow-line" style={{ position: "absolute", left: "50%", top: 60, bottom: 60, width: 2, background: "linear-gradient(180deg, #FED7AA, #E2E8F0)", transform: "translateX(-50%)", zIndex: 0 }} />
-
-          {workflow.map((step, i) => (
-            <motion.div key={i} variants={fadeUp}
-              className="workflow-step"
-              style={{ display: "flex", alignItems: "flex-start", gap: 32, marginBottom: 40, position: "relative", zIndex: 1, flexDirection: i % 2 === 0 ? "row" : "row-reverse" }}>
-
-              <div style={{ flex: 1, background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", textAlign: i % 2 === 0 ? "right" : "left" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: step.color, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
-                <h3 style={{ fontSize: 20, fontWeight: 700, color: "#0F172A", marginBottom: 8, letterSpacing: "-0.02em" }}>{step.title}</h3>
-                <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.7 }}>{step.desc}</p>
-              </div>
-
-              <div style={{ flexShrink: 0, width: 64, height: 64, borderRadius: "50%", background: step.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#FFFFFF", boxShadow: `0 4px 20px ${step.color}40`, zIndex: 2 }}>
-                {step.icon}
-              </div>
-
-              <div style={{ flex: 1 }} />
-            </motion.div>
-          ))}
-        </motion.div>
-      </section>
-
-      {/* ─── TESTIMONIALS ─── */}
-      <section style={{ padding: "80px 48px", background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 52 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#92400E", fontWeight: 600, marginBottom: 16 }}>
-              <FiStar size={12} /> Customer Stories
-            </div>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A" }}>
-              What our customers say
-            </h2>
+      <section id="workflow" className="section">
+        <div className="section-inner-md">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ marginBottom: 52, textAlign: "center" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#1D4ED8", fontWeight: 600, marginBottom: 14 }}>How It Works</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px, 4vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 10 }}>Go live in 5 simple steps</h2>
+            <p style={{ fontSize: 16, color: "#64748B", maxWidth: 460, margin: "0 auto" }}>From signup to your first transaction — most businesses are fully operational in 48 hours.</p>
           </motion.div>
 
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-            className="grid-3-cols"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-            {testimonials.map((t, i) => (
-              <motion.div key={i} variants={fadeUp} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: 28 }}>
-                <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-                  {[...Array(t.stars)].map((_, j) => <FiStar key={j} size={14} style={{ color: "#F59E0B", fill: "#F59E0B" }} />)}
-                </div>
-                <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.75, marginBottom: 20 }}>"{t.quote}"</p>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFFFFF", fontWeight: 700, fontSize: 15 }}>
-                    {t.name[0]}
+            className="workflow-track" style={{ position: "relative" }}>
+            <div className="workflow-connector" />
+            {workflow.map((step, i) => (
+              <motion.div key={i} variants={fadeUp} className="workflow-step-row">
+                {/* Left card (even steps) or spacer (odd steps) */}
+                {i % 2 === 0 ? (
+                  <div className="step-card" style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "22px 24px", textAlign: "right" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: step.color, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
+                    <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginBottom: 6, letterSpacing: "-0.02em" }}>{step.title}</h3>
+                    <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.7 }}>{step.desc}</p>
                   </div>
+                ) : (
+                  <div />
+                )}
+
+                {/* Center icon */}
+                <div className="step-icon" style={{ width: 60, height: 60, borderRadius: "50%", background: step.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#FFFFFF", boxShadow: `0 4px 20px ${step.color}40`, zIndex: 2, flexShrink: 0, margin: "0 auto" }}>
+                  {step.icon}
+                </div>
+
+                {/* Right card (odd steps) or spacer (even steps) */}
+                {i % 2 === 1 ? (
+                  <div className="step-card-right" style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "22px 24px", textAlign: "left" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: step.color, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
+                    <h3 style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", marginBottom: 6, letterSpacing: "-0.02em" }}>{step.title}</h3>
+                    <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.7 }}>{step.desc}</p>
+                  </div>
+                ) : (
+                  <div className="step-card-right" />
+                )}
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ─── TESTIMONIALS ─── */}
+      <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
+        <div className="section section-inner">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 44 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#92400E", fontWeight: 600, marginBottom: 14 }}>
+              <FiStar size={12} /> Customer Stories
+            </div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px,4vw,46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A" }}>What our customers say</h2>
+          </motion.div>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="grid-auto-3">
+            {testimonials.map((t, i) => (
+              <motion.div key={i} variants={fadeUp} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px" }}>
+                <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>
+                  {[...Array(t.stars)].map((_, j) => <FiStar key={j} size={14} style={{ color: "#F59E0B" }} />)}
+                </div>
+                <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.75, marginBottom: 18 }}>"{t.quote}"</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFFFFF", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{t.name[0]}</div>
                   <div>
                     <p style={{ fontWeight: 700, fontSize: 14, color: "#0F172A" }}>{t.name}</p>
                     <p style={{ fontSize: 12, color: "#94A3B8" }}>{t.role}</p>
@@ -771,97 +787,90 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PRICING ─── */}
-      <section id="pricing" className="section-padding" style={{ padding: "96px 48px", maxWidth: 1200, margin: "0 auto" }}>
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 60 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 16 }}>Pricing</div>
-          <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>Simple, transparent pricing</h2>
-          <p style={{ color: "#64748B", fontSize: 16 }}>All plans include a 14-day free trial. No hidden fees. No lock-in. Cancel anytime.</p>
-        </motion.div>
+      <section id="pricing" className="section">
+        <div className="section-inner">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 52 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#C2410C", fontWeight: 600, marginBottom: 14 }}>Pricing</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px,4vw,46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 10 }}>Simple, transparent pricing</h2>
+            <p style={{ color: "#64748B", fontSize: 16 }}>All plans include a 14-day free trial. No hidden fees. No lock-in. Cancel anytime.</p>
+          </motion.div>
 
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-          className="pricing-grid"
-          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "start" }}>
-          {pricingPlans.map((plan, i) => (
-            <motion.div key={i} variants={fadeUp} className={plan.popular ? "pricing-card-popular" : ""} style={{ position: "relative", background: "#FFFFFF", border: plan.popular ? "2px solid #EA580C" : "1px solid #E2E8F0", borderRadius: 20, padding: 32, transform: plan.popular ? "scale(1.03)" : "scale(1)", boxShadow: plan.popular ? "0 20px 60px rgba(234,88,12,0.12)" : "none" }}>
-              {plan.popular && (
-                <div style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #EA580C, #F97316)", color: "#FFFFFF", fontSize: 11, fontWeight: 700, padding: "6px 18px", borderRadius: 100, whiteSpace: "nowrap", letterSpacing: "0.06em" }}>⭐ MOST POPULAR</div>
-              )}
-
-              <div style={{ marginBottom: 24 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: plan.popular ? "#EA580C" : "#64748B", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>{plan.name}</p>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 6 }}>
-                  <span style={{ fontFamily: "'Sora',sans-serif", fontSize: 44, fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{plan.price}</span>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="pricing-grid">
+            {pricingPlans.map((plan, i) => (
+              <motion.div key={i} variants={fadeUp}
+                style={{
+                  position: "relative", background: "#FFFFFF",
+                  border: plan.popular ? "2px solid #EA580C" : "1px solid #E2E8F0",
+                  borderRadius: 20, padding: "28px 24px",
+                  boxShadow: plan.popular ? "0 20px 60px rgba(234,88,12,0.1)" : "none",
+                }}>
+                {plan.popular && (
+                  <div style={{ position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #EA580C, #F97316)", color: "#FFFFFF", fontSize: 11, fontWeight: 700, padding: "5px 16px", borderRadius: 100, whiteSpace: "nowrap", letterSpacing: "0.06em" }}>⭐ MOST POPULAR</div>
+                )}
+                <p style={{ fontSize: 12, fontWeight: 700, color: plan.popular ? "#EA580C" : "#64748B", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{plan.name}</p>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 5 }}>
+                  <span style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(32px,5vw,44px)", fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{plan.price}</span>
                   {plan.period && <span style={{ color: "#94A3B8", fontSize: 14 }}>{plan.period}</span>}
                 </div>
-                <p style={{ fontSize: 13, color: "#94A3B8" }}>{plan.desc}</p>
-              </div>
+                <p style={{ fontSize: 13, color: "#94A3B8", marginBottom: 20 }}>{plan.desc}</p>
+                <div style={{ height: 1, background: "#F1F5F9", marginBottom: 20 }} />
+                <ul style={{ listStyle: "none", marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {plan.features.map((f, j) => (
+                    <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13.5, color: "#374151" }}>
+                      <FiCheck size={15} style={{ color: plan.popular ? "#EA580C" : "#10B981", marginTop: 1, flexShrink: 0 }} /> {f}
+                    </li>
+                  ))}
+                  {plan.notIncluded.map((f, j) => (
+                    <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13.5, color: "#CBD5E1", textDecoration: "line-through" }}>
+                      <FiCheck size={15} style={{ color: "#E2E8F0", marginTop: 1, flexShrink: 0 }} /> {f}
+                    </li>
+                  ))}
+                </ul>
+                <button onClick={() => plan.name !== "Enterprise" ? setShowModal(true) : null}
+                  className={plan.popular ? "btn-primary" : "btn-outline"}
+                  style={{ width: "100%", justifyContent: "center", padding: "12px 20px", fontSize: 14 }}>
+                  {plan.cta} <FiArrowRight size={14} />
+                </button>
+              </motion.div>
+            ))}
+          </motion.div>
 
-              <div style={{ height: 1, background: "#F1F5F9", marginBottom: 24 }} />
-
-              <ul style={{ listStyle: "none", marginBottom: 24, display: "flex", flexDirection: "column", gap: 9 }}>
-                {plan.features.map((f, j) => (
-                  <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13.5, color: "#374151" }}>
-                    <FiCheck size={15} style={{ color: plan.popular ? "#EA580C" : "#10B981", marginTop: 1, flexShrink: 0 }} />
-                    {f}
-                  </li>
-                ))}
-                {plan.notIncluded.map((f, j) => (
-                  <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13.5, color: "#CBD5E1", textDecoration: "line-through" }}>
-                    <FiCheck size={15} style={{ color: "#E2E8F0", marginTop: 1, flexShrink: 0 }} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={() => plan.name !== "Enterprise" ? setShowModal(true) : null}
-                className={plan.popular ? "btn-primary" : "btn-outline"}
-                style={{ width: "100%", justifyContent: "center", padding: "13px 24px", fontSize: 14 }}>
-                {plan.cta} <FiArrowRight size={14} />
-              </button>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-          style={{ marginTop: 40, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "24px 32px", display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#EA580C", flexShrink: 0 }}>
-            <FiCpu />
-          </div>
-          <div>
-            <p style={{ fontWeight: 700, fontSize: 15, color: "#0F172A", marginBottom: 4 }}>Add-on Modules</p>
-            <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.6 }}>
-              Election Management and Multi-Vendor Marketplace modules are available as add-ons on the Professional and Enterprise plans.
-              Election module from <strong>₹4,999/election cycle</strong>. Marketplace from <strong>₹1,999/month</strong>. Contact us for bundle pricing.
-            </p>
-          </div>
-        </motion.div>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
+            style={{ marginTop: 32, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "22px 28px", display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#EA580C", flexShrink: 0 }}>
+              <FiCpu />
+            </div>
+            <div>
+              <p style={{ fontWeight: 700, fontSize: 15, color: "#0F172A", marginBottom: 4 }}>Add-on Modules</p>
+              <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.6 }}>
+                Election Management and Multi-Vendor Marketplace available as add-ons on Professional and Enterprise plans.
+                Election module from <strong>₹4,999/election cycle</strong>. Marketplace from <strong>₹1,999/month</strong>. Contact us for bundle pricing.
+              </p>
+            </div>
+          </motion.div>
+        </div>
       </section>
 
       {/* ─── FAQ ─── */}
-      <section style={{ padding: "80px 48px", background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 52 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#5B21B6", fontWeight: 600, marginBottom: 16 }}>FAQs</div>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px, 3vw, 40px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A" }}>
-              Frequently asked questions
-            </h2>
+      <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
+        <div className="section section-inner-sm">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 44 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#5B21B6", fontWeight: 600, marginBottom: 14 }}>FAQs</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(24px,3.5vw,40px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A" }}>Frequently asked questions</h2>
           </motion.div>
-
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}>
             {faqs.map((faq, i) => (
               <motion.div key={i} variants={fadeUp}
                 style={{ border: "1px solid #E2E8F0", borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
                 <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  style={{ width: "100%", padding: "18px 22px", background: openFaq === i ? "#F8FAFC" : "#FFFFFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, textAlign: "left", fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+                  style={{ width: "100%", padding: "16px 20px", background: openFaq === i ? "#F8FAFC" : "#FFFFFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
                   <span style={{ fontSize: 14.5, fontWeight: 600, color: "#0F172A" }}>{faq.q}</span>
-                  <FiChevronDown size={18} style={{ color: "#94A3B8", flexShrink: 0, transform: openFaq === i ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }} />
+                  <FiChevronDown size={17} style={{ color: "#94A3B8", flexShrink: 0, transform: openFaq === i ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }} />
                 </button>
                 <AnimatePresence>
                   {openFaq === i && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }}
-                      style={{ overflow: "hidden" }}>
-                      <p style={{ padding: "0 22px 18px", fontSize: 14, color: "#475569", lineHeight: 1.75, borderTop: "1px solid #F1F5F9" }}>{faq.a}</p>
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} style={{ overflow: "hidden" }}>
+                      <p style={{ padding: "0 20px 16px", fontSize: 14, color: "#475569", lineHeight: 1.75, borderTop: "1px solid #F1F5F9", paddingTop: 12 }}>{faq.a}</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -872,49 +881,44 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CONTACT ─── */}
-      <section id="contact" className="section-padding" style={{ padding: "96px 48px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 52 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 16 }}>Get in Touch</div>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(28px, 3.5vw, 46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 12 }}>Let's talk business</h2>
-            <p style={{ color: "#64748B", fontSize: 16, maxWidth: 400, margin: "0 auto" }}>Our team is available Mon–Sat, 9am–7pm IST. We typically reply within a few hours.</p>
+      <section id="contact" className="section">
+        <div className="section-inner-md">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp} style={{ textAlign: "center", marginBottom: 44 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 100, padding: "5px 14px", fontSize: 12, color: "#166534", fontWeight: 600, marginBottom: 14 }}>Get in Touch</div>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px,4vw,46px)", fontWeight: 800, letterSpacing: "-0.04em", color: "#0F172A", marginBottom: 10 }}>Let's talk business</h2>
+            <p style={{ color: "#64748B", fontSize: 16, maxWidth: 380, margin: "0 auto" }}>Our team is available Mon–Sat, 9am–7pm IST. We typically reply within a few hours.</p>
           </motion.div>
-
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-            className="contact-grid"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-
-            <motion.a variants={fadeUp}
-              href={`https://wa.me/91${CONTACT.whatsapp}?text=Hi%20Pankajal%20ERP%2C%20I%27d%20like%20to%20know%20more!`}
-              target="_blank" rel="noopener noreferrer" whileHover={{ y: -3 }}
-              style={{ display: "flex", alignItems: "center", gap: 16, padding: "24px 28px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, textDecoration: "none", transition: "all 0.2s" }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: "#F0FDF4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#25D366", flexShrink: 0 }}><FiMessageCircle /></div>
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="contact-grid">
+            <motion.a variants={fadeUp} href={`https://wa.me/91${CONTACT.whatsapp}?text=Hi%20Pankajal%20ERP!`} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 16, padding: "22px 24px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, textDecoration: "none", transition: "all 0.2s" }}
+              whileHover={{ y: -3 }}>
+              <div style={{ width: 50, height: 50, borderRadius: 13, background: "#F0FDF4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#25D366", flexShrink: 0 }}><FiMessageCircle /></div>
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>WhatsApp</p>
-                <p style={{ fontSize: 17, fontWeight: 700, color: "#0F172A", letterSpacing: "-0.01em" }}>+91 {CONTACT.whatsapp}</p>
-                <p style={{ fontSize: 12, color: "#25D366", marginTop: 3 }}>Chat with us →</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>WhatsApp</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: "#0F172A", letterSpacing: "-0.01em" }}>+91 {CONTACT.whatsapp}</p>
+                <p style={{ fontSize: 12, color: "#25D366", marginTop: 2 }}>Chat with us →</p>
               </div>
             </motion.a>
 
-            <motion.a variants={fadeUp}
-              href={`mailto:${CONTACT.email}`} whileHover={{ y: -3 }}
-              style={{ display: "flex", alignItems: "center", gap: 16, padding: "24px 28px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, textDecoration: "none", transition: "all 0.2s" }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#EA580C", flexShrink: 0 }}><FiMail /></div>
+            <motion.a variants={fadeUp} href={`mailto:${CONTACT.email}`}
+              style={{ display: "flex", alignItems: "center", gap: 16, padding: "22px 24px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, textDecoration: "none", transition: "all 0.2s" }}
+              whileHover={{ y: -3 }}>
+              <div style={{ width: 50, height: 50, borderRadius: 13, background: "#FFF7ED", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#EA580C", flexShrink: 0 }}><FiMail /></div>
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Email</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>Email</p>
                 <p style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", wordBreak: "break-all" }}>{CONTACT.email}</p>
-                <p style={{ fontSize: 12, color: "#EA580C", marginTop: 3 }}>Reply within 24h →</p>
+                <p style={{ fontSize: 12, color: "#EA580C", marginTop: 2 }}>Reply within 24h →</p>
               </div>
             </motion.a>
 
-            <motion.div variants={fadeUp} style={{ padding: "24px 28px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 16, textTransform: "uppercase", letterSpacing: "0.06em" }}>Follow Us</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+            <motion.div variants={fadeUp} style={{ padding: "22px 24px", background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>Follow Us</p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
                 {[
                   { href: CONTACT.instagram, icon: <FiInstagram size={17} />, color: "#E1306C" },
-                  { href: CONTACT.twitter,   icon: <FiTwitter   size={17} />, color: "#1DA1F2" },
-                  { href: CONTACT.linkedin,  icon: <FiLinkedin  size={17} />, color: "#0A66C2" },
-                  { href: CONTACT.youtube,   icon: <FiYoutube   size={17} />, color: "#FF0000" },
+                  { href: CONTACT.twitter, icon: <FiTwitter size={17} />, color: "#1DA1F2" },
+                  { href: CONTACT.linkedin, icon: <FiLinkedin size={17} />, color: "#0A66C2" },
+                  { href: CONTACT.youtube, icon: <FiYoutube size={17} />, color: "#FF0000" },
                 ].map((s, k) => (
                   <a key={k} href={s.href} target="_blank" rel="noopener noreferrer"
                     style={{ width: 44, height: 44, borderRadius: 10, border: "1px solid #E2E8F0", display: "flex", alignItems: "center", justifyContent: "center", color: "#94A3B8", textDecoration: "none", transition: "all 0.2s" }}
@@ -931,23 +935,18 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA BANNER ─── */}
-      <section style={{ padding: "0 48px 96px", maxWidth: 1200, margin: "0 auto" }}>
+      <section style={{ padding: "0 clamp(16px,4vw,48px) 80px", maxWidth: 1200, margin: "0 auto" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-          className="cta-banner"
-          style={{ background: "linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 50%, #F0FDF4 100%)", border: "1px solid #FED7AA", borderRadius: 24, padding: "64px", textAlign: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(234,88,12,0.06) 0%, transparent 70%)", top: "-30%", left: "40%", transform: "translateX(-50%)", pointerEvents: "none" }} />
+          style={{ background: "linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 50%, #F0FDF4 100%)", border: "1px solid #FED7AA", borderRadius: 24, padding: "clamp(40px,6vw,64px)", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(234,88,12,0.06) 0%,transparent 70%)", top: "-20%", left: "40%", transform: "translateX(-50%)", pointerEvents: "none" }} />
           <div style={{ position: "relative", zIndex: 1 }}>
-            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(26px, 3.5vw, 44px)", fontWeight: 800, color: "#0F172A", marginBottom: 14, letterSpacing: "-0.04em", lineHeight: 1.1 }}>
-              Ready to transform your operations?
-            </h2>
-            <p style={{ color: "#64748B", fontSize: 16, maxWidth: 480, margin: "0 auto 36px" }}>
-              Join hundreds of Indian businesses already scaling with Pankajal ERP. Start your 14-day free trial today — no card required.
-            </p>
+            <h2 style={{ fontFamily: "'Sora',sans-serif", fontSize: "clamp(24px,4vw,44px)", fontWeight: 800, color: "#0F172A", marginBottom: 12, letterSpacing: "-0.04em", lineHeight: 1.1 }}>Ready to transform your operations?</h2>
+            <p style={{ color: "#64748B", fontSize: 16, maxWidth: 460, margin: "0 auto 32px", lineHeight: 1.7 }}>Join hundreds of Indian businesses already scaling with Pankajal ERP. Start your 14-day free trial today — no card required.</p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <button onClick={() => setShowModal(true)} className="btn-primary" style={{ fontSize: 15, padding: "15px 36px" }}>
                 Start your free trial <FiArrowRight size={15} />
               </button>
-              <a href={`https://wa.me/91${CONTACT.whatsapp}?text=Hi%20I%27d%20like%20to%20learn%20more%20about%20Pankajal%20ERP`} target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ fontSize: 15, padding: "15px 36px" }}>
+              <a href={`https://wa.me/91${CONTACT.whatsapp}`} target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ fontSize: 15, padding: "15px 36px" }}>
                 <FiMessageCircle size={15} style={{ color: "#25D366" }} /> Talk to our team
               </a>
             </div>
@@ -956,27 +955,24 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer style={{ background: "#0F172A", padding: "56px 48px 36px" }}>
+      <footer style={{ background: "#0F172A", padding: "52px clamp(16px,4vw,48px) 32px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr 1fr 1fr 1fr", gap: 48, marginBottom: 48 }}>
-
-            <div className="footer-brand">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif" }}>PKE</div>
+          <div className="footer-grid" style={{ marginBottom: 44 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif", flexShrink: 0 }}>PKE</div>
                 <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 15, color: "#F8FAFC" }}>Pankajal ERP</span>
               </div>
-              <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.75, marginBottom: 20, maxWidth: 240 }}>
-                All-in-one cloud ERP for Indian businesses. GST-compliant, multi-module, mobile-ready.
-              </p>
-              <div style={{ display: "flex", gap: 8 }}>
+              <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.75, marginBottom: 18, maxWidth: 220 }}>All-in-one cloud ERP for Indian businesses. GST-compliant, multi-module, mobile-ready.</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {[
-                  { href: CONTACT.instagram, icon: <FiInstagram size={15} /> },
-                  { href: CONTACT.twitter,   icon: <FiTwitter   size={15} /> },
-                  { href: CONTACT.linkedin,  icon: <FiLinkedin  size={15} /> },
-                  { href: CONTACT.youtube,   icon: <FiYoutube   size={15} /> },
+                  { href: CONTACT.instagram, icon: <FiInstagram size={14} /> },
+                  { href: CONTACT.twitter, icon: <FiTwitter size={14} /> },
+                  { href: CONTACT.linkedin, icon: <FiLinkedin size={14} /> },
+                  { href: CONTACT.youtube, icon: <FiYoutube size={14} /> },
                 ].map((s, i) => (
                   <a key={i} href={s.href} target="_blank" rel="noopener noreferrer"
-                    style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", textDecoration: "none", transition: "all 0.2s" }}
+                    style={{ width: 34, height: 34, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B", textDecoration: "none", transition: "all 0.2s" }}
                     onMouseEnter={e => { e.currentTarget.style.color = "#F97316"; e.currentTarget.style.borderColor = "rgba(249,115,22,0.4)"; }}
                     onMouseLeave={e => { e.currentTarget.style.color = "#64748B"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}>
                     {s.icon}
@@ -986,15 +982,15 @@ export default function LandingPage() {
             </div>
 
             {[
-              { title: "Product",  items: ["Modules", "Pricing", "Changelog", "Roadmap", "API Docs"] },
-              { title: "Company",  items: ["About", "Blog", "Careers", "Press Kit"] },
-              { title: "Support",  items: ["Help Center", "Onboarding Guide", "Video Tutorials", "System Status"] },
-              { title: "Legal",    items: ["Privacy Policy", "Terms of Service", "Cookie Policy", "Data Security"] },
+              { title: "Product", items: ["Modules", "Pricing", "Changelog", "Roadmap", "API Docs"] },
+              { title: "Company", items: ["About", "Blog", "Careers", "Press Kit"] },
+              { title: "Support", items: ["Help Center", "Onboarding Guide", "Video Tutorials", "System Status"] },
+              { title: "Legal", items: ["Privacy Policy", "Terms of Service", "Cookie Policy", "Data Security"] },
             ].map(col => (
               <div key={col.title}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 16 }}>{col.title}</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14 }}>{col.title}</p>
                 {col.items.map(item => (
-                  <a key={item} href="#" style={{ display: "block", fontSize: 13.5, color: "#475569", textDecoration: "none", marginBottom: 10, transition: "color 0.2s" }}
+                  <a key={item} href="#" style={{ display: "block", fontSize: 13.5, color: "#475569", textDecoration: "none", marginBottom: 9, transition: "color 0.2s" }}
                     onMouseEnter={e => e.target.style.color = "#CBD5E1"}
                     onMouseLeave={e => e.target.style.color = "#475569"}>{item}</a>
                 ))}
@@ -1002,16 +998,16 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 24, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 22, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <p style={{ fontSize: 13, color: "#334155" }}>© {new Date().getFullYear()} Pankajal ERP. Built with ❤️ for India.</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {[
-                { icon: <FiLock size={12} />, text: "SOC 2 Ready" },
-                { icon: <FiShield size={12} />, text: "ISO 27001" },
-                { icon: <FiGlobe size={12} />, text: "GDPR Compliant" },
-                { icon: <FiPhoneCall size={12} />, text: "India Support" },
+                { icon: <FiLock size={11} />, text: "SOC 2 Ready" },
+                { icon: <FiShield size={11} />, text: "ISO 27001" },
+                { icon: <FiGlobe size={11} />, text: "GDPR Compliant" },
+                { icon: <FiPhoneCall size={11} />, text: "India Support" },
               ].map((b, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "5px 10px", fontSize: 11, color: "#64748B" }}>
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "4px 9px", fontSize: 11, color: "#64748B" }}>
                   {b.icon} {b.text}
                 </div>
               ))}
@@ -1022,8 +1018,6 @@ export default function LandingPage() {
     </main>
   );
 }
-
-
 
 
 // "use client";
