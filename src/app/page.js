@@ -460,7 +460,7 @@ export default function LandingPage() {
         }
         .module-card:hover { border-color: #CBD5E1; box-shadow: 0 8px 32px rgba(0,0,0,0.07); transform: translateY(-2px); }
 
-        .section { padding: 72px clamp(20px, 5vw, 64px); }
+        .section { padding: 72px clamp(20px, 5vw, 64px); scroll-margin-top: 110px; }
         .section-inner { max-width: 1200px; margin: 0 auto; }
         .section-inner-sm { max-width: 760px; margin: 0 auto; }
         .section-inner-md { max-width: 1100px; margin: 0 auto; }
@@ -538,9 +538,9 @@ export default function LandingPage() {
       <motion.nav
         initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         style={{
-          position: "sticky", top: 0, zIndex: 100,
-          background: "rgba(248,250,252,0.94)", backdropFilter: "blur(16px)",
-          borderBottom: "1px solid rgba(226,232,240,0.9)",
+          position: "fixed", top: 0, left: 0, right: 0, width: "100%", zIndex: 1000,
+          background: "rgba(248,250,252,0.96)", backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(226,232,240,0.95)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px clamp(16px,4vw,48px)", gap: 12 }}>
@@ -563,7 +563,7 @@ export default function LandingPage() {
           </div>
 
           {/* CTA buttons */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <div className="nav-cta-buttons" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             <Link href="/signin" className="btn-outline" style={{ padding: "8px 16px", fontSize: 13 }}>Sign in</Link>
             <button onClick={() => setShowModal(true)} className="btn-primary" style={{ padding: "8px 16px", fontSize: 13 }}>
               {trialActive ? `${daysLeft}d left` : "Free Trial"} <FiArrowRight size={13} />
@@ -572,7 +572,7 @@ export default function LandingPage() {
             <button onClick={() => setMobileNav(p => !p)}
               className="mobile-hamburger"
               style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#0F172A", display: "none", padding: "4px" }}>
-              <style>{`@media(max-width:768px){.mobile-hamburger{display:flex!important;align-items:center;}}`}</style>
+              <style>{`@media(max-width:768px){.mobile-hamburger{display:flex!important;align-items:center;}.nav-cta-buttons>a,.nav-cta-buttons>button:not(.mobile-hamburger){display:none!important;}}`}</style>
               {mobileNav ? <FiClose /> : <FiMenu />}
             </button>
           </div>
@@ -606,7 +606,7 @@ export default function LandingPage() {
       <section ref={heroRef} style={{
         position: "relative", minHeight: "88vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", textAlign: "center",
-        padding: "80px clamp(20px, 5vw, 48px) 90px", overflow: "hidden",
+        padding: "110px clamp(20px, 5vw, 48px) 90px", overflow: "hidden",
         background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
       }}>
         {/* Grid bg */}
