@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
+import { User } from "lucide-react";
 
 // ── Icons ─────────────────────────────────────────────────────────
 const Icons = {
@@ -21,6 +22,8 @@ const Icons = {
   Car:         () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>,
   X:           () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   Exit:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>,
+  Key:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4L18.5 2.5z"/></svg>,
+  User:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
 };
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -57,7 +60,6 @@ const validators = {
 };
 
 // ── Active-entry filter ───────────────────────────────────────────
-// An IN entry is "active" when no OUT exists with the same personName+contact AFTER its timestamp.
 function filterActiveEntries(allEntries) {
   const getContact = (e) => (e.contactNumber || e.phone || "").trim();
 
@@ -123,7 +125,10 @@ function Toast({ message, onClose }) {
   }, [message, onClose]);
   if (!message) return null;
   return (
-    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold max-w-[90vw] border ${message.type === "error" ? "bg-red-50 border-red-200 text-red-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>
+    <div
+      className={`fixed left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold max-w-[90vw] border ${message.type === "error" ? "bg-red-50 border-red-200 text-red-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}
+      style={{ top: `max(env(safe-area-inset-top, 0px), 16px)` }}
+    >
       {message.type === "success" ? <Icons.Check /> : <Icons.Alert />}
       {message.text}
       <button onClick={onClose} className="ml-1 opacity-50 hover:opacity-100"><Icons.X /></button>
@@ -829,7 +834,7 @@ export default function GuardPage() {
     );
   }
 
-  // ── Main render ────────────────────────────────────────────────
+  // ── Main render with safe-area support ─────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <style>{`
@@ -848,8 +853,11 @@ export default function GuardPage() {
 
       <Toast message={message} onClose={() => setMessage(null)} />
 
-      {/* ── Header ── */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
+      {/* Header – adds top safe-area padding */}
+      <header
+        className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
@@ -893,6 +901,15 @@ export default function GuardPage() {
                     {isGuard ? "Guard" : "Housekeeper"}
                   </span>
                 </div>
+                {/* link change password and profile settings */}
+                <button onClick={() => { setProfileOpen(false); window.location.href = "/societymanagement/profile"; }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium">
+                  <Icons.User /> Profile Settings
+                </button>
+                <button onClick={() => { setProfileOpen(false); window.location.href = "/societymanagement/change-password"; }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors font-medium">
+                  <Icons.Key /> Change Password
+                </button> 
                 <button onClick={() => { setProfileOpen(false); handleLogout(); }}
                   className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-500 hover:bg-red-50 transition-colors font-medium">
                   <Icons.LogOut /> Sign Out
@@ -903,9 +920,14 @@ export default function GuardPage() {
         </div>
       </header>
 
-      {/* ── Tab Content ── */}
-      <div className="flex-1 max-w-md mx-auto w-full overflow-y-auto">
-
+      {/* Main scrollable content – adds horizontal safe-area padding */}
+      <div
+        className="flex-1 max-w-md mx-auto w-full overflow-y-auto"
+        style={{
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)"
+        }}
+      >
         {/* Attendance Tab */}
         {activeTab === "attendance" && isGuard && (
           <div className="p-4 space-y-4">
@@ -1135,8 +1157,11 @@ export default function GuardPage() {
         <div className="h-20" />
       </div>
 
-      {/* ── Bottom Nav ── */}
-      <nav className="bg-white border-t border-gray-200 sticky bottom-0 z-30 shadow-[0_-1px_8px_rgba(0,0,0,0.06)]">
+      {/* Bottom navigation – adds safe-area bottom padding */}
+      <nav
+        className="bg-white border-t border-gray-200 sticky bottom-0 z-30 shadow-[0_-1px_8px_rgba(0,0,0,0.06)]"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
         <div className="max-w-md mx-auto flex">
           {tabs.map(tab => {
             const Icon   = tab.icon;
