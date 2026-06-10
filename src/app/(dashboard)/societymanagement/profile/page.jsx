@@ -95,109 +95,386 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" /></div>;
+  // Shared safe‑area wrapper component
+  const SafeAreaWrapper = ({ children }) => (
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{
+        paddingTop: "max(1.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
+      }}
+    >
+      {children}
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaWrapper>
+        <div className="flex items-center justify-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600" />
+        </div>
+      </SafeAreaWrapper>
+    );
+  }
 
   if (userType !== "company") {
     // Simple user profile
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <SafeAreaWrapper>
+        <ToastContainer
+          position="top-center"
+          style={{ top: "env(safe-area-inset-top, 0px)" }}
+        />
         <div className="max-w-2xl mx-auto">
-          <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"><FiArrowLeft /> Back</button>
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition"
+          >
+            <FiArrowLeft /> Back
+          </button>
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h1 className="text-2xl font-bold mb-6">My Profile</h1>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div><label>Full Name</label><input name="name" value={form.name || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" required /></div>
-              <div><label>Email</label><input value={form.email} disabled className="w-full px-4 py-2 rounded-lg bg-gray-100" /></div>
-              <div><label>Phone</label><input name="phone" value={form.phone || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-              <button type="submit" disabled={saving} className="w-full bg-indigo-600 text-white py-2 rounded-lg flex items-center justify-center gap-2">{saving ? <FiLoader className="animate-spin" /> : <FiSave />} Save</button>
+              <div>
+                <label>Full Name</label>
+                <input
+                  name="name"
+                  value={form.name || ""}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 rounded-lg border"
+                  required
+                />
+              </div>
+              <div>
+                <label>Email</label>
+                <input value={form.email} disabled className="w-full px-4 py-2 rounded-lg bg-gray-100" />
+              </div>
+              <div>
+                <label>Phone</label>
+                <input
+                  name="phone"
+                  value={form.phone || ""}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 rounded-lg border"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full bg-indigo-600 text-white py-2 rounded-lg flex items-center justify-center gap-2"
+              >
+                {saving ? <FiLoader className="animate-spin" /> : <FiSave />} Save
+              </button>
             </form>
           </div>
         </div>
-      </div>
+      </SafeAreaWrapper>
     );
   }
 
   // Company full profile
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <ToastContainer position="top-center" />
+    <SafeAreaWrapper>
+      <ToastContainer
+        position="top-center"
+        style={{ top: "env(safe-area-inset-top, 0px)" }}
+      />
       <div className="max-w-5xl mx-auto">
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"><FiArrowLeft /> Back</button>
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition"
+        >
+          <FiArrowLeft /> Back
+        </button>
         <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex items-center gap-3 mb-6"><FiBriefcase className="text-indigo-600 text-2xl" /><h1 className="text-2xl font-bold">Company Profile</h1></div>
+          <div className="flex items-center gap-3 mb-6">
+            <FiBriefcase className="text-indigo-600 text-2xl" />
+            <h1 className="text-2xl font-bold">Company Profile</h1>
+          </div>
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Basic Information */}
-            <div className="border-b pb-4"><h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+            <div className="border-b pb-4">
+              <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label>Company Name *</label><input name="companyName" value={form.companyName || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Contact Person *</label><input name="contactName" value={form.contactName || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Email *</label><input name="email" value={form.email || ""} disabled className="w-full px-4 py-2 rounded-lg bg-gray-100" /></div>
-                <div><label>Phone *</label><input name="phone" value={form.phone || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Country *</label><input name="country" value={form.country || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Address *</label><textarea name="address" value={form.address || ""} onChange={handleChange} rows="2" className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>PIN Code *</label><input name="pinCode" value={form.pinCode || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" /></div>
-              </div>
-            </div>
-            {/* Business Details */}
-            <div className="border-b pb-4"><h2 className="text-lg font-semibold mb-4">Business Details</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label>Business Type</label><select name="businessType" value={form.businessType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border"><option value="">Select</option><option value="Pvt Ltd">Pvt Ltd</option><option value="LLP">LLP</option><option value="Partnership">Partnership</option><option value="Sole Proprietorship">Sole Proprietorship</option></select></div>
-                <div><label>Industry</label><select name="industry" value={form.industry || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border"><option value="">Select</option><option value="Manufacturing">Manufacturing</option><option value="IT / Software">IT / Software</option><option value="Retail">Retail</option><option value="Healthcare">Healthcare</option><option value="Education">Education</option><option value="Real Estate / Society">Real Estate / Society</option><option value="Political / Election">Political / Election</option><option value="Other">Other</option></select></div>
-                <div><label>GST Number (India)</label><input name="gstNumber" value={form.gstNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Society Reg No.</label><input name="societyRegNo" value={form.societyRegNo || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Employee Count</label><input type="number" name="employeeCount" value={form.employeeCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-              </div>
-            </div>
-            {/* Subscription / Plan */}
-            <div className="border-b pb-4"><h2 className="text-lg font-semibold mb-4">Subscription & Plan</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label>Plan</label><select name="plan" value={form.plan || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border"><option value="starter">Starter</option><option value="growth">Growth</option></select></div>
-                <div><label>Payment Method</label><select name="paymentMethod" value={form.paymentMethod || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border"><option value="">Select</option><option value="upi">UPI</option><option value="card">Card</option><option value="netbanking">Netbanking</option><option value="razorpay">Razorpay</option><option value="qr">QR</option><option value="cash">Cash</option><option value="paylater">Pay Later</option><option value="trial">Trial</option></select></div>
-                <div><label>Plan Activated At</label><input type="date" name="planActivatedAt" value={form.planActivatedAt ? form.planActivatedAt.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Trial Ends At</label><input type="date" name="trialEndsAt" value={form.trialEndsAt ? form.trialEndsAt.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
-              </div>
-            </div>
-            {/* Management Type & Dynamic Fields */}
-            <div className="border-b pb-4"><h2 className="text-lg font-semibold mb-4">Management Details</h2>
-              <div><label>Management Type</label><select name="managementType" value={form.managementType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border max-w-md"><option value="erp">ERP</option><option value="society">Society</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="retail">Retail</option><option value="election">Election</option></select></div>
-              {form.managementType === "erp" && <div className="mt-4"><label>ERP Modules</label><input name="erpModules" value={form.erpModules || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>}
-              {form.managementType === "society" && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div><label>Total Flats</label><input type="number" name="totalFlats" value={form.totalFlats || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Committee Name</label><input name="committeeName" value={form.committeeName || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>License Number</label><input name="licenseNumber" value={form.licenseNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div></div>)}
-              {form.managementType === "healthcare" && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div><label>Facility Type</label><input name="facilityType" value={form.facilityType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Bed Capacity</label><input type="number" name="bedCapacity" value={form.bedCapacity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>License Number</label><input name="licenseNumber" value={form.licenseNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div></div>)}
-              {form.managementType === "education" && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div><label>Institution Code</label><input name="institutionCode" value={form.institutionCode || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Board/University</label><input name="boardOrUniversity" value={form.boardOrUniversity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Student Capacity</label><input type="number" name="studentCapacity" value={form.studentCapacity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div></div>)}
-              {form.managementType === "retail" && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div><label>Store PAN</label><input name="storePan" value={form.storePan || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Outlet Count</label><input type="number" name="outletCount" value={form.outletCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Primary Category</label><input name="primaryCategory" value={form.primaryCategory || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div></div>)}
-              {form.managementType === "election" && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"><div><label>Constituency Name</label><input name="constituencyName" value={form.constituencyName || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Election Type</label><input name="electionType" value={form.electionType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Election Date</label><input type="date" name="electionDate" value={form.electionDate ? form.electionDate.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div><div><label>Booth Count</label><input type="number" name="boothCount" value={form.boothCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div></div>)}
-            </div>
-            {/* Support Emails */}
-            <div className="border-b pb-4"><h2 className="text-lg font-semibold mb-4">Support Emails</h2>
-              {supportEmails.map((email, idx) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-3 border rounded-lg">
-                  <input placeholder="Email" value={email.email} onChange={(e) => updateSupportEmail(idx, "email", e.target.value)} className="px-3 py-1 border rounded" />
-                  <select value={email.type} onChange={(e) => updateSupportEmail(idx, "type", e.target.value)} className="px-3 py-1 border rounded"><option value="gmail">Gmail</option><option value="outlook">Outlook</option><option value="smtp">SMTP</option></select>
-                  {email.type !== "outlook" && <input placeholder="App Password" value={email.appPassword} onChange={(e) => updateSupportEmail(idx, "appPassword", e.target.value)} className="px-3 py-1 border rounded" />}
-                  {email.type === "outlook" && (<><input placeholder="Tenant ID" value={email.tenantId || ""} onChange={(e) => updateSupportEmail(idx, "tenantId", e.target.value)} className="px-3 py-1 border rounded" /><input placeholder="Client ID" value={email.clientId || ""} onChange={(e) => updateSupportEmail(idx, "clientId", e.target.value)} className="px-3 py-1 border rounded" /><input placeholder="Webhook Secret" value={email.webhookSecret || ""} onChange={(e) => updateSupportEmail(idx, "webhookSecret", e.target.value)} className="px-3 py-1 border rounded" /></>)}
-                  <button type="button" onClick={() => removeSupportEmail(idx)} className="text-red-600"><FiTrash2 /></button>
+                <div>
+                  <label>Company Name *</label>
+                  <input name="companyName" value={form.companyName || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" />
                 </div>
-              ))}
-              <button type="button" onClick={addSupportEmail} className="mt-2 flex items-center gap-1 text-indigo-600"><FiPlus /> Add Support Email</button>
-            </div>
-            {/* Working Hours */}
-            <div><h2 className="text-lg font-semibold mb-4">Working Hours</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label>Start Hour</label><input type="number" value={workingHours.startHour} onChange={(e) => handleWorkingHoursChange("startHour", parseInt(e.target.value))} className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>End Hour</label><input type="number" value={workingHours.endHour} onChange={(e) => handleWorkingHoursChange("endHour", parseInt(e.target.value))} className="w-full px-4 py-2 rounded-lg border" /></div>
-                <div><label>Working Days (0=Sun, 1=Mon, ..., 6=Sat)</label><input type="text" value={workingHours.workingDays.join(",")} onChange={(e) => handleWorkingHoursChange("workingDays", e.target.value.split(",").map(Number))} placeholder="e.g., 1,2,3,4,5" className="w-full px-4 py-2 rounded-lg border" /></div>
+                <div>
+                  <label>Contact Person *</label>
+                  <input name="contactName" value={form.contactName || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Email *</label>
+                  <input name="email" value={form.email || ""} disabled className="w-full px-4 py-2 rounded-lg bg-gray-100" />
+                </div>
+                <div>
+                  <label>Phone *</label>
+                  <input name="phone" value={form.phone || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Country *</label>
+                  <input name="country" value={form.country || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Address *</label>
+                  <textarea name="address" value={form.address || ""} onChange={handleChange} rows="2" className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>PIN Code *</label>
+                  <input name="pinCode" value={form.pinCode || ""} onChange={handleChange} required className="w-full px-4 py-2 rounded-lg border" />
+                </div>
               </div>
             </div>
 
-            <button type="submit" disabled={saving} className="w-full bg-indigo-600 text-white py-2 rounded-lg flex items-center justify-center gap-2">{saving ? <FiLoader className="animate-spin" /> : <FiSave />} Save All Changes</button>
+            {/* Business Details */}
+            <div className="border-b pb-4">
+              <h2 className="text-lg font-semibold mb-4">Business Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label>Business Type</label>
+                  <select name="businessType" value={form.businessType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border">
+                    <option value="">Select</option>
+                    <option value="Pvt Ltd">Pvt Ltd</option>
+                    <option value="LLP">LLP</option>
+                    <option value="Partnership">Partnership</option>
+                    <option value="Sole Proprietorship">Sole Proprietorship</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Industry</label>
+                  <select name="industry" value={form.industry || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border">
+                    <option value="">Select</option>
+                    <option value="Manufacturing">Manufacturing</option>
+                    <option value="IT / Software">IT / Software</option>
+                    <option value="Retail">Retail</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Education">Education</option>
+                    <option value="Real Estate / Society">Real Estate / Society</option>
+                    <option value="Political / Election">Political / Election</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label>GST Number (India)</label>
+                  <input name="gstNumber" value={form.gstNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Society Reg No.</label>
+                  <input name="societyRegNo" value={form.societyRegNo || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Employee Count</label>
+                  <input type="number" name="employeeCount" value={form.employeeCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+              </div>
+            </div>
+
+            {/* Subscription / Plan */}
+            <div className="border-b pb-4">
+              <h2 className="text-lg font-semibold mb-4">Subscription & Plan</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label>Plan</label>
+                  <select name="plan" value={form.plan || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border">
+                    <option value="starter">Starter</option>
+                    <option value="growth">Growth</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Payment Method</label>
+                  <select name="paymentMethod" value={form.paymentMethod || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border">
+                    <option value="">Select</option>
+                    <option value="upi">UPI</option>
+                    <option value="card">Card</option>
+                    <option value="netbanking">Netbanking</option>
+                    <option value="razorpay">Razorpay</option>
+                    <option value="qr">QR</option>
+                    <option value="cash">Cash</option>
+                    <option value="paylater">Pay Later</option>
+                    <option value="trial">Trial</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Plan Activated At</label>
+                  <input type="date" name="planActivatedAt" value={form.planActivatedAt ? form.planActivatedAt.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+                <div>
+                  <label>Trial Ends At</label>
+                  <input type="date" name="trialEndsAt" value={form.trialEndsAt ? form.trialEndsAt.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+              </div>
+            </div>
+
+            {/* Management Type & Dynamic Fields */}
+            <div className="border-b pb-4">
+              <h2 className="text-lg font-semibold mb-4">Management Details</h2>
+              <div>
+                <label>Management Type</label>
+                <select name="managementType" value={form.managementType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border max-w-md">
+                  <option value="erp">ERP</option>
+                  <option value="society">Society</option>
+                  <option value="healthcare">Healthcare</option>
+                  <option value="education">Education</option>
+                  <option value="retail">Retail</option>
+                  <option value="election">Election</option>
+                </select>
+              </div>
+              {form.managementType === "erp" && (
+                <div className="mt-4">
+                  <label>ERP Modules</label>
+                  <input name="erpModules" value={form.erpModules || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" />
+                </div>
+              )}
+              {form.managementType === "society" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div><label>Total Flats</label><input type="number" name="totalFlats" value={form.totalFlats || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Committee Name</label><input name="committeeName" value={form.committeeName || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>License Number</label><input name="licenseNumber" value={form.licenseNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                </div>
+              )}
+              {form.managementType === "healthcare" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div><label>Facility Type</label><input name="facilityType" value={form.facilityType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Bed Capacity</label><input type="number" name="bedCapacity" value={form.bedCapacity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>License Number</label><input name="licenseNumber" value={form.licenseNumber || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                </div>
+              )}
+              {form.managementType === "education" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div><label>Institution Code</label><input name="institutionCode" value={form.institutionCode || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Board/University</label><input name="boardOrUniversity" value={form.boardOrUniversity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Student Capacity</label><input type="number" name="studentCapacity" value={form.studentCapacity || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                </div>
+              )}
+              {form.managementType === "retail" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div><label>Store PAN</label><input name="storePan" value={form.storePan || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Outlet Count</label><input type="number" name="outletCount" value={form.outletCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Primary Category</label><input name="primaryCategory" value={form.primaryCategory || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                </div>
+              )}
+              {form.managementType === "election" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div><label>Constituency Name</label><input name="constituencyName" value={form.constituencyName || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Election Type</label><input name="electionType" value={form.electionType || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Election Date</label><input type="date" name="electionDate" value={form.electionDate ? form.electionDate.split("T")[0] : ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                  <div><label>Booth Count</label><input type="number" name="boothCount" value={form.boothCount || ""} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border" /></div>
+                </div>
+              )}
+            </div>
+
+            {/* Support Emails */}
+            <div className="border-b pb-4">
+              <h2 className="text-lg font-semibold mb-4">Support Emails</h2>
+              {supportEmails.map((email, idx) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-3 border rounded-lg">
+                  <input
+                    placeholder="Email"
+                    value={email.email}
+                    onChange={(e) => updateSupportEmail(idx, "email", e.target.value)}
+                    className="px-3 py-1 border rounded"
+                  />
+                  <select
+                    value={email.type}
+                    onChange={(e) => updateSupportEmail(idx, "type", e.target.value)}
+                    className="px-3 py-1 border rounded"
+                  >
+                    <option value="gmail">Gmail</option>
+                    <option value="outlook">Outlook</option>
+                    <option value="smtp">SMTP</option>
+                  </select>
+                  {email.type !== "outlook" && (
+                    <input
+                      placeholder="App Password"
+                      value={email.appPassword}
+                      onChange={(e) => updateSupportEmail(idx, "appPassword", e.target.value)}
+                      className="px-3 py-1 border rounded"
+                    />
+                  )}
+                  {email.type === "outlook" && (
+                    <>
+                      <input
+                        placeholder="Tenant ID"
+                        value={email.tenantId || ""}
+                        onChange={(e) => updateSupportEmail(idx, "tenantId", e.target.value)}
+                        className="px-3 py-1 border rounded"
+                      />
+                      <input
+                        placeholder="Client ID"
+                        value={email.clientId || ""}
+                        onChange={(e) => updateSupportEmail(idx, "clientId", e.target.value)}
+                        className="px-3 py-1 border rounded"
+                      />
+                      <input
+                        placeholder="Webhook Secret"
+                        value={email.webhookSecret || ""}
+                        onChange={(e) => updateSupportEmail(idx, "webhookSecret", e.target.value)}
+                        className="px-3 py-1 border rounded"
+                      />
+                    </>
+                  )}
+                  <button type="button" onClick={() => removeSupportEmail(idx)} className="text-red-600">
+                    <FiTrash2 />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={addSupportEmail} className="mt-2 flex items-center gap-1 text-indigo-600">
+                <FiPlus /> Add Support Email
+              </button>
+            </div>
+
+            {/* Working Hours */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Working Hours</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label>Start Hour</label>
+                  <input
+                    type="number"
+                    value={workingHours.startHour}
+                    onChange={(e) => handleWorkingHoursChange("startHour", parseInt(e.target.value))}
+                    className="w-full px-4 py-2 rounded-lg border"
+                  />
+                </div>
+                <div>
+                  <label>End Hour</label>
+                  <input
+                    type="number"
+                    value={workingHours.endHour}
+                    onChange={(e) => handleWorkingHoursChange("endHour", parseInt(e.target.value))}
+                    className="w-full px-4 py-2 rounded-lg border"
+                  />
+                </div>
+                <div>
+                  <label>Working Days (0=Sun, 1=Mon, ..., 6=Sat)</label>
+                  <input
+                    type="text"
+                    value={workingHours.workingDays.join(",")}
+                    onChange={(e) => handleWorkingHoursChange("workingDays", e.target.value.split(",").map(Number))}
+                    placeholder="e.g., 1,2,3,4,5"
+                    className="w-full px-4 py-2 rounded-lg border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full bg-indigo-600 text-white py-2 rounded-lg flex items-center justify-center gap-2"
+            >
+              {saving ? <FiLoader className="animate-spin" /> : <FiSave />} Save All Changes
+            </button>
           </form>
         </div>
       </div>
-    </div>
+    </SafeAreaWrapper>
   );
 }
-
-
 
 // "use client";
 // import { useState, useEffect } from "react";

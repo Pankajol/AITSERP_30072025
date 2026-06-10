@@ -82,8 +82,22 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <ToastContainer position="top-center" />
+    // Main container with safe‑area insets
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{
+        paddingTop: "max(1.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1.5rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1.5rem, env(safe-area-inset-right, 0px))",
+      }}
+    >
+      <ToastContainer
+        position="top-center"
+        style={{
+          top: "env(safe-area-inset-top, 0px)",
+        }}
+      />
       <div className="max-w-md mx-auto">
         <button
           onClick={() => router.back()}
