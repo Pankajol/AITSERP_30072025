@@ -146,7 +146,6 @@ function TrialModal({ onClose, onSuccess }) {
   }, []);
 
   const handleSubmit = async () => {
-    // Client-side validation only (no external API calls for safety)
     const validationErrors = validateFormData(form);
     
     if (Object.keys(validationErrors).length > 0) {
@@ -158,12 +157,8 @@ function TrialModal({ onClose, onSuccess }) {
     setErrors({});
     
     try {
-      // Simulate processing delay
       await new Promise(r => setTimeout(r, 800));
-      
-      // Create trial record
       const record = startTrial(form);
-      
       if (record) {
         setLoading(false);
         setStep(2);
@@ -239,7 +234,6 @@ function TrialModal({ onClose, onSuccess }) {
             <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.6 }}>Full platform access. Auto-deactivated after 14 days — no surprise charges.</p>
           </div>
 
-          {/* Fields grid — 2-col on wider modal, 1-col on small screens */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
             {fieldConfig.map(({ k, label, type, placeholder }) => (
               <div key={k}>
@@ -358,7 +352,6 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
 
-  // Initialize trial record on mount (client-side only)
   useEffect(() => {
     try {
       const record = getTrialRecord();
@@ -369,7 +362,6 @@ export default function LandingPage() {
     }
   }, []);
   
-  // Manage body overflow
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.body.style.overflow = (showModal || mobileNav) ? "hidden" : "";
@@ -470,7 +462,7 @@ export default function LandingPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
+        html { scroll-behavior: smooth; scroll-padding-top: 90px; } /* prevents anchor links from hiding under fixed navbar */
 
         .btn-primary {
           display: inline-flex; align-items: center; gap: 8px;
@@ -574,16 +566,18 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* ─── NAVBAR ─── */}
+      {/* ─── NAVBAR (fixed + safe area support) ─── */}
       <motion.nav
         initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         style={{
           position: "fixed", top: 0, left: 0, right: 0, width: "100%", zIndex: 1000,
           background: "rgba(248,250,252,0.96)", backdropFilter: "blur(16px)",
           borderBottom: "1px solid rgba(226,232,240,0.95)",
+          paddingTop: "max(12px, env(safe-area-inset-top))", // safe area for notch/status bar
+          paddingBottom: "12px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px clamp(16px,4vw,48px)", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 clamp(16px,4vw,48px)", gap: 12 }}>
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #EA580C, #F97316)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Sora',sans-serif", flexShrink: 0 }}>PKE</div>
@@ -625,7 +619,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
               style={{ overflow: "hidden", borderTop: "1px solid #E2E8F0" }}
             >
-              <div style={{ padding: "16px clamp(16px,4vw,48px) 20px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ padding: "28px clamp(28px,4vw,48px) 20px", display: "flex", flexDirection: "column", gap: 0 }}>
                 {navLinks.map(([label, href]) => (
                   <a key={label} href={href} onClick={() => setMobileNav(false)}
                     style={{ color: "#374151", fontSize: 16, fontWeight: 500, textDecoration: "none", padding: "12px 0", borderBottom: "1px solid #F1F5F9" }}>
@@ -642,11 +636,12 @@ export default function LandingPage() {
         </AnimatePresence>
       </motion.nav>
 
-      {/* ─── HERO ─── */}
+      {/* ─── HERO (adjusted padding for safe area + fixed navbar) ─── */}
       <section ref={heroRef} style={{
         position: "relative", minHeight: "88vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", textAlign: "center",
-        padding: "110px clamp(20px, 5vw, 48px) 90px", overflow: "hidden",
+        padding: `calc(110px + env(safe-area-inset-top)) clamp(20px, 5vw, 48px) 90px`,
+        overflow: "hidden",
         background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
       }}>
         {/* Grid bg */}
@@ -691,6 +686,7 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
+      {/* The rest of the sections remain unchanged – they work fine with the global scroll-padding-top */}
       {/* ─── STATS ─── */}
       <section style={{ background: "#FFFFFF", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
         <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }} variants={stagger}
@@ -765,7 +761,6 @@ export default function LandingPage() {
             <div className="workflow-connector" />
             {workflow.map((step, i) => (
               <motion.div key={i} variants={fadeUp} className="workflow-step-row">
-                {/* Left card (even steps) or spacer (odd steps) */}
                 {i % 2 === 0 ? (
                   <div className="step-card" style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "22px 24px", textAlign: "right" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: step.color, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
@@ -776,12 +771,10 @@ export default function LandingPage() {
                   <div />
                 )}
 
-                {/* Center icon */}
                 <div className="step-icon" style={{ width: 60, height: 60, borderRadius: "50%", background: step.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#FFFFFF", boxShadow: `0 4px 20px ${step.color}40`, zIndex: 2, flexShrink: 0, margin: "0 auto" }}>
                   {step.icon}
                 </div>
 
-                {/* Right card (odd steps) or spacer (even steps) */}
                 {i % 2 === 1 ? (
                   <div className="step-card-right" style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 14, padding: "22px 24px", textAlign: "left" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: step.color, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Step {step.step}</div>
@@ -789,7 +782,7 @@ export default function LandingPage() {
                     <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.7 }}>{step.desc}</p>
                   </div>
                 ) : (
-                  <div className="step-card-right" />
+                  <div />
                 )}
               </motion.div>
             ))}
