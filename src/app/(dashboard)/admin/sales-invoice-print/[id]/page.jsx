@@ -34,7 +34,7 @@ export default function SalesInvoicePrint({ params }) {
           </button>
         </div>
     <div className="invoice-sheet">
-        <h2 className="text-center text-xl font-bold mb-4">Aits solution LPP</h2>
+        <h2 className="text-center text-xl font-bold mb-4">Pankajal ERP Solution LLP</h2>
 
         <div className="text-sm mb-4">
           <p><strong>Invoice No:</strong> {invoice.invoiceNo}</p>

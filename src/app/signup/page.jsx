@@ -612,7 +612,7 @@ export default function PankajalRegistration() {
 
   // Registration Form
   return (
-    <div style={{ minHeight: "100vh", background: theme.background, backgroundBlendMode: "overlay", display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 20px 40px", fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: theme.background, backgroundBlendMode: "overlay", display: "flex", alignItems: "center", justifyContent: "center", padding: "110px 20px 40px", fontFamily: "'Inter', sans-serif" }}>
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes countdown{from{width:100%}to{width:0%}}

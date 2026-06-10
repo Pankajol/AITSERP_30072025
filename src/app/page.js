@@ -19,25 +19,33 @@ import {
 } from "react-icons/fi";
 
 /* ═══════════════════════════════════════
-   TRIAL UTILITY
+   TRIAL UTILITY (SAFE MODE)
 ═══════════════════════════════════════ */
-export const TRIAL_KEY = "aits_trial";
+export const TRIAL_KEY = "pankajal_erp_trial";
 export const TRIAL_DAYS = 14;
 
 export function startTrial(userData) {
-  const record = {
-    ...userData,
-    trialStart: Date.now(),
-    trialEnd: Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
-    status: "active",
-    id: typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36),
-  };
-  if (typeof localStorage !== "undefined") localStorage.setItem(TRIAL_KEY, JSON.stringify(record));
-  return record;
+  try {
+    const record = {
+      ...userData,
+      trialStart: Date.now(),
+      trialEnd: Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000,
+      status: "active",
+      id: typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2, 11),
+    };
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      localStorage.setItem(TRIAL_KEY, JSON.stringify(record));
+    }
+    return record;
+  } catch (err) {
+    console.warn("Trial storage failed:", err);
+    return null;
+  }
 }
+
 export function getTrialRecord() {
   try {
-    if (typeof localStorage === "undefined") return null;
+    if (typeof window === "undefined" || typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(TRIAL_KEY);
     if (!raw) return null;
     const record = JSON.parse(raw);
@@ -46,27 +54,55 @@ export function getTrialRecord() {
       localStorage.setItem(TRIAL_KEY, JSON.stringify(record));
     }
     return record;
-  } catch { return null; }
-}
-export function getTrialDaysLeft(record) {
-  if (!record) return 0;
-  return Math.max(0, Math.ceil((record.trialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
-}
-export function isTrialActive(record) {
-  return record?.status === "active" && Date.now() <= record.trialEnd;
+  } catch (err) {
+    console.warn("Trial retrieval failed:", err);
+    return null;
+  }
 }
 
-async function callClaude(messages) {
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages }),
-    });
-    if (!res.ok) return "__SKIP__";
-    const data = await res.json();
-    return data.content?.find(b => b.type === "text")?.text || "__SKIP__";
-  } catch { return "__SKIP__"; }
+export function getTrialDaysLeft(record) {
+  if (!record || !record.trialEnd) return 0;
+  return Math.max(0, Math.ceil((record.trialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
+}
+
+export function isTrialActive(record) {
+  return record?.status === "active" && record?.trialEnd && Date.now() <= record.trialEnd;
+}
+
+/* ─── Basic client-side validation only (no external API calls) ─── */
+function validateFormData(form) {
+  const errors = {};
+  
+  if (!form.name || !form.name.trim()) {
+    errors.name = "Full name is required";
+  }
+  
+  if (!form.company || !form.company.trim()) {
+    errors.company = "Company name is required";
+  }
+  
+  if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    errors.email = "Valid email is required";
+  }
+  
+  const phoneDigits = form.phone.replace(/\D/g, "");
+  if (!phoneDigits || phoneDigits.length !== 10) {
+    errors.phone = "Valid 10-digit phone is required";
+  }
+  
+  if (!form.employees) {
+    errors.employees = "Please select team size";
+  }
+  
+  if (!form.industry) {
+    errors.industry = "Please select industry";
+  }
+  
+  if (!form.password || form.password.length < 8) {
+    errors.password = "Password must be at least 8 characters";
+  }
+  
+  return errors;
 }
 
 /* ─── Animated Counter ─── */
@@ -75,6 +111,7 @@ function Counter({ end, suffix = "", duration = 2 }) {
   const ref = useRef(null);
   const [started, setStarted] = useState(false);
   useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
     const ob = new IntersectionObserver(([e]) => { if (e.isIntersecting && !started) setStarted(true); }, { threshold: 0.5 });
     if (ref.current) ob.observe(ref.current);
     return () => ob.disconnect();
@@ -108,43 +145,34 @@ function TrialModal({ onClose, onSuccess }) {
     setErrors(e => ({ ...e, [k]: "" }));
   }, []);
 
-  const validate = () => {
-    const e = {};
-    if (!form.name.trim()) e.name = "Full name is required";
-    if (!form.company.trim()) e.company = "Company name is required";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Valid email required";
-    if (!/^\d{10}$/.test(form.phone.replace(/\D/g, ""))) e.phone = "Valid 10-digit phone required";
-    if (!form.employees) e.employees = "Please select team size";
-    if (!form.industry) e.industry = "Please select industry";
-    if (form.password.length < 8) e.password = "Min 8 characters";
-    return e;
-  };
-
   const handleSubmit = async () => {
-    const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
-    setLoading(true); setErrors({});
+    // Client-side validation only (no external API calls for safety)
+    const validationErrors = validateFormData(form);
+    
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    
+    setLoading(true);
+    setErrors({});
+    
     try {
-      const raw = await callClaude([{
-        role: "user",
-        content: `Validate this ERP trial registration. Respond ONLY in JSON (no markdown): {"valid":true,"issues":[]}
-Data — Name:"${form.name}", Company:"${form.company}", Email:"${form.email}", Phone:"${form.phone}", Industry:"${form.industry}".
-Return valid:false with issues array if data looks fake, suspicious, or clearly invalid.`,
-      }]);
-      if (raw !== "__SKIP__") {
-        let ai = { valid: true, issues: [] };
-        try { ai = JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch {}
-        if (!ai.valid) {
-          setErrors({ general: "Validation failed: " + (ai.issues?.join(", ") || "Please check your details.") });
-          setLoading(false); return;
-        }
-      }
-      await new Promise(r => setTimeout(r, 1200));
+      // Simulate processing delay
+      await new Promise(r => setTimeout(r, 800));
+      
+      // Create trial record
       const record = startTrial(form);
-      setLoading(false); setStep(2);
-      onSuccess?.(record);
+      
+      if (record) {
+        setLoading(false);
+        setStep(2);
+        onSuccess?.(record);
+      } else {
+        throw new Error("Failed to create trial record");
+      }
     } catch (err) {
-      setErrors({ general: err.message || "Something went wrong. Please try again." });
+      setErrors({ general: err?.message || "Something went wrong. Please try again." });
       setLoading(false);
     }
   };
@@ -330,8 +358,20 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
 
-  useEffect(() => { setTrialRecord(getTrialRecord()); }, []);
+  // Initialize trial record on mount (client-side only)
   useEffect(() => {
+    try {
+      const record = getTrialRecord();
+      setTrialRecord(record);
+    } catch (err) {
+      console.warn("Trial record fetch error:", err);
+      setTrialRecord(null);
+    }
+  }, []);
+  
+  // Manage body overflow
+  useEffect(() => {
+    if (typeof document === "undefined") return;
     document.body.style.overflow = (showModal || mobileNav) ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [showModal, mobileNav]);
@@ -342,10 +382,10 @@ export default function LandingPage() {
   const CONTACT = {
     whatsapp: "7738961799",
     email: "pankajal2099@gmail.com",
-    instagram: "https://instagram.com/aits_erp",
-    twitter: "https://twitter.com/aits_erp",
-    linkedin: "https://linkedin.com/company/aits-erp",
-    youtube: "https://youtube.com/@aits_erp",
+    instagram: "https://instagram.com/pankajal_erp",
+    twitter: "https://twitter.com/pankajal_erp",
+    linkedin: "https://linkedin.com/company/pankajal-erp",
+    youtube: "https://youtube.com/@pankajal_erp",
   };
 
   const coreModules = [
