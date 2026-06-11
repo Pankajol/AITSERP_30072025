@@ -25,6 +25,7 @@ const Icons = {
   Exit:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>,
   Key:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4L18.5 2.5z"/></svg>,
   User:        () => <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  History:     () => <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="M7.7 7.7A10 10 0 1 0 12 2"/></svg>,
 };
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -416,6 +417,9 @@ export default function GuardPage() {
   const [message,     setMessage]     = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [activeTab,   setActiveTab]   = useState("attendance");
+  const [allGateEntries,     setAllGateEntries]     = useState([]);
+  const [allBuildingEntries, setAllBuildingEntries] = useState([]);
+  const [historyFilter, setHistoryFilter] = useState("all"); // "all", "gate", "building"
 
   const showMsg = useCallback((text, type = "success") => setMessage({ text, type }), []);
 
@@ -473,7 +477,10 @@ export default function GuardPage() {
         `/api/societymanagement/gate-entry?societyId=${soc._id}&date=${today}&limit=200`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (data.success) setActiveVisitors(filterActiveEntries(data.data));
+      if (data.success) {
+        setActiveVisitors(filterActiveEntries(data.data));
+        setAllGateEntries(data.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      }
     } catch (err) { console.error("[loadActiveGateEntries]", err); }
   }, [token]);
 
@@ -485,7 +492,10 @@ export default function GuardPage() {
         `/api/societymanagement/building-entry?societyId=${soc._id}&date=${today}&limit=200`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (data.success) setActiveBuildingEntries(filterActiveEntries(data.data));
+      if (data.success) {
+        setActiveBuildingEntries(filterActiveEntries(data.data));
+        setAllBuildingEntries(data.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      }
     } catch (err) { console.error("[loadActiveBuildingEntries]", err); }
   }, [token]);
 
@@ -813,6 +823,7 @@ export default function GuardPage() {
     { id:"attendance", label:"Attendance", icon:Icons.Clock    },
     { id:"gate",       label:"Gate Entry", icon:Icons.Truck    },
     { id:"building",   label:"Building",   icon:Icons.Building },
+    { id:"history",    label:"History",    icon:Icons.History  },
   ];
 
   // ── Loading / No assignment screens ───────────────────────────
@@ -1166,6 +1177,105 @@ export default function GuardPage() {
             </SectionCard>
 
             <ActiveEntriesList entries={activeBuildingEntries} onExit={handleExitBuilding} exitingIds={exitingBuildingIds} />
+          </div>
+        )}
+
+        {/* History Tab */}
+        {activeTab === "history" && (
+          <div className="p-4 space-y-4">
+            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 flex items-center gap-3">
+              <span className="text-2xl">📋</span>
+              <div>
+                <p className="text-sm font-bold text-purple-800">Entry History</p>
+                <p className="text-xs text-gray-600">Today's complete log</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {[
+                { id: "all", label: "All", count: allGateEntries.length + allBuildingEntries.length },
+                { id: "gate", label: "Gate", count: allGateEntries.length },
+                { id: "building", label: "Building", count: allBuildingEntries.length },
+              ].map(f => (
+                <button key={f.id} onClick={() => setHistoryFilter(f.id)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    historyFilter === f.id
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}>
+                  {f.label} <span className="opacity-75">({f.count})</span>
+                </button>
+              ))}
+            </div>
+
+            <SectionCard title="Complete Log">
+              {((historyFilter === "all" || historyFilter === "gate") && allGateEntries.length > 0) && (
+                <div className="space-y-2 pb-3 border-b border-gray-100">
+                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Gate Entries ({allGateEntries.length})</p>
+                  {allGateEntries.map((entry, idx) => (
+                    <div key={entry._id || `gate-${idx}`} className="flex items-start justify-between bg-amber-50 rounded-lg p-2.5 border border-amber-100">
+                      <div className="flex-1 text-xs">
+                        <p className="font-semibold text-gray-900">{entry.personName}</p>
+                        <p className="text-gray-600 mt-0.5">
+                          {entry.phone || entry.contactNumber ? `📞 ${entry.phone || entry.contactNumber}` : ""}
+                          {entry.category ? ` · ${entry.category}` : ""}
+                        </p>
+                        <p className="text-gray-500 mt-0.5">
+                          {entry.vehicleNumber ? `🚗 ${entry.vehicleNumber}` : ""}
+                          {entry.purpose ? ` · ${entry.purpose}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-right text-[10px] whitespace-nowrap ml-2">
+                        <span className={`inline-block px-2 py-0.5 rounded font-bold ${
+                          entry.entryType === "IN"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-600"
+                        }`}>
+                          {entry.entryType}
+                        </span>
+                        <p className="text-gray-500 mt-1">{formatTime(entry.timestamp)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {((historyFilter === "all" || historyFilter === "building") && allBuildingEntries.length > 0) && (
+                <div className="space-y-2 pt-3">
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Building Entries ({allBuildingEntries.length})</p>
+                  {allBuildingEntries.map((entry, idx) => (
+                    <div key={entry._id || `building-${idx}`} className="flex items-start justify-between bg-blue-50 rounded-lg p-2.5 border border-blue-100">
+                      <div className="flex-1 text-xs">
+                        <p className="font-semibold text-gray-900">{entry.personName}</p>
+                        <p className="text-gray-600 mt-0.5">
+                          {entry.buildingName && <span>🏢 {entry.buildingName}</span>}
+                          {entry.flatNumber && <span> · Flat {entry.flatNumber}</span>}
+                        </p>
+                        <p className="text-gray-600 mt-0.5">
+                          {entry.phone ? `📞 ${entry.phone}` : ""}
+                          {entry.personType ? ` · ${entry.personType}` : ""}
+                        </p>
+                        <p className="text-gray-500 mt-0.5">{entry.purpose || ""}</p>
+                      </div>
+                      <div className="text-right text-[10px] whitespace-nowrap ml-2">
+                        <span className={`inline-block px-2 py-0.5 rounded font-bold ${
+                          entry.entryType === "IN"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-600"
+                        }`}>
+                          {entry.entryType}
+                        </span>
+                        <p className="text-gray-500 mt-1">{formatTime(entry.timestamp)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {allGateEntries.length === 0 && allBuildingEntries.length === 0 && (
+                <p className="text-xs text-gray-500 text-center py-6">No entries recorded today</p>
+              )}
+            </SectionCard>
           </div>
         )}
 
