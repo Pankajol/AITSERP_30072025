@@ -594,39 +594,80 @@ export default function GuardPage() {
     setBuildingErrors(e);
   }, [buildingForm, buildingTouched]);
 
-  // ── Punch (attendance) ─────────────────────────────────────────
+  const getCurrentLocation = async () => {
+    const status = await Geolocation.checkPermissions();
+    if (status.location === "denied" || status.location === "prompt") {
+      const request = await Geolocation.requestPermissions();
+      if (request.location === "denied" || request.location === "restricted") {
+        throw { code: "PermissionDenied" };
+      }
+    }
+
+    return Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    });
+  };
+
   const punch = async (cpName, cpType) => {
     const key = cpName + cpType;
     setPunchLoading(key);
-    
-    try {
-      // Request location permission and get current position
-      const coordinates = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      });
 
-      try {
-        await axios.post(
-          "/api/societymanagement/guard-entry",
-          {
-            companyUserId:  user._id,
-            checkpointName: cpName,
-            checkpointType: cpType,
-            latitude:  coordinates.coords.latitude,
-            longitude: coordinates.coords.longitude,
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        showMsg(`${cpType} recorded at ${cpName}`);
-        await loadPunches(society);
-      } catch (err) {
-        showMsg(err.response?.data?.message || "Punch failed", "error");
-      }
+    try {
+      const coordinates = await getCurrentLocation();
+      await axios.post(
+        "/api/societymanagement/guard-entry",
+        {
+          companyUserId:  user._id,
+          checkpointName: cpName,
+          checkpointType: cpType,
+          latitude:  coordinates.coords.latitude,
+          longitude: coordinates.coords.longitude,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      showMsg(`${cpType} recorded at ${cpName}`);
+      await loadPunches(society);
     } catch (err) {
-      if (err.code === "PermissionDenied") {
-        showMsg("Please enable location permission in app settings", "error");
+      const code = err?.code || err?.message || "UNKNOWN";
+      if (code === "PermissionDenied" || code === "NOT_AUTHORIZED" || code === "PERMISSION_DENIED") {
+        showMsg("Location permission denied. Please enable location permission in app settings.", "error");
+      } else if (code === "TIMEOUT") {
+        showMsg("Location request timed out. Please enable GPS and try again.", "error");
+      } else if (code === "POSITION_UNAVAILABLE" || code === "NOT_AVAILABLE") {
+        showMsg("Location unavailable. Please check your GPS and try again.", "error");
+      } else if (typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            try {
+              await axios.post(
+                "/api/societymanagement/guard-entry",
+                {
+                  companyUserId:  user._id,
+                  checkpointName: cpName,
+                  checkpointType: cpType,
+                  latitude:  pos.coords.latitude,
+                  longitude: pos.coords.longitude,
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              showMsg(`${cpType} recorded at ${cpName}`);
+              await loadPunches(society);
+            } catch (err) {
+              showMsg(err.response?.data?.message || "Punch failed", "error");
+            } finally {
+              setPunchLoading(null);
+            }
+          },
+          (geoErr) => {
+            showMsg("Unable to get location. Please check your GPS and try again.", "error");
+            console.error("[Browser Geolocation Error]", geoErr);
+            setPunchLoading(null);
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+        return;
       } else {
         showMsg("Unable to get location. Please check your GPS", "error");
       }
