@@ -4,6 +4,8 @@
 import mongoose from "mongoose";
 
 const addressSchema = new mongoose.Schema({
+  fullName: { type: String, trim: true },
+  phone: { type: String, trim: true },
   address1: { type: String, trim: true },
   address2: { type: String, trim: true },
   city: { type: String, trim: true },
@@ -62,6 +64,38 @@ password: {
   type: String,
   select: false
 },
+  mobilePhone: {
+    type: String,
+    trim: true,
+    sparse: true,
+  },
+  mobilePassword: {
+    type: String,
+    select: false,
+  },
+  isMobileVerified: {
+    type: Boolean,
+    default: false,
+  },
+  mobileRegisteredAt: {
+    type: Date,
+  },
+  pushToken: {
+    type: String,
+  },
+  tier: {
+    type: String,
+    enum: ['standard', 'regular', 'premium'],
+    default: 'regular',
+  },
+  creditLimit: {
+    type: Number,
+    default: 20000,
+  },
+  creditAvailable: {
+    type: Number,
+    default: 20000,
+  },
 portalAccess: { type: Boolean, default: true },
 // 🔥 ADD THIS
 contactEmails: [
