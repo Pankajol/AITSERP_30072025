@@ -883,10 +883,22 @@
   dependencies:
     tslib "^2.1.0"
 
+"@capacitor/geolocation@^7.1.8":
+  version "7.1.8"
+  resolved "https://registry.npmjs.org/@capacitor/geolocation/-/geolocation-7.1.8.tgz"
+  integrity sha512-x/rJieD2N2zlGvXFRD3ru4ArJWTwXAIYmyhfo5zg4F1DKGos7mCCOvIOSVMdfQmt14SCsmJeO9Qe8EtDGNGCrw==
+  dependencies:
+    "@capacitor/synapse" "^1.0.3"
+
 "@capacitor/status-bar@^7.0.1":
   version "7.0.6"
   resolved "https://registry.npmjs.org/@capacitor/status-bar/-/status-bar-7.0.6.tgz"
   integrity sha512-7AVqj46b26QikImQzWfsJmzG8NUJZBGkrVSuoeTo+SX/YH3hXH0MqwwFgMqMGHfa/BICDgSvTjM9miVFlq0+RQ==
+
+"@capacitor/synapse@^1.0.3":
+  version "1.0.4"
+  resolved "https://registry.npmjs.org/@capacitor/synapse/-/synapse-1.0.4.tgz"
+  integrity sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw==
 
 "@emotion/babel-plugin@^11.13.5":
   version "11.13.5"
