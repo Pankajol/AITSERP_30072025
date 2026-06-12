@@ -21,6 +21,36 @@ export async function GET(req) {
   }
 }
 
+export async function PUT(req) {
+  try {
+    await dbConnect();
+    const token = getTokenFromHeader(req);
+    if (!token) return NextResponse.json({ success: false, msg: "Unauthorized" }, { status: 401 });
+
+    const decoded = await verifyJWT(token);
+    const body = await req.json();
+
+    const updates = {};
+    if (body.fullName !== undefined) updates.customerName = body.fullName;
+    if (body.pushToken !== undefined) updates.pushToken = body.pushToken;
+    if (body.email !== undefined) updates.emailId = body.email;
+    if (body.emailId !== undefined) updates.emailId = body.emailId;
+
+    const customer = await Customer.findByIdAndUpdate(
+      decoded.id,
+      { $set: updates },
+      { new: true }
+    );
+
+    if (!customer) return NextResponse.json({ success: false, msg: "Not found" }, { status: 404 });
+
+    return NextResponse.json({ success: true, customer: customer.toObject() });
+  } catch (err) {
+    console.error("PUT Profile Error:", err);
+    return NextResponse.json({ success: false, msg: "Server error", error: err.message }, { status: 500 });
+  }
+}
+
 
 
 // import { NextResponse } from "next/server";
