@@ -57,7 +57,7 @@ const MODULE_ROUTE_MAP = {
   "Users": [
     { label: "Users",            path: "/admin/users",                needsView: true },
   ],
-  
+
   "Accounts": [
     { label: "Account Head View", path: "/admin/account-head-view",       needsView: true },
     { label: "General Ledger",    path: "/admin/bank-head-details-view",   needsView: true },
@@ -668,10 +668,7 @@ export default function Layout({ children }) {
               {showBackButton && (
                 <button
                   onClick={goBack}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                             bg-gray-50/80 text-gray-600 hover:bg-gray-100 hover:text-gray-900
-                             transition-all duration-200 border border-gray-200/50 backdrop-blur-sm
-                             focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-50/80 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 border border-gray-200/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
                 >
                   <span className="text-base leading-none">←</span>
                   <span className="hidden sm:inline">{parentTitle}</span>
