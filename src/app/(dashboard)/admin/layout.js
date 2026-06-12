@@ -2,19 +2,19 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import {
   HiUsers, HiGlobeAlt, HiFlag, HiUserGroup, HiOutlineCube, HiOutlineLibrary,
   HiCurrencyDollar, HiOutlineCreditCard, HiChartSquareBar, HiReceiptTax,
   HiPuzzle, HiViewGrid, HiUser, HiDocumentText, HiOutlineOfficeBuilding,
-  HiCube, HiShoppingCart, HiCog, HiMenu, HiX, HiHome, HiBell,
+  HiCube, HiShoppingCart, HiCog, HiMenu, HiX, HiHome, HiBell, HiArrowUp,
 } from "react-icons/hi";
 import { GiStockpiles } from "react-icons/gi";
 import { SiCivicrm } from "react-icons/si";
-import { useRouter, usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 
 // ─────────────────────────────────────────────────────────────
-// MODULE_ROUTE_MAP (unchanged functionality)
+// MODULE_ROUTE_MAP (full version – keep as is)
 // ─────────────────────────────────────────────────────────────
 const MODULE_ROUTE_MAP = {
   "Sales Quotation": [
@@ -57,6 +57,7 @@ const MODULE_ROUTE_MAP = {
   "Users": [
     { label: "Users",            path: "/admin/users",                needsView: true },
   ],
+  
   "Accounts": [
     { label: "Account Head View", path: "/admin/account-head-view",       needsView: true },
     { label: "General Ledger",    path: "/admin/bank-head-details-view",   needsView: true },
@@ -204,67 +205,136 @@ function canAccessModule(data) {
   return !!(p.view || p.edit || p.create || p.delete);
 }
 
-// ─── Helper Components (light theme versions) ─────────────────
+// ─── Modern Helper Components ─────────────────────────────────────
 const Section = ({ title, icon, isOpen, onToggle, children }) => (
-  <div className="border-b border-gray-200">
-    <button onClick={onToggle} className="flex justify-between w-full px-3 py-3 hover:bg-gray-100 transition-colors text-left">
-      <span className="flex gap-3 items-center font-medium text-sm text-gray-700">
-        <span className="text-lg text-blue-600">{icon}</span>
+  <div className="border-b border-gray-100/80">
+    <button
+      onClick={onToggle}
+      className="flex justify-between w-full px-4 py-3 hover:bg-indigo-50/30 transition-all duration-200 text-left group"
+    >
+      <span className="flex gap-3 items-center text-sm font-medium text-gray-700">
+        <span className="text-lg text-gray-500 group-hover:text-indigo-500 transition-colors">{icon}</span>
         <span className="truncate">{title}</span>
       </span>
-      <span className="text-xs ml-2 shrink-0 text-gray-500">{isOpen ? "−" : "+"}</span>
+      <span className={`text-xs text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
+        ▼
+      </span>
     </button>
     {isOpen && (
-      <div className="bg-gray-50 pb-2 ml-4 border-l border-gray-200">{children}</div>
+      <div className="bg-gradient-to-r from-indigo-50/10 to-transparent pb-2 ml-8 border-l border-indigo-100/50">
+        {children}
+      </div>
     )}
   </div>
 );
 
 const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
   <div className="mt-1">
-    <button onClick={onToggle} className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 uppercase tracking-wider transition-colors">
-      <span className="flex gap-2 items-center">{icon}<span>{label}</span></span>
-      <span>{isOpen ? "−" : "+"}</span>
+    <button
+      onClick={onToggle}
+      className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-indigo-600 uppercase tracking-wider transition-colors"
+    >
+      <span className="flex gap-2 items-center">
+        <span className="text-sm">{icon}</span>
+        <span>{label}</span>
+      </span>
+      <span className="text-xs">{isOpen ? "−" : "+"}</span>
     </button>
-    {isOpen && <div className="ml-2 space-y-0.5 border-l border-gray-200">{children}</div>}
+    {isOpen && <div className="ml-5 space-y-0.5 border-l border-indigo-100/50">{children}</div>}
   </div>
 );
 
-const Item = ({ href, icon, label, onClick, isActive }) => (
-  <Link href={href} onClick={onClick}
-    className={`flex gap-3 px-4 py-2 text-[13px] rounded-l-md transition-all font-serif ${
-      isActive ? "text-blue-700 bg-blue-100 border-r-2 border-blue-500" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-    }`}>
-    <span className="text-base opacity-70 shrink-0">{icon}</span>
+const SidebarItem = ({ href, icon, label, onClick, isActive }) => (
+  <Link
+    href={href}
+    onClick={onClick}
+    className={`
+      flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+      transition-all duration-200 group
+      ${isActive
+        ? "bg-gradient-to-r from-indigo-50 to-white text-indigo-700 shadow-sm"
+        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+      }
+    `}
+  >
+    <span className={`text-base flex-shrink-0 transition-all duration-200 ${
+      isActive ? "text-indigo-600 scale-105" : "text-gray-400 group-hover:text-indigo-500 group-hover:scale-105"
+    }`}>{icon}</span>
     <span className="truncate">{label}</span>
+    {isActive && (
+      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-sm flex-shrink-0" />
+    )}
   </Link>
 );
 
 export default function Layout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [openMenu, setOpenMenu]           = useState(null);
-  const [openSubmenus, setOpenSubmenus]   = useState({});
-  const [session, setSession]             = useState(null);
-  const router   = useRouter();
+  const [openMenu, setOpenMenu] = useState(null);
+  const [openSubmenus, setOpenSubmenus] = useState({});
+  const [session, setSession] = useState(null);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const router = useRouter();
   const pathname = usePathname();
   const sidebarRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const mainContentRef = useRef(null);
 
   const [notifications, setNotifications] = useState([]);
-  const [openNotif, setOpenNotif]         = useState(false);
-  const [unreadCount, setUnreadCount]     = useState(0);
+  const [openNotif, setOpenNotif] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => { fetchNotifications(); }, []);
+  // Parent title for back button
+  const pathSegments = pathname.split("/").filter(Boolean);
+  const parentSegment = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 2] : null;
+  const parentTitle = parentSegment
+    ? parentSegment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Dashboard";
+
+  const isDashboard = pathname === "/admin";
+  const showBackButton = !isDashboard;
+
+  const scrollToTop = () => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const goBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/admin");
+    }
+  };
+
+  // Close dropdown outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Fetch notifications
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
 
   const fetchNotifications = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res  = await fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (data.success) {
         setNotifications(data.data);
-        setUnreadCount(data.data.filter(n => !n.isRead).length);
+        setUnreadCount(data.data.filter((n) => !n.isRead).length);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const markAsRead = async (id) => {
@@ -272,234 +342,285 @@ export default function Layout({ children }) {
       const token = localStorage.getItem("token");
       await fetch(`/api/notifications/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
       fetchNotifications();
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+  // Session check
   useEffect(() => {
     async function getSession() {
       try {
         const token = localStorage.getItem("token");
-        if (!token) { router.push("/signin"); return; }
+        if (!token) {
+          router.push("/signin");
+          return;
+        }
         const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) { localStorage.removeItem("token"); localStorage.removeItem("user"); router.push("/signin"); return; }
+        if (!res.ok) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          router.push("/signin");
+          return;
+        }
         const data = await res.json();
         setSession(data.user);
-      } catch (err) { console.error("Session fetch error:", err); router.push("/signin"); }
+      } catch (err) {
+        console.error("Session fetch error:", err);
+        router.push("/signin");
+      }
     }
     getSession();
   }, [router]);
 
-  useEffect(() => { setIsSidebarOpen(false); }, [pathname]);
+  // Close sidebar on route change
   useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") setIsSidebarOpen(false); };
+    setIsSidebarOpen(false);
+  }, [pathname]);
+
+  // Escape key closes
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") {
+        setIsSidebarOpen(false);
+        setUserDropdownOpen(false);
+      }
+    };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  if (!session) return (
-    <div className="flex h-screen items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
-    </div>
-  );
+  if (!session)
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-400 border-t-indigo-600 shadow-lg" />
+      </div>
+    );
 
-  const isCompany    = session?.type?.toLowerCase() === "company";
-  const isAdmin      = session?.roles?.includes("Admin");
+  const isCompany = session?.type?.toLowerCase() === "company";
+  const isAdmin = session?.roles?.includes("Admin");
   const hasFullAccess = isCompany || isAdmin;
-  const modules      = session?.modules || {};
+  const modules = session?.modules || {};
 
-  const toggleSubmenu = (k) => setOpenSubmenus(p => ({ ...p, [k]: !p[k] }));
-  const toggleMenu    = (m) => setOpenMenu(openMenu === m ? null : m);
-  const closeSidebar  = () => setIsSidebarOpen(false);
-  const isActive      = (path) => pathname === path;
+  const toggleSubmenu = (k) => setOpenSubmenus((p) => ({ ...p, [k]: !p[k] }));
+  const toggleMenu = (m) => setOpenMenu(openMenu === m ? null : m);
+  const closeSidebar = () => setIsSidebarOpen(false);
+  const isActive = (path) => pathname === path;
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    router.push("/signin");
+  };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden pt-safe-top sm:pt-0 font-serif">
-      {/* Global font override */}
+    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden font-sans">
       <style jsx global>{`
-        * { font-family: 'Times New Roman', Times, serif; }
+        * { font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .safe-top { padding-top: env(safe-area-inset-top, 0px); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+        .safe-left { padding-left: env(safe-area-inset-left, 0px); }
+        .safe-right { padding-right: env(safe-area-inset-right, 0px); }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
 
+      {/* Overlay for mobile sidebar */}
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
       )}
 
-      <aside ref={sidebarRef} aria-label="Sidebar navigation"
-        className={`fixed inset-y-0 left-0 z-50 w-64 lg:w-72 bg-white text-gray-800 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
+      {/* Sidebar – modern glass effect */}
+      <aside
+        ref={sidebarRef}
+        aria-label="Sidebar navigation"
+        className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 backdrop-blur-md shadow-2xl transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:shadow-xl md:w-72 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } flex flex-col shadow-xl border-r border-gray-200`}>
-
-        <div className="h-16 flex items-center justify-between px-4 lg:px-6 bg-gray-50 border-b border-gray-200 shrink-0">
-          <span className="font-bold text-base lg:text-lg flex items-center gap-2 tracking-wider text-gray-800">
-            <HiHome className="text-blue-600 shrink-0" />
-            <Link href="/admin" className="truncate">ERP SYSTEM</Link>
-          </span>
-          {isSidebarOpen && (
-            <button onClick={closeSidebar} className="p-2 rounded hover:bg-gray-200 transition-colors text-gray-600">
-              <HiX size={24} />
-            </button>
-          )}
+        } flex flex-col border-r border-gray-200/50 safe-left`}
+      >
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200/50 shrink-0 safe-top bg-white/80 backdrop-blur-sm">
+          <Link href="/admin" className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-200">
+              <HiHome className="text-white text-sm" />
+            </div>
+            <span className="text-gray-800">ERP<span className="text-indigo-600">System</span></span>
+          </Link>
+          <button
+            onClick={closeSidebar}
+            className="md:hidden p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors"
+          >
+            <HiX size={20} />
+          </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-2">
+        <nav className="flex-1 overflow-y-auto py-5 px-4 space-y-1 safe-bottom">
           {hasFullAccess && (
             <>
               <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
-                <Item href="/admin/Countries"            icon={<HiGlobeAlt />}              label="Countries"            onClick={closeSidebar} isActive={isActive("/admin/Countries")} />
-                <Item href="/admin/State"                icon={<HiFlag />}                  label="State"                onClick={closeSidebar} isActive={isActive("/admin/State")} />
-                <Item href="/admin/CreateGroup"          icon={<HiUserGroup />}             label="Create Group"         onClick={closeSidebar} isActive={isActive("/admin/CreateGroup")} />
-                <Item href="/admin/CreateItemGroup"      icon={<HiOutlineCube />}           label="Create Item Group"    onClick={closeSidebar} isActive={isActive("/admin/CreateItemGroup")} />
-                <Item href="/admin/account-bankhead"     icon={<HiOutlineLibrary />}        label="Account Head"         onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
-                <Item href="/admin/bank-head-details"    icon={<HiCurrencyDollar />}        label="General Ledger"       onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
-                <Item href="/admin/createCustomers"      icon={<HiUserGroup />}             label="Create Customer"      onClick={closeSidebar} isActive={isActive("/admin/createCustomers")} />
-                <Item href="/admin/supplier"             icon={<HiUserGroup />}             label="Supplier"             onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
-                <Item href="/admin/item"                 icon={<HiCube />}                  label="Item"                 onClick={closeSidebar} isActive={isActive("/admin/item")} />
-                <Item href="/admin/WarehouseDetailsForm" icon={<HiOutlineLibrary />}        label="Warehouse Details"    onClick={closeSidebar} isActive={isActive("/admin/WarehouseDetailsForm")} />
-
-             <Item href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Settings" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
+                <SidebarItem href="/admin/Countries" icon={<HiGlobeAlt />} label="Countries" onClick={closeSidebar} isActive={isActive("/admin/Countries")} />
+                <SidebarItem href="/admin/State" icon={<HiFlag />} label="State" onClick={closeSidebar} isActive={isActive("/admin/State")} />
+                <SidebarItem href="/admin/CreateGroup" icon={<HiUserGroup />} label="Create Group" onClick={closeSidebar} isActive={isActive("/admin/CreateGroup")} />
+                <SidebarItem href="/admin/CreateItemGroup" icon={<HiOutlineCube />} label="Create Item Group" onClick={closeSidebar} isActive={isActive("/admin/CreateItemGroup")} />
+                <SidebarItem href="/admin/account-bankhead" icon={<HiOutlineLibrary />} label="Account Head" onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+                <SidebarItem href="/admin/bank-head-details" icon={<HiCurrencyDollar />} label="General Ledger" onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
+                <SidebarItem href="/admin/createCustomers" icon={<HiUserGroup />} label="Create Customer" onClick={closeSidebar} isActive={isActive("/admin/createCustomers")} />
+                <SidebarItem href="/admin/supplier" icon={<HiUserGroup />} label="Supplier" onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
+                <SidebarItem href="/admin/item" icon={<HiCube />} label="Item" onClick={closeSidebar} isActive={isActive("/admin/item")} />
+                <SidebarItem href="/admin/WarehouseDetailsForm" icon={<HiOutlineLibrary />} label="Warehouse Details" onClick={closeSidebar} isActive={isActive("/admin/WarehouseDetailsForm")} />
+                <SidebarItem href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Settings" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
               </Section>
-              <Section title="System" icon={<HiCog />} isOpen={openMenu === "system"} onToggle={() => toggleMenu("system")}>
-              <Item href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Setting" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
-</Section>
 
               <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
-                <Item href="/admin/customer-view"        icon={<HiUsers />}                 label="Customer View"                onClick={closeSidebar} isActive={isActive("/admin/customer-view")} />
-                <Item href="/admin/supplier"             icon={<HiUserGroup />}             label="Supplier View"                onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
-                <Item href="/admin/item"                 icon={<HiCube />}                  label="Item View"                    onClick={closeSidebar} isActive={isActive("/admin/item")} />
-                <Item href="/admin/account-bankhead"     icon={<HiOutlineLibrary />}        label="Account Head View"            onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
-                <Item href="/admin/bank-head-details"    icon={<HiCurrencyDollar />}        label="General Ledger View"          onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
-                <Item href="/admin/email-templates"      icon={<HiDocumentText />}          label="Email Templates"              onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
-                <Item href="/admin/email-masters"        icon={<HiOutlineCreditCard />}     label="Email & App Password Master"  onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
-                <Item href="/admin/price-list"           icon={<HiOutlineOfficeBuilding />} label="Price List"                   onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
+                <SidebarItem href="/admin/customer-view" icon={<HiUsers />} label="Customer View" onClick={closeSidebar} isActive={isActive("/admin/customer-view")} />
+                <SidebarItem href="/admin/supplier" icon={<HiUserGroup />} label="Supplier View" onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
+                <SidebarItem href="/admin/item" icon={<HiCube />} label="Item View" onClick={closeSidebar} isActive={isActive("/admin/item")} />
+                <SidebarItem href="/admin/account-bankhead" icon={<HiOutlineLibrary />} label="Account Head View" onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+                <SidebarItem href="/admin/bank-head-details" icon={<HiCurrencyDollar />} label="General Ledger View" onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
+                <SidebarItem href="/admin/email-templates" icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+                <SidebarItem href="/admin/email-masters" icon={<HiOutlineCreditCard />} label="Email & App Password Master" onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
+                <SidebarItem href="/admin/price-list" icon={<HiOutlineOfficeBuilding />} label="Price List" onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
               </Section>
 
               <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === "transactionsView"} onToggle={() => toggleMenu("transactionsView")}>
                 <Submenu isOpen={!!openSubmenus["tvSales"]} onToggle={() => toggleSubmenu("tvSales")} icon={<HiShoppingCart />} label="Sales">
-                  <Item href="/admin/sales-quotation-view" icon={<SiCivicrm />}           label="Quotation View"  onClick={closeSidebar} isActive={isActive("/admin/sales-quotation-view")} />
-                  <Item href="/admin/sales-order-view"     icon={<HiPuzzle />}            label="Order View"      onClick={closeSidebar} isActive={isActive("/admin/sales-order-view")} />
-                  <Item href="/admin/pos"                  icon={<HiCube />}              label="POS Invoice"     onClick={closeSidebar} isActive={isActive("/admin/pos")} />
-                  <Item href="/admin/delivery-view"        icon={<HiOutlineCube />}       label="Delivery View"   onClick={closeSidebar} isActive={isActive("/admin/delivery-view")} />
-                  <Item href="/admin/sales-invoice-view"   icon={<HiOutlineCreditCard />} label="Invoice View"    onClick={closeSidebar} isActive={isActive("/admin/sales-invoice-view")} />
-                  <Item href="/admin/credit-memo-veiw"     icon={<HiReceiptTax />}        label="Credit Memo"     onClick={closeSidebar} isActive={isActive("/admin/credit-memo-veiw")} />
-                  <Item href="/admin/sales-report"         icon={<HiChartSquareBar />}    label="Report"          onClick={closeSidebar} isActive={isActive("/admin/sales-report")} />
-                  <Item href="/admin/pos/reports"          icon={<HiChartSquareBar />}    label="POS Report"      onClick={closeSidebar} isActive={isActive("/admin/pos/reports")} />
-                  <Item href="/admin/sales-board"          icon={<HiChartSquareBar />}    label="Sales Board"     onClick={closeSidebar} isActive={isActive("/admin/sales-board")} />
+                  <SidebarItem href="/admin/sales-quotation-view" icon={<SiCivicrm />} label="Quotation View" onClick={closeSidebar} isActive={isActive("/admin/sales-quotation-view")} />
+                  <SidebarItem href="/admin/sales-order-view" icon={<HiPuzzle />} label="Order View" onClick={closeSidebar} isActive={isActive("/admin/sales-order-view")} />
+                  <SidebarItem href="/admin/pos" icon={<HiCube />} label="POS Invoice" onClick={closeSidebar} isActive={isActive("/admin/pos")} />
+                  <SidebarItem href="/admin/delivery-view" icon={<HiOutlineCube />} label="Delivery View" onClick={closeSidebar} isActive={isActive("/admin/delivery-view")} />
+                  <SidebarItem href="/admin/sales-invoice-view" icon={<HiOutlineCreditCard />} label="Invoice View" onClick={closeSidebar} isActive={isActive("/admin/sales-invoice-view")} />
+                  <SidebarItem href="/admin/credit-memo-veiw" icon={<HiReceiptTax />} label="Credit Memo" onClick={closeSidebar} isActive={isActive("/admin/credit-memo-veiw")} />
+                  <SidebarItem href="/admin/sales-report" icon={<HiChartSquareBar />} label="Report" onClick={closeSidebar} isActive={isActive("/admin/sales-report")} />
+                  <SidebarItem href="/admin/pos/reports" icon={<HiChartSquareBar />} label="POS Report" onClick={closeSidebar} isActive={isActive("/admin/pos/reports")} />
+                  <SidebarItem href="/admin/sales-board" icon={<HiChartSquareBar />} label="Sales Board" onClick={closeSidebar} isActive={isActive("/admin/sales-board")} />
                 </Submenu>
                 <Submenu isOpen={!!openSubmenus["tvPurchase"]} onToggle={() => toggleSubmenu("tvPurchase")} icon={<GiStockpiles />} label="Purchase">
-                  <Item href="/admin/PurchaseQuotationList" icon={<SiCivicrm />}           label="Quotation View" onClick={closeSidebar} isActive={isActive("/admin/PurchaseQuotationList")} />
-                  <Item href="/admin/purchase-order-view"   icon={<HiPuzzle />}            label="Order View"     onClick={closeSidebar} isActive={isActive("/admin/purchase-order-view")} />
-                  <Item href="/admin/grn-view"              icon={<HiOutlineCube />}       label="GRN View"       onClick={closeSidebar} isActive={isActive("/admin/grn-view")} />
-                  <Item href="/admin/purchaseInvoice-view"  icon={<HiOutlineCreditCard />} label="Invoice View"   onClick={closeSidebar} isActive={isActive("/admin/purchaseInvoice-view")} />
-                  <Item href="/admin/debit-notes-view"      icon={<HiReceiptTax />}        label="Debit Notes"    onClick={closeSidebar} isActive={isActive("/admin/debit-notes-view")} />
-                  <Item href="/admin/purchase-report"       icon={<HiChartSquareBar />}    label="Report"         onClick={closeSidebar} isActive={isActive("/admin/purchase-report")} />
+                  <SidebarItem href="/admin/PurchaseQuotationList" icon={<SiCivicrm />} label="Quotation View" onClick={closeSidebar} isActive={isActive("/admin/PurchaseQuotationList")} />
+                  <SidebarItem href="/admin/purchase-order-view" icon={<HiPuzzle />} label="Order View" onClick={closeSidebar} isActive={isActive("/admin/purchase-order-view")} />
+                  <SidebarItem href="/admin/grn-view" icon={<HiOutlineCube />} label="GRN View" onClick={closeSidebar} isActive={isActive("/admin/grn-view")} />
+                  <SidebarItem href="/admin/purchaseInvoice-view" icon={<HiOutlineCreditCard />} label="Invoice View" onClick={closeSidebar} isActive={isActive("/admin/purchaseInvoice-view")} />
+                  <SidebarItem href="/admin/debit-notes-view" icon={<HiReceiptTax />} label="Debit Notes" onClick={closeSidebar} isActive={isActive("/admin/debit-notes-view")} />
+                  <SidebarItem href="/admin/purchase-report" icon={<HiChartSquareBar />} label="Report" onClick={closeSidebar} isActive={isActive("/admin/purchase-report")} />
                 </Submenu>
               </Section>
 
               <Section title="User" icon={<SiCivicrm />} isOpen={openMenu === "user"} onToggle={() => toggleMenu("user")}>
-                <Item href="/admin/users" icon={<HiUserGroup />} label="User" onClick={closeSidebar} isActive={isActive("/admin/users")} />
-              </Section>
-              <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
-                <Item href="/admin/tasks"       icon={<HiUserGroup />} label="Tasks"       onClick={closeSidebar} isActive={isActive("/admin/tasks")} />
-                <Item href="/admin/tasks/board" icon={<HiPuzzle />}    label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/tasks/board")} />
-              </Section>
-              <Section title="CRM" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
-                <Item href="/admin/crm/leads-view"    icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/crm/leads-view")} />
-                <Item href="/admin/email-templates"      icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
-                <Item href="/admin/crm/lead-pipeline" icon={<HiPuzzle />}    label="Lead Pipeline"   onClick={closeSidebar} isActive={isActive("/admin/crm/lead-pipeline")} />
-                <Item href="/admin/crm/opportunities" icon={<HiPuzzle />}    label="Opportunity"     onClick={closeSidebar} isActive={isActive("/admin/crm/opportunities")} />
-                <Item href="/admin/crm/campaign"  icon={<HiPuzzle />}    label="Campaign"        onClick={closeSidebar} isActive={isActive("/admin/crm/campaign")} />
-                <Item href="/admin/crm/calls"     icon={<HiPuzzle />}    label="Calls"           onClick={closeSidebar} isActive={isActive("/admin/crm/calls")} />
-              </Section>
-              <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
-                <Item href="/admin/InventoryView"            icon={<HiOutlineLibrary />} label="Inventory View"   onClick={closeSidebar} isActive={isActive("/admin/InventoryView")} />
-                <Item href="/admin/InventoryEntry"           icon={<HiOutlineLibrary />} label="Inventory Entry"  onClick={closeSidebar} isActive={isActive("/admin/InventoryEntry")} />
-                <Item href="/admin/InventoryAdjustmentsView" icon={<HiOutlineLibrary />} label="Inventory Ledger" onClick={closeSidebar} isActive={isActive("/admin/InventoryAdjustmentsView")} />
-                <Item href="/admin/gate-entry"               icon={<HiOutlineLibrary />} label="Gate Entry"       onClick={closeSidebar} isActive={isActive("/admin/gate-entry")} />
-              </Section>
-              <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
-                <Item href="/admin/Payment" icon={<HiCurrencyDollar />} label="Payment Form" onClick={closeSidebar} isActive={isActive("/admin/Payment")} />
+                <SidebarItem href="/admin/users" icon={<HiUserGroup />} label="User" onClick={closeSidebar} isActive={isActive("/admin/users")} />
               </Section>
 
-              {/* ========== FINANCE SECTION (UPDATED) ========== */}
+              <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
+                <SidebarItem href="/admin/tasks" icon={<HiUserGroup />} label="Tasks" onClick={closeSidebar} isActive={isActive("/admin/tasks")} />
+                <SidebarItem href="/admin/tasks/board" icon={<HiPuzzle />} label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/tasks/board")} />
+              </Section>
+
+              <Section title="CRM" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
+                <SidebarItem href="/admin/crm/leads-view" icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/crm/leads-view")} />
+                <SidebarItem href="/admin/email-templates" icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+                <SidebarItem href="/admin/crm/lead-pipeline" icon={<HiPuzzle />} label="Lead Pipeline" onClick={closeSidebar} isActive={isActive("/admin/crm/lead-pipeline")} />
+                <SidebarItem href="/admin/crm/opportunities" icon={<HiPuzzle />} label="Opportunity" onClick={closeSidebar} isActive={isActive("/admin/crm/opportunities")} />
+                <SidebarItem href="/admin/crm/campaign" icon={<HiPuzzle />} label="Campaign" onClick={closeSidebar} isActive={isActive("/admin/crm/campaign")} />
+                <SidebarItem href="/admin/crm/calls" icon={<HiPuzzle />} label="Calls" onClick={closeSidebar} isActive={isActive("/admin/crm/calls")} />
+              </Section>
+
+              <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
+                <SidebarItem href="/admin/InventoryView" icon={<HiOutlineLibrary />} label="Inventory View" onClick={closeSidebar} isActive={isActive("/admin/InventoryView")} />
+                <SidebarItem href="/admin/InventoryEntry" icon={<HiOutlineLibrary />} label="Inventory Entry" onClick={closeSidebar} isActive={isActive("/admin/InventoryEntry")} />
+                <SidebarItem href="/admin/InventoryAdjustmentsView" icon={<HiOutlineLibrary />} label="Inventory Ledger" onClick={closeSidebar} isActive={isActive("/admin/InventoryAdjustmentsView")} />
+                <SidebarItem href="/admin/gate-entry" icon={<HiOutlineLibrary />} label="Gate Entry" onClick={closeSidebar} isActive={isActive("/admin/gate-entry")} />
+              </Section>
+
+              <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
+                <SidebarItem href="/admin/Payment" icon={<HiCurrencyDollar />} label="Payment Form" onClick={closeSidebar} isActive={isActive("/admin/Payment")} />
+              </Section>
+
               <Section title="Finance" icon={<HiOutlineCreditCard />} isOpen={openMenu === "finance"} onToggle={() => toggleMenu("finance")}>
                 <Submenu isOpen={!!openSubmenus["journalEntry"]} onToggle={() => toggleSubmenu("journalEntry")} icon={<HiCurrencyDollar />} label="Journal Entry">
-                  <Item href="/admin/finance/journal-entry" icon={<HiOutlineCreditCard />} label="Journal Entry" onClick={closeSidebar} isActive={isActive("/admin/finance/journal-entry")} />
+                  <SidebarItem href="/admin/finance/journal-entry" icon={<HiOutlineCreditCard />} label="Journal Entry" onClick={closeSidebar} isActive={isActive("/admin/finance/journal-entry")} />
                 </Submenu>
                 <Submenu isOpen={!!openSubmenus["report"]} onToggle={() => toggleSubmenu("report")} icon={<HiChartSquareBar />} label="Report">
                   <Submenu isOpen={!!openSubmenus["financialReport"]} onToggle={() => toggleSubmenu("financialReport")} icon={<HiOutlineLibrary />} label="Financial Report">
-                    <Item href="/admin/finance/report/trial-balance" icon={<HiDocumentText />} label="Trial Balance"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/trial-balance")} />
-                    <Item href="/admin/finance/report/profit-loss"   icon={<HiDocumentText />} label="Profit & Loss"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/profit-loss")} />
-                    <Item href="/admin/finance/report/balance-sheet" icon={<HiDocumentText />} label="Balance Sheet"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/balance-sheet")} />
-                    <Item href="/admin/finance/report/cash-flow"     icon={<HiCurrencyDollar />} label="Cash Flow Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/cash-flow")} />
-                    <Item href="/admin/finance/report/bank-reconciliation" icon={<HiOutlineCreditCard />} label="Bank Reconciliation" onClick={closeSidebar} isActive={isActive("/admin/finance/report/bank-reconciliation")} />
+                    <SidebarItem href="/admin/finance/report/trial-balance" icon={<HiDocumentText />} label="Trial Balance" onClick={closeSidebar} isActive={isActive("/admin/finance/report/trial-balance")} />
+                    <SidebarItem href="/admin/finance/report/profit-loss" icon={<HiDocumentText />} label="Profit & Loss" onClick={closeSidebar} isActive={isActive("/admin/finance/report/profit-loss")} />
+                    <SidebarItem href="/admin/finance/report/balance-sheet" icon={<HiDocumentText />} label="Balance Sheet" onClick={closeSidebar} isActive={isActive("/admin/finance/report/balance-sheet")} />
+                    <SidebarItem href="/admin/finance/report/cash-flow" icon={<HiCurrencyDollar />} label="Cash Flow Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/cash-flow")} />
+                    <SidebarItem href="/admin/finance/report/bank-reconciliation" icon={<HiOutlineCreditCard />} label="Bank Reconciliation" onClick={closeSidebar} isActive={isActive("/admin/finance/report/bank-reconciliation")} />
                   </Submenu>
                   <Submenu isOpen={!!openSubmenus["gstReport"]} onToggle={() => toggleSubmenu("gstReport")} icon={<HiReceiptTax />} label="GST Report">
-                    <Item href="/admin/finance/report/gst" icon={<HiDocumentText />} label="GSTR‑1 / GSTR‑3B" onClick={closeSidebar} isActive={isActive("/admin/finance/report/gst")} />
+                    <SidebarItem href="/admin/finance/report/gst" icon={<HiDocumentText />} label="GSTR‑1 / GSTR‑3B" onClick={closeSidebar} isActive={isActive("/admin/finance/report/gst")} />
                   </Submenu>
                   <Submenu isOpen={!!openSubmenus["budgetReport"]} onToggle={() => toggleSubmenu("budgetReport")} icon={<HiChartSquareBar />} label="Budgeting">
-                    <Item href="/admin/finance/budget" icon={<HiDocumentText />} label="Budget & Variance" onClick={closeSidebar} isActive={isActive("/admin/finance/budget")} />
+                    <SidebarItem href="/admin/finance/budget" icon={<HiDocumentText />} label="Budget & Variance" onClick={closeSidebar} isActive={isActive("/admin/finance/budget")} />
                   </Submenu>
                   <Submenu isOpen={!!openSubmenus["ageingReport"]} onToggle={() => toggleSubmenu("ageingReport")} icon={<HiUserGroup />} label="Ageing">
-                    <Item href="/admin/finance/report/ageing/customer" icon={<HiUser />} label="Customer Ageing"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/customer")} />
-                    <Item href="/admin/finance/report/ageing/supplier" icon={<HiUser />} label="Supplier Ageing"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/supplier")} />
+                    <SidebarItem href="/admin/finance/report/ageing/customer" icon={<HiUser />} label="Customer Ageing" onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/customer")} />
+                    <SidebarItem href="/admin/finance/report/ageing/supplier" icon={<HiUser />} label="Supplier Ageing" onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/supplier")} />
                   </Submenu>
                   <Submenu isOpen={!!openSubmenus["statementReport"]} onToggle={() => toggleSubmenu("statementReport")} icon={<HiReceiptTax />} label="Statement">
-                    <Item href="/admin/finance/report/statement/customer" icon={<HiUser />}              label="Customer Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/customer")} />
-                    <Item href="/admin/finance/report/statement/supplier" icon={<HiUser />}              label="Supplier Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/supplier")} />
-                    <Item href="/admin/finance/report/statement/bank"     icon={<HiOutlineCreditCard />} label="Bank Statement"     onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/bank")} />
+                    <SidebarItem href="/admin/finance/report/statement/customer" icon={<HiUser />} label="Customer Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/customer")} />
+                    <SidebarItem href="/admin/finance/report/statement/supplier" icon={<HiUser />} label="Supplier Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/supplier")} />
+                    <SidebarItem href="/admin/finance/report/statement/bank" icon={<HiOutlineCreditCard />} label="Bank Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/bank")} />
                   </Submenu>
                 </Submenu>
               </Section>
 
               <Section title="Production" icon={<HiPuzzle />} isOpen={openMenu === "Production"} onToggle={() => toggleMenu("Production")}>
-                <Item href="/admin/bom"             icon={<HiOutlineCube />} label="BoM"              onClick={closeSidebar} isActive={isActive("/admin/bom")} />
-                <Item href="/admin/ProductionOrder" icon={<HiReceiptTax />}  label="Production Order" onClick={closeSidebar} isActive={isActive("/admin/ProductionOrder")} />
+                <SidebarItem href="/admin/bom" icon={<HiOutlineCube />} label="BoM" onClick={closeSidebar} isActive={isActive("/admin/bom")} />
+                <SidebarItem href="/admin/ProductionOrder" icon={<HiReceiptTax />} label="Production Order" onClick={closeSidebar} isActive={isActive("/admin/ProductionOrder")} />
               </Section>
+
               <Section title="Production View" icon={<HiOutlineLibrary />} isOpen={openMenu === "ProductionView"} onToggle={() => toggleMenu("ProductionView")}>
-                <Item href="/admin/bom-view"                   icon={<HiOutlineCube />}    label="BoM View"               onClick={closeSidebar} isActive={isActive("/admin/bom-view")} />
-                <Item href="/admin/productionorders-list-view" icon={<HiReceiptTax />}     label="Production Orders View" onClick={closeSidebar} isActive={isActive("/admin/productionorders-list-view")} />
-                <Item href="/admin/production-board"           icon={<HiChartSquareBar />} label="Production Board"       onClick={closeSidebar} isActive={isActive("/admin/production-board")} />
+                <SidebarItem href="/admin/bom-view" icon={<HiOutlineCube />} label="BoM View" onClick={closeSidebar} isActive={isActive("/admin/bom-view")} />
+                <SidebarItem href="/admin/productionorders-list-view" icon={<HiReceiptTax />} label="Production Orders View" onClick={closeSidebar} isActive={isActive("/admin/productionorders-list-view")} />
+                <SidebarItem href="/admin/production-board" icon={<HiChartSquareBar />} label="Production Board" onClick={closeSidebar} isActive={isActive("/admin/production-board")} />
               </Section>
+
               <Section title="Project" icon={<HiViewGrid />} isOpen={openMenu === "project"} onToggle={() => toggleMenu("project")}>
-                <Item href="/admin/project/workspaces"  icon={<HiOutlineOfficeBuilding />} label="Workspaces"  onClick={closeSidebar} isActive={isActive("/admin/project/workspaces")} />
-                <Item href="/admin/project/projects"    icon={<HiOutlineCube />}           label="Projects"    onClick={closeSidebar} isActive={isActive("/admin/project/projects")} />
-                <Item href="/admin/project/tasks/board" icon={<HiPuzzle />}                label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/project/tasks/board")} />
-                <Item href="/admin/project/tasks"       icon={<HiPuzzle />}                label="Tasks List"  onClick={closeSidebar} isActive={isActive("/admin/project/tasks")} />
+                <SidebarItem href="/admin/project/workspaces" icon={<HiOutlineOfficeBuilding />} label="Workspaces" onClick={closeSidebar} isActive={isActive("/admin/project/workspaces")} />
+                <SidebarItem href="/admin/project/projects" icon={<HiOutlineCube />} label="Projects" onClick={closeSidebar} isActive={isActive("/admin/project/projects")} />
+                <SidebarItem href="/admin/project/tasks/board" icon={<HiPuzzle />} label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/project/tasks/board")} />
+                <SidebarItem href="/admin/project/tasks" icon={<HiPuzzle />} label="Tasks List" onClick={closeSidebar} isActive={isActive("/admin/project/tasks")} />
               </Section>
+
               <Section title="HR" icon={<HiUserGroup />} isOpen={openMenu === "hr"} onToggle={() => toggleMenu("hr")}>
-                <Item href="/admin/hr/employee-onboarding" icon={<HiUserGroup />} label="Employee Onboarding" onClick={closeSidebar} isActive={isActive("/admin/hr/employee-onboarding")} />
-                <Item href="/admin/hr/Dashboard"           icon={<HiUserGroup />} label="Employee Details"    onClick={closeSidebar} isActive={isActive("/admin/hr/Dashboard")} />
-                <Item href="/admin/hr/masters"             icon={<HiUserGroup />} label="Department"          onClick={closeSidebar} isActive={isActive("/admin/hr/masters")} />
-                <Item href="/admin/hr/leaves"              icon={<HiUserGroup />} label="Leave"               onClick={closeSidebar} isActive={isActive("/admin/hr/leaves")} />
-                <Item href="/admin/hr/attendance"          icon={<HiUserGroup />} label="Attendance"          onClick={closeSidebar} isActive={isActive("/admin/hr/attendance")} />
-                <Item href="/admin/hr/salary"              icon={<HiUserGroup />} label="Salary"              onClick={closeSidebar} isActive={isActive("/admin/hr/salary")} />
-                <Item href="/admin/hr/payroll"             icon={<HiUserGroup />} label="Payroll"             onClick={closeSidebar} isActive={isActive("/admin/hr/payroll")} />
-                <Item href="/admin/hr/employees"           icon={<HiUserGroup />} label="Employee"            onClick={closeSidebar} isActive={isActive("/admin/hr/employees")} />
-                <Item href="/admin/hr/reports"             icon={<HiUserGroup />} label="Reports"             onClick={closeSidebar} isActive={isActive("/admin/hr/reports")} />
-                <Item href="/admin/hr/settings"            icon={<HiCog />}       label="Settings"            onClick={closeSidebar} isActive={isActive("/admin/hr/settings")} />
-                <Item href="/admin/hr/holidays"            icon={<HiGlobeAlt />}  label="Holidays"            onClick={closeSidebar} isActive={isActive("/admin/hr/holidays")} />
-                <Item href="/admin/hr/profile"             icon={<HiUser />}      label="Profile"             onClick={closeSidebar} isActive={isActive("/admin/hr/profile")} />
+                <SidebarItem href="/admin/hr/employee-onboarding" icon={<HiUserGroup />} label="Employee Onboarding" onClick={closeSidebar} isActive={isActive("/admin/hr/employee-onboarding")} />
+                <SidebarItem href="/admin/hr/Dashboard" icon={<HiUserGroup />} label="Employee Details" onClick={closeSidebar} isActive={isActive("/admin/hr/Dashboard")} />
+                <SidebarItem href="/admin/hr/masters" icon={<HiUserGroup />} label="Department" onClick={closeSidebar} isActive={isActive("/admin/hr/masters")} />
+                <SidebarItem href="/admin/hr/leaves" icon={<HiUserGroup />} label="Leave" onClick={closeSidebar} isActive={isActive("/admin/hr/leaves")} />
+                <SidebarItem href="/admin/hr/attendance" icon={<HiUserGroup />} label="Attendance" onClick={closeSidebar} isActive={isActive("/admin/hr/attendance")} />
+                <SidebarItem href="/admin/hr/salary" icon={<HiUserGroup />} label="Salary" onClick={closeSidebar} isActive={isActive("/admin/hr/salary")} />
+                <SidebarItem href="/admin/hr/payroll" icon={<HiUserGroup />} label="Payroll" onClick={closeSidebar} isActive={isActive("/admin/hr/payroll")} />
+                <SidebarItem href="/admin/hr/employees" icon={<HiUserGroup />} label="Employee" onClick={closeSidebar} isActive={isActive("/admin/hr/employees")} />
+                <SidebarItem href="/admin/hr/reports" icon={<HiUserGroup />} label="Reports" onClick={closeSidebar} isActive={isActive("/admin/hr/reports")} />
+                <SidebarItem href="/admin/hr/settings" icon={<HiCog />} label="Settings" onClick={closeSidebar} isActive={isActive("/admin/hr/settings")} />
+                <SidebarItem href="/admin/hr/holidays" icon={<HiGlobeAlt />} label="Holidays" onClick={closeSidebar} isActive={isActive("/admin/hr/holidays")} />
+                <SidebarItem href="/admin/hr/profile" icon={<HiUser />} label="Profile" onClick={closeSidebar} isActive={isActive("/admin/hr/profile")} />
               </Section>
+
               <Section title="PPC" icon={<HiPuzzle />} isOpen={openMenu === "ppc"} onToggle={() => toggleMenu("ppc")}>
-                <Item href="/admin/ppc/operatorsPage"              icon={<HiUser />}           label="Operators"                onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorsPage")} />
-                <Item href="/admin/ppc/machinesPage"               icon={<HiOutlineCube />}    label="Machines"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/machinesPage")} />
-                <Item href="/admin/ppc/resourcesPage"              icon={<HiOutlineLibrary />} label="Resources"                onClick={closeSidebar} isActive={isActive("/admin/ppc/resourcesPage")} />
-                <Item href="/admin/ppc/machineOutputPage"          icon={<HiOutlineLibrary />} label="Machine Outputs"          onClick={closeSidebar} isActive={isActive("/admin/ppc/machineOutputPage")} />
-                <Item href="/admin/ppc/holidaysPage"               icon={<HiGlobeAlt />}       label="Holidays"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/holidaysPage")} />
-                <Item href="/admin/ppc/operatorMachineMappingPage" icon={<HiPuzzle />}         label="Machine-Operator Mapping" onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorMachineMappingPage")} />
-                <Item href="/admin/ppc/operations"                 icon={<HiPuzzle />}         label="Operations"               onClick={closeSidebar} isActive={isActive("/admin/ppc/operations")} />
-                <Item href="/admin/ppc/productionOrderPage"        icon={<HiReceiptTax />}     label="Production Planning"      onClick={closeSidebar} isActive={isActive("/admin/ppc/productionOrderPage")} />
-                <Item href="/admin/ppc/jobcards"                   icon={<HiReceiptTax />}     label="Job Card"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/jobcards")} />
-                <Item href="/admin/ppc/downtime"                   icon={<HiReceiptTax />}     label="Downtime"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/downtime")} />
+                <SidebarItem href="/admin/ppc/operatorsPage" icon={<HiUser />} label="Operators" onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorsPage")} />
+                <SidebarItem href="/admin/ppc/machinesPage" icon={<HiOutlineCube />} label="Machines" onClick={closeSidebar} isActive={isActive("/admin/ppc/machinesPage")} />
+                <SidebarItem href="/admin/ppc/resourcesPage" icon={<HiOutlineLibrary />} label="Resources" onClick={closeSidebar} isActive={isActive("/admin/ppc/resourcesPage")} />
+                <SidebarItem href="/admin/ppc/machineOutputPage" icon={<HiOutlineLibrary />} label="Machine Outputs" onClick={closeSidebar} isActive={isActive("/admin/ppc/machineOutputPage")} />
+                <SidebarItem href="/admin/ppc/holidaysPage" icon={<HiGlobeAlt />} label="Holidays" onClick={closeSidebar} isActive={isActive("/admin/ppc/holidaysPage")} />
+                <SidebarItem href="/admin/ppc/operatorMachineMappingPage" icon={<HiPuzzle />} label="Machine-Operator Mapping" onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorMachineMappingPage")} />
+                <SidebarItem href="/admin/ppc/operations" icon={<HiPuzzle />} label="Operations" onClick={closeSidebar} isActive={isActive("/admin/ppc/operations")} />
+                <SidebarItem href="/admin/ppc/productionOrderPage" icon={<HiReceiptTax />} label="Production Planning" onClick={closeSidebar} isActive={isActive("/admin/ppc/productionOrderPage")} />
+                <SidebarItem href="/admin/ppc/jobcards" icon={<HiReceiptTax />} label="Job Card" onClick={closeSidebar} isActive={isActive("/admin/ppc/jobcards")} />
+                <SidebarItem href="/admin/ppc/downtime" icon={<HiReceiptTax />} label="Downtime" onClick={closeSidebar} isActive={isActive("/admin/ppc/downtime")} />
               </Section>
+
               <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
-                <Item href="/admin/helpdesk/tickets"            icon={<HiDocumentText />}   label="Tickets"           onClick={closeSidebar} isActive={isActive("/admin/helpdesk/tickets")} />
-                <Item href="/admin/helpdesk/agents"             icon={<HiUsers />}          label="Agents"            onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents")} />
-                <Item href="/admin/helpdesk/categories"         icon={<HiUserGroup />}      label="Categories"        onClick={closeSidebar} isActive={isActive("/admin/helpdesk/categories")} />
-                <Item href="/admin/helpdesk/agents/manage"      icon={<HiPuzzle />}         label="Create Agent"      onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents/manage")} />
-                <Item href="/admin/helpdesk/settings"           icon={<HiCog />}            label="Settings"          onClick={closeSidebar} isActive={isActive("/admin/helpdesk/settings")} />
-                <Item href="/admin/helpdesk/feedback"           icon={<HiDocumentText />}   label="Feedback"          onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback")} />
-                <Item href="/admin/helpdesk/feedback/analytics" icon={<HiChartSquareBar />} label="Feedback Analysis" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback/analytics")} />
-                <Item href="/admin/helpdesk/report"             icon={<HiChartSquareBar />} label="Report"            onClick={closeSidebar} isActive={isActive("/admin/helpdesk/report")} />
+                <SidebarItem href="/admin/helpdesk/tickets" icon={<HiDocumentText />} label="Tickets" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/tickets")} />
+                <SidebarItem href="/admin/helpdesk/agents" icon={<HiUsers />} label="Agents" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents")} />
+                <SidebarItem href="/admin/helpdesk/categories" icon={<HiUserGroup />} label="Categories" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/categories")} />
+                <SidebarItem href="/admin/helpdesk/agents/manage" icon={<HiPuzzle />} label="Create Agent" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents/manage")} />
+                <SidebarItem href="/admin/helpdesk/settings" icon={<HiCog />} label="Settings" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/settings")} />
+                <SidebarItem href="/admin/helpdesk/feedback" icon={<HiDocumentText />} label="Feedback" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback")} />
+                <SidebarItem href="/admin/helpdesk/feedback/analytics" icon={<HiChartSquareBar />} label="Feedback Analysis" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback/analytics")} />
+                <SidebarItem href="/admin/helpdesk/report" icon={<HiChartSquareBar />} label="Report" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/report")} />
               </Section>
             </>
           )}
@@ -510,64 +631,94 @@ export default function Layout({ children }) {
               const moduleRoutes = MODULE_ROUTE_MAP[moduleName];
               if (!moduleRoutes) return null;
               const permissions = data?.permissions || {};
-              const visibleRoutes = moduleRoutes.filter(route => {
+              const visibleRoutes = moduleRoutes.filter((route) => {
                 if (route.needsCreate && !permissions.create) return false;
-                if (route.needsView   && !permissions.view)   return false;
+                if (route.needsView && !permissions.view) return false;
                 return true;
               });
               if (!visibleRoutes.length) return null;
               return (
-                <Section key={moduleName} title={moduleName} icon={<HiOutlineCube />}
-                  isOpen={openMenu === moduleName} onToggle={() => toggleMenu(moduleName)}>
-                  {visibleRoutes.map(route => (
-                    <Item key={route.path} href={route.path} icon={<HiViewGrid />}
-                      label={route.label} onClick={closeSidebar} isActive={isActive(route.path)} />
+                <Section key={moduleName} title={moduleName} icon={<HiOutlineCube />} isOpen={openMenu === moduleName} onToggle={() => toggleMenu(moduleName)}>
+                  {visibleRoutes.map((route) => (
+                    <SidebarItem key={route.path} href={route.path} icon={<HiViewGrid />} label={route.label} onClick={closeSidebar} isActive={isActive(route.path)} />
                   ))}
                 </Section>
               );
-            })
-          }
+            })}
 
-          <div className="p-4 mt-4 border-t border-gray-200">
+          <div className="pt-5 mt-5 border-t border-gray-200/50">
             <LogoutButton />
           </div>
         </nav>
       </aside>
 
-      {/* CONTENT AREA */}
+      {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm shrink-0">
-          <div className="flex items-center justify-between px-4 h-14">
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm safe-top">
+          <div className="flex items-center justify-between h-16 px-4 md:px-6">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 transition-colors">
-                {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+              >
+                {isSidebarOpen ? <HiX size={20} /> : <HiMenu size={20} />}
               </button>
-            <h1 className="text-sm md:text-base font-bold text-gray-800 truncate tracking-tight">
-  {session?.companyName || (isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard")}
-</h1>
+
+              {/* Modern Back Button */}
+              {showBackButton && (
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                             bg-gray-50/80 text-gray-600 hover:bg-gray-100 hover:text-gray-900
+                             transition-all duration-200 border border-gray-200/50 backdrop-blur-sm
+                             focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                >
+                  <span className="text-base leading-none">←</span>
+                  <span className="hidden sm:inline">{parentTitle}</span>
+                </button>
+              )}
+
+              {/* Scroll to top */}
+              <button
+                onClick={scrollToTop}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                title="Scroll to top"
+              >
+                <HiArrowUp size={18} />
+              </button>
+
+              <h1 className="text-base font-semibold text-gray-800 truncate">
+                {session?.companyName || (isCompany ? "Company Admin" : isAdmin ? "Admin Dashboard" : "Dashboard")}
+              </h1>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0 relative">
+            <div className="flex items-center gap-4 safe-right">
+              {/* Notifications */}
               <div className="relative">
-                <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 text-gray-600 hover:text-gray-900">
-                  <HiBell size={22} />
+                <button
+                  onClick={() => setOpenNotif(!openNotif)}
+                  className="relative p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-600"
+                >
+                  <HiBell size={20} />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full">{unreadCount}</span>
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
                   )}
                 </button>
                 {openNotif && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white text-gray-800 rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
-                    <div className="p-3 font-bold border-b border-gray-200">Notifications</div>
+                  <div className="absolute right-0 mt-2 w-80 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                    <div className="px-4 py-3 font-semibold text-gray-700 border-b border-gray-100">Notifications</div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="p-4 text-sm text-gray-500">No notifications</div>
+                        <div className="p-4 text-sm text-gray-500 text-center">No notifications</div>
                       ) : (
-                        notifications.map(n => (
-                          <div key={n._id} onClick={() => markAsRead(n._id)}
-                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${!n.isRead ? "bg-gray-50 font-semibold" : ""}`}>
-                            <div className="text-sm">{n.title}</div>
-                            <div className="text-xs text-gray-500">{n.message}</div>
+                        notifications.map((n) => (
+                          <div
+                            key={n._id}
+                            onClick={() => markAsRead(n._id)}
+                            className={`p-3 border-b border-gray-50 cursor-pointer hover:bg-indigo-50/30 transition-colors ${!n.isRead ? "bg-indigo-50/50" : ""}`}
+                          >
+                            <div className="text-sm font-medium text-gray-800">{n.title}</div>
+                            <div className="text-xs text-gray-500 mt-1">{n.message}</div>
                           </div>
                         ))
                       )}
@@ -575,23 +726,659 @@ export default function Layout({ children }) {
                   </div>
                 )}
               </div>
-              <div className="hidden md:flex items-center gap-3 text-sm text-gray-600">
-                <span>{session.name || session.email}</span>
-              </div>
-              <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/20 shadow-sm" title={session.email}>
-                {session.email?.charAt(0).toUpperCase()}
+
+              {/* User menu */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  className="flex items-center gap-2 focus:outline-none group"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center text-sm font-medium shadow-md group-hover:scale-105 transition-transform">
+                    {session.email?.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="hidden sm:inline text-sm font-medium text-gray-700">{session.name?.split(" ")[0] || "User"}</span>
+                  <HiCog size={14} className="text-gray-400 hidden sm:block group-hover:rotate-90 transition-transform duration-300" />
+                </button>
+                {userDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-100 py-1 z-50">
+                    <Link
+                      href="/societymanagement/profile"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 transition-colors"
+                      onClick={() => setUserDropdownOpen(false)}
+                    >
+                      <HiUser size={16} /> Profile
+                    </Link>
+                    <Link
+                      href="/societymanagement/change-password"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 transition-colors"
+                      onClick={() => setUserDropdownOpen(false)}
+                    >
+                      <HiCog size={16} /> Change Password
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100"
+                    >
+                      <HiX size={16} /> Logout
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-gray-50">
+        {/* Main content */}
+        <main
+          ref={mainContentRef}
+          className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom safe-left safe-right"
+        >
           {children}
         </main>
       </div>
     </div>
   );
 }
+
+
+
+// "use client";
+
+// import { useState, useEffect, useRef } from "react";
+// import Link from "next/link";
+// import {
+//   HiUsers, HiGlobeAlt, HiFlag, HiUserGroup, HiOutlineCube, HiOutlineLibrary,
+//   HiCurrencyDollar, HiOutlineCreditCard, HiChartSquareBar, HiReceiptTax,
+//   HiPuzzle, HiViewGrid, HiUser, HiDocumentText, HiOutlineOfficeBuilding,
+//   HiCube, HiShoppingCart, HiCog, HiMenu, HiX, HiHome, HiBell,
+// } from "react-icons/hi";
+// import { GiStockpiles } from "react-icons/gi";
+// import { SiCivicrm } from "react-icons/si";
+// import { useRouter, usePathname } from "next/navigation";
+// import LogoutButton from "@/components/LogoutButton";
+
+// // ─────────────────────────────────────────────────────────────
+// // MODULE_ROUTE_MAP (unchanged functionality)
+// // ─────────────────────────────────────────────────────────────
+// const MODULE_ROUTE_MAP = {
+//   "Sales Quotation": [
+//     { label: "Quotation View",   path: "/admin/sales-quotation-view", needsView: true },
+//     { label: "Create Quotation", path: "/admin/sales-quotation",      needsCreate: true },
+//   ],
+//   "Sales Order": [
+//     { label: "Order View",       path: "/admin/sales-order-view",     needsView: true },
+//     { label: "Create Order",     path: "/admin/sales-order",          needsCreate: true },
+//   ],
+//   "Sales Invoice": [
+//     { label: "Invoice View",     path: "/admin/sales-invoice-view",   needsView: true },
+//   ],
+//   "Delivery": [
+//     { label: "Delivery View",    path: "/admin/delivery-view",        needsView: true },
+//   ],
+//   "Credit Memo": [
+//     { label: "Credit Memo View", path: "/admin/credit-memo-veiw",     needsView: true },
+//   ],
+//   "Sales Report": [
+//     { label: "Sales Report",     path: "/admin/sales-report",         needsView: true },
+//     { label: "Sales Board",      path: "/admin/sales-board",          needsView: true },
+//     { label: "POS Report",       path: "/admin/pos/reports",          needsView: true },
+//   ],
+//   "Customers": [
+//     { label: "Customer View",    path: "/admin/customer-view",        needsView: true },
+//     { label: "Create Customer",  path: "/admin/createCustomers",      needsCreate: true },
+//   ],
+//   "Suppliers": [
+//     { label: "Supplier View",    path: "/admin/supplier",             needsView: true },
+//     { label: "Create Supplier",  path: "/admin/createSupplier",       needsCreate: true },
+//   ],
+//   "Items": [
+//     { label: "Item View",        path: "/admin/item",                 needsView: true },
+//     { label: "Create Item",      path: "/admin/createItem",           needsCreate: true },
+//   ],
+//   "Company": [
+//     { label: "Company Settings", path: "/admin/company",              needsView: true },
+//   ],
+//   "Users": [
+//     { label: "Users",            path: "/admin/users",                needsView: true },
+//   ],
+//   "Accounts": [
+//     { label: "Account Head View", path: "/admin/account-head-view",       needsView: true },
+//     { label: "General Ledger",    path: "/admin/bank-head-details-view",   needsView: true },
+//   ],
+//   "employees": [
+//     { label: "My Profile",          path: "/admin/hr/profile",               needsView: true },
+//     { label: "Employee Dashboard",  path: "/admin/hr/Dashboard",             needsView: true },
+//     { label: "Employee Onboarding", path: "/admin/hr/employee-onboarding",   needsCreate: true },
+//     { label: "Department",          path: "/admin/hr/masters",               needsView: true },
+//   ],
+//   "attendance": [
+//     { label: "My Attendance",       path: "/admin/hr/my-attendance",         needsView: true },
+//     { label: "Attendance Report",   path: "/admin/hr/attendance",            needsView: true },
+//   ],
+//   "leaves": [
+//     { label: "My Leaves",           path: "/admin/hr/my-leaves",             needsView: true },
+//     { label: "Leave Management",    path: "/admin/hr/leaves",                needsView: true },
+//   ],
+//   "salary": [
+//     { label: "My Salary",           path: "/admin/hr/my-salary",             needsView: true },
+//   ],
+//   "payroll": [
+//     { label: "Payroll",             path: "/admin/hr/payroll",               needsView: true },
+//   ],
+//   "Purchase Quotation": [
+//     { label: "Quotation View",     path: "/admin/PurchaseQuotationList",      needsView: true },
+//   ],
+//   "Purchase Order": [
+//     { label: "Order View",         path: "/admin/purchase-order-view",        needsView: true },
+//   ],
+//   "GRN": [
+//     { label: "GRN View",           path: "/admin/grn-view",                   needsView: true },
+//   ],
+//   "Purchase Invoice": [
+//     { label: "Invoice View",       path: "/admin/purchaseInvoice-view",       needsView: true },
+//   ],
+//   "Debit Notes": [
+//     { label: "Debit Notes View",   path: "/admin/debit-notes-view",           needsView: true },
+//   ],
+//   "Purchase Report": [
+//     { label: "Purchase Report",    path: "/admin/purchase-report",            needsView: true },
+//   ],
+//   "Inventory": [
+//     { label: "Inventory View",     path: "/admin/InventoryView",              needsView: true },
+//     { label: "Inventory Entry",    path: "/admin/InventoryEntry",             needsCreate: true },
+//     { label: "Inventory Ledger",   path: "/admin/InventoryAdjustmentsView",   needsView: true },
+//     { label: "Gate Entry",         path: "/admin/gate-entry",                  needsCreate: true}
+//   ],
+//   "Production Order": [
+//     { label: "Production Order",   path: "/admin/ProductionOrder",            needsView: true },
+//     { label: "Production Board",   path: "/admin/production-board",           needsView: true },
+//   ],
+//   "BoM": [
+//     { label: "BoM",                path: "/admin/bom",                        needsCreate: true },
+//     { label: "BoM View",           path: "/admin/bom-view",                   needsView: true },
+//   ],
+//   "Lead Generation": [
+//     { label: "Lead Generation",    path: "/admin/crm/leads-view",                 needsView: true },
+//   ],
+//   "Opportunity": [
+//     { label: "Opportunity",        path: "/admin/crm/opportunities",              needsView: true },
+//   ],
+//   "Campaign": [
+//     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
+//   ],
+//   "Email Templates": [
+//     { label: "Email Templates",    path: "/admin/email-templates",            needsView: true },
+//   ],
+
+//   "CRM Agent": [
+//     { label: "Campaign",           path: "/admin/crm/campaign",               needsView: true },
+//     { label: "Opportunity",        path: "/admin/crm/opportunities",              needsView: true },
+//     { label: "Lead Generation",    path: "/admin/crm/leads-view",                 needsView: true },
+//     { label: "Email Templates",      path: "/admin/email-templates",            needsView: true },  
+//   ],
+//   "Project": [
+//     { label: "Projects",           path: "/admin/project/projects",           needsView: true },
+//     { label: "Workspaces",         path: "/admin/project/workspaces",         needsView: true },
+//     { label: "Tasks",              path: "/admin/project/tasks",              needsView: true },
+//     { label: "Task Board",         path: "/admin/project/tasks/board",        needsView: true },
+//   ],
+//   "Journal Entry": [
+//     { label: "Journal Entry",      path: "/admin/finance/journal-entry",      needsCreate: true },
+//   ],
+//   "Reports": [
+//     { label: "Trial Balance",      path: "/admin/finance/report/trial-balance", needsView: true },
+//   ],
+//   "Ageing": [
+//     { label: "Customer Ageing",    path: "/admin/finance/report/ageing/customer", needsView: true },
+//   ],
+//   "Statement": [
+//     { label: "Customer Statement", path: "/admin/finance/report/statement/customer", needsView: true },
+//   ],
+//   "Bank Statement": [
+//     { label: "Bank Statement",     path: "/admin/finance/report/statement/bank",    needsView: true },
+//   ],
+//   "Profit & Loss": [
+//     { label: "Profit & Loss",      path: "/admin/finance/report/profit-loss",        needsView: true },
+//   ],
+  
+//   "Balance Sheet": [
+//     { label: "Balance Sheet",      path: "/admin/finance/report/balance-sheet",      needsView: true },
+//   ],
+//   "Supplier Ageing": [
+//     { label: "Supplier Ageing",    path: "/admin/finance/report/ageing/supplier",    needsView: true },
+//   ],
+//   "Supplier Statement": [
+//     { label: "Supplier Statement", path: "/admin/finance/report/statement/supplier", needsView: true },
+//   ],
+//   "Payment Entry": [
+//     { label: "Payment Form",       path: "/admin/Payment",                    needsCreate: true },
+//   ],
+//   "Ledger": [
+//     { label: "General Ledger",     path: "/admin/bank-head-details-view",     needsView: true },
+//   ],
+//   "Tickets": [
+//     { label: "Tickets",            path: "/admin/helpdesk/tickets",           needsView: true },
+//   ],
+//   "Responses": [
+//     { label: "Feedback",           path: "/admin/helpdesk/feedback",          needsView: true },
+//     { label: "Feedback Analysis",  path: "/admin/helpdesk/feedback/analytics", needsView: true },
+//   ],
+//   "PPC": [
+//     { label: "Operators",               path: "/admin/ppc/operatorsPage",              needsView: true },
+//     { label: "Machines",                path: "/admin/ppc/machinesPage",               needsView: true },
+//     { label: "Resources",               path: "/admin/ppc/resourcesPage",              needsView: true },
+//     { label: "Machine Outputs",         path: "/admin/ppc/machineOutputPage",          needsView: true },
+//     { label: "Holidays",                path: "/admin/ppc/holidaysPage",               needsView: true },
+//     { label: "Machine-Operator Map",    path: "/admin/ppc/operatorMachineMappingPage", needsView: true },
+//     { label: "Operations",              path: "/admin/ppc/operations",                 needsView: true },
+//     { label: "Production Planning",     path: "/admin/ppc/productionOrderPage",        needsView: true },
+//     { label: "Job Card",                path: "/admin/ppc/jobcards",                   needsView: true },
+//     { label: "Downtime",                path: "/admin/ppc/downtime",                   needsView: true },
+//   ],
+//   "Task": [
+//     { label: "Tasks",              path: "/admin/tasks",                       needsView: true },
+//     { label: "Tasks Board",        path: "/admin/tasks/board",                 needsView: true },
+//   ],
+// };
+
+// function canAccessModule(data) {
+//   if (!data) return false;
+//   if (data.selected === true) return true;
+//   const p = data.permissions || {};
+//   return !!(p.view || p.edit || p.create || p.delete);
+// }
+
+// // ─── Helper Components (light theme versions) ─────────────────
+// const Section = ({ title, icon, isOpen, onToggle, children }) => (
+//   <div className="border-b border-gray-200">
+//     <button onClick={onToggle} className="flex justify-between w-full px-3 py-3 hover:bg-gray-100 transition-colors text-left">
+//       <span className="flex gap-3 items-center font-medium text-sm text-gray-700">
+//         <span className="text-lg text-blue-600">{icon}</span>
+//         <span className="truncate">{title}</span>
+//       </span>
+//       <span className="text-xs ml-2 shrink-0 text-gray-500">{isOpen ? "−" : "+"}</span>
+//     </button>
+//     {isOpen && (
+//       <div className="bg-gray-50 pb-2 ml-4 border-l border-gray-200">{children}</div>
+//     )}
+//   </div>
+// );
+
+// const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
+//   <div className="mt-1">
+//     <button onClick={onToggle} className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 uppercase tracking-wider transition-colors">
+//       <span className="flex gap-2 items-center">{icon}<span>{label}</span></span>
+//       <span>{isOpen ? "−" : "+"}</span>
+//     </button>
+//     {isOpen && <div className="ml-2 space-y-0.5 border-l border-gray-200">{children}</div>}
+//   </div>
+// );
+
+// const Item = ({ href, icon, label, onClick, isActive }) => (
+//   <Link href={href} onClick={onClick}
+//     className={`flex gap-3 px-4 py-2 text-[13px] rounded-l-md transition-all font-serif ${
+//       isActive ? "text-blue-700 bg-blue-100 border-r-2 border-blue-500" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+//     }`}>
+//     <span className="text-base opacity-70 shrink-0">{icon}</span>
+//     <span className="truncate">{label}</span>
+//   </Link>
+// );
+
+// export default function Layout({ children }) {
+//   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+//   const [openMenu, setOpenMenu]           = useState(null);
+//   const [openSubmenus, setOpenSubmenus]   = useState({});
+//   const [session, setSession]             = useState(null);
+//   const router   = useRouter();
+//   const pathname = usePathname();
+//   const sidebarRef = useRef(null);
+
+//   const [notifications, setNotifications] = useState([]);
+//   const [openNotif, setOpenNotif]         = useState(false);
+//   const [unreadCount, setUnreadCount]     = useState(0);
+
+//   useEffect(() => { fetchNotifications(); }, []);
+
+//   const fetchNotifications = async () => {
+//     try {
+//       const token = localStorage.getItem("token");
+//       const res  = await fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
+//       const data = await res.json();
+//       if (data.success) {
+//         setNotifications(data.data);
+//         setUnreadCount(data.data.filter(n => !n.isRead).length);
+//       }
+//     } catch (err) { console.error(err); }
+//   };
+
+//   const markAsRead = async (id) => {
+//     try {
+//       const token = localStorage.getItem("token");
+//       await fetch(`/api/notifications/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+//       fetchNotifications();
+//     } catch (err) { console.error(err); }
+//   };
+
+//   useEffect(() => {
+//     async function getSession() {
+//       try {
+//         const token = localStorage.getItem("token");
+//         if (!token) { router.push("/signin"); return; }
+//         const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+//         if (!res.ok) { localStorage.removeItem("token"); localStorage.removeItem("user"); router.push("/signin"); return; }
+//         const data = await res.json();
+//         setSession(data.user);
+//       } catch (err) { console.error("Session fetch error:", err); router.push("/signin"); }
+//     }
+//     getSession();
+//   }, [router]);
+
+//   useEffect(() => { setIsSidebarOpen(false); }, [pathname]);
+//   useEffect(() => {
+//     const handler = (e) => { if (e.key === "Escape") setIsSidebarOpen(false); };
+//     document.addEventListener("keydown", handler);
+//     return () => document.removeEventListener("keydown", handler);
+//   }, []);
+
+//   if (!session) return (
+//     <div className="flex h-screen items-center justify-center bg-gray-50">
+//       <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
+//     </div>
+//   );
+
+//   const isCompany    = session?.type?.toLowerCase() === "company";
+//   const isAdmin      = session?.roles?.includes("Admin");
+//   const hasFullAccess = isCompany || isAdmin;
+//   const modules      = session?.modules || {};
+
+//   const toggleSubmenu = (k) => setOpenSubmenus(p => ({ ...p, [k]: !p[k] }));
+//   const toggleMenu    = (m) => setOpenMenu(openMenu === m ? null : m);
+//   const closeSidebar  = () => setIsSidebarOpen(false);
+//   const isActive      = (path) => pathname === path;
+
+//   return (
+//     <div className="flex h-screen bg-gray-50 overflow-hidden pt-safe-top sm:pt-0 font-serif">
+//       {/* Global font override */}
+//       <style jsx global>{`
+//         * { font-family: 'Times New Roman', Times, serif; }
+//       `}</style>
+
+//       {isSidebarOpen && (
+//         <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
+//       )}
+
+//       <aside ref={sidebarRef} aria-label="Sidebar navigation"
+//         className={`fixed inset-y-0 left-0 z-50 w-64 lg:w-72 bg-white text-gray-800 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
+//           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+//         } flex flex-col shadow-xl border-r border-gray-200`}>
+
+//         <div className="h-16 flex items-center justify-between px-4 lg:px-6 bg-gray-50 border-b border-gray-200 shrink-0">
+//           <span className="font-bold text-base lg:text-lg flex items-center gap-2 tracking-wider text-gray-800">
+//             <HiHome className="text-blue-600 shrink-0" />
+//             <Link href="/admin" className="truncate">ERP SYSTEM</Link>
+//           </span>
+//           {isSidebarOpen && (
+//             <button onClick={closeSidebar} className="p-2 rounded hover:bg-gray-200 transition-colors text-gray-600">
+//               <HiX size={24} />
+//             </button>
+//           )}
+//         </div>
+
+//         <nav className="flex-1 overflow-y-auto py-2">
+//           {hasFullAccess && (
+//             <>
+//               <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
+//                 <Item href="/admin/Countries"            icon={<HiGlobeAlt />}              label="Countries"            onClick={closeSidebar} isActive={isActive("/admin/Countries")} />
+//                 <Item href="/admin/State"                icon={<HiFlag />}                  label="State"                onClick={closeSidebar} isActive={isActive("/admin/State")} />
+//                 <Item href="/admin/CreateGroup"          icon={<HiUserGroup />}             label="Create Group"         onClick={closeSidebar} isActive={isActive("/admin/CreateGroup")} />
+//                 <Item href="/admin/CreateItemGroup"      icon={<HiOutlineCube />}           label="Create Item Group"    onClick={closeSidebar} isActive={isActive("/admin/CreateItemGroup")} />
+//                 <Item href="/admin/account-bankhead"     icon={<HiOutlineLibrary />}        label="Account Head"         onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+//                 <Item href="/admin/bank-head-details"    icon={<HiCurrencyDollar />}        label="General Ledger"       onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
+//                 <Item href="/admin/createCustomers"      icon={<HiUserGroup />}             label="Create Customer"      onClick={closeSidebar} isActive={isActive("/admin/createCustomers")} />
+//                 <Item href="/admin/supplier"             icon={<HiUserGroup />}             label="Supplier"             onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
+//                 <Item href="/admin/item"                 icon={<HiCube />}                  label="Item"                 onClick={closeSidebar} isActive={isActive("/admin/item")} />
+//                 <Item href="/admin/WarehouseDetailsForm" icon={<HiOutlineLibrary />}        label="Warehouse Details"    onClick={closeSidebar} isActive={isActive("/admin/WarehouseDetailsForm")} />
+
+//              <Item href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Settings" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
+//               </Section>
+//               <Section title="System" icon={<HiCog />} isOpen={openMenu === "system"} onToggle={() => toggleMenu("system")}>
+//               <Item href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Setting" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
+// </Section>
+
+//               <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
+//                 <Item href="/admin/customer-view"        icon={<HiUsers />}                 label="Customer View"                onClick={closeSidebar} isActive={isActive("/admin/customer-view")} />
+//                 <Item href="/admin/supplier"             icon={<HiUserGroup />}             label="Supplier View"                onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
+//                 <Item href="/admin/item"                 icon={<HiCube />}                  label="Item View"                    onClick={closeSidebar} isActive={isActive("/admin/item")} />
+//                 <Item href="/admin/account-bankhead"     icon={<HiOutlineLibrary />}        label="Account Head View"            onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+//                 <Item href="/admin/bank-head-details"    icon={<HiCurrencyDollar />}        label="General Ledger View"          onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
+//                 <Item href="/admin/email-templates"      icon={<HiDocumentText />}          label="Email Templates"              onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+//                 <Item href="/admin/email-masters"        icon={<HiOutlineCreditCard />}     label="Email & App Password Master"  onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
+//                 <Item href="/admin/price-list"           icon={<HiOutlineOfficeBuilding />} label="Price List"                   onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
+//               </Section>
+
+//               <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === "transactionsView"} onToggle={() => toggleMenu("transactionsView")}>
+//                 <Submenu isOpen={!!openSubmenus["tvSales"]} onToggle={() => toggleSubmenu("tvSales")} icon={<HiShoppingCart />} label="Sales">
+//                   <Item href="/admin/sales-quotation-view" icon={<SiCivicrm />}           label="Quotation View"  onClick={closeSidebar} isActive={isActive("/admin/sales-quotation-view")} />
+//                   <Item href="/admin/sales-order-view"     icon={<HiPuzzle />}            label="Order View"      onClick={closeSidebar} isActive={isActive("/admin/sales-order-view")} />
+//                   <Item href="/admin/pos"                  icon={<HiCube />}              label="POS Invoice"     onClick={closeSidebar} isActive={isActive("/admin/pos")} />
+//                   <Item href="/admin/delivery-view"        icon={<HiOutlineCube />}       label="Delivery View"   onClick={closeSidebar} isActive={isActive("/admin/delivery-view")} />
+//                   <Item href="/admin/sales-invoice-view"   icon={<HiOutlineCreditCard />} label="Invoice View"    onClick={closeSidebar} isActive={isActive("/admin/sales-invoice-view")} />
+//                   <Item href="/admin/credit-memo-veiw"     icon={<HiReceiptTax />}        label="Credit Memo"     onClick={closeSidebar} isActive={isActive("/admin/credit-memo-veiw")} />
+//                   <Item href="/admin/sales-report"         icon={<HiChartSquareBar />}    label="Report"          onClick={closeSidebar} isActive={isActive("/admin/sales-report")} />
+//                   <Item href="/admin/pos/reports"          icon={<HiChartSquareBar />}    label="POS Report"      onClick={closeSidebar} isActive={isActive("/admin/pos/reports")} />
+//                   <Item href="/admin/sales-board"          icon={<HiChartSquareBar />}    label="Sales Board"     onClick={closeSidebar} isActive={isActive("/admin/sales-board")} />
+//                 </Submenu>
+//                 <Submenu isOpen={!!openSubmenus["tvPurchase"]} onToggle={() => toggleSubmenu("tvPurchase")} icon={<GiStockpiles />} label="Purchase">
+//                   <Item href="/admin/PurchaseQuotationList" icon={<SiCivicrm />}           label="Quotation View" onClick={closeSidebar} isActive={isActive("/admin/PurchaseQuotationList")} />
+//                   <Item href="/admin/purchase-order-view"   icon={<HiPuzzle />}            label="Order View"     onClick={closeSidebar} isActive={isActive("/admin/purchase-order-view")} />
+//                   <Item href="/admin/grn-view"              icon={<HiOutlineCube />}       label="GRN View"       onClick={closeSidebar} isActive={isActive("/admin/grn-view")} />
+//                   <Item href="/admin/purchaseInvoice-view"  icon={<HiOutlineCreditCard />} label="Invoice View"   onClick={closeSidebar} isActive={isActive("/admin/purchaseInvoice-view")} />
+//                   <Item href="/admin/debit-notes-view"      icon={<HiReceiptTax />}        label="Debit Notes"    onClick={closeSidebar} isActive={isActive("/admin/debit-notes-view")} />
+//                   <Item href="/admin/purchase-report"       icon={<HiChartSquareBar />}    label="Report"         onClick={closeSidebar} isActive={isActive("/admin/purchase-report")} />
+//                 </Submenu>
+//               </Section>
+
+//               <Section title="User" icon={<SiCivicrm />} isOpen={openMenu === "user"} onToggle={() => toggleMenu("user")}>
+//                 <Item href="/admin/users" icon={<HiUserGroup />} label="User" onClick={closeSidebar} isActive={isActive("/admin/users")} />
+//               </Section>
+//               <Section title="Task" icon={<HiUserGroup />} isOpen={openMenu === "task"} onToggle={() => toggleMenu("task")}>
+//                 <Item href="/admin/tasks"       icon={<HiUserGroup />} label="Tasks"       onClick={closeSidebar} isActive={isActive("/admin/tasks")} />
+//                 <Item href="/admin/tasks/board" icon={<HiPuzzle />}    label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/tasks/board")} />
+//               </Section>
+//               <Section title="CRM" icon={<SiCivicrm />} isOpen={openMenu === "CRM-View"} onToggle={() => toggleMenu("CRM-View")}>
+//                 <Item href="/admin/crm/leads-view"    icon={<HiUserGroup />} label="Lead Generation" onClick={closeSidebar} isActive={isActive("/admin/crm/leads-view")} />
+//                 <Item href="/admin/email-templates"      icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+//                 <Item href="/admin/crm/lead-pipeline" icon={<HiPuzzle />}    label="Lead Pipeline"   onClick={closeSidebar} isActive={isActive("/admin/crm/lead-pipeline")} />
+//                 <Item href="/admin/crm/opportunities" icon={<HiPuzzle />}    label="Opportunity"     onClick={closeSidebar} isActive={isActive("/admin/crm/opportunities")} />
+//                 <Item href="/admin/crm/campaign"  icon={<HiPuzzle />}    label="Campaign"        onClick={closeSidebar} isActive={isActive("/admin/crm/campaign")} />
+//                 <Item href="/admin/crm/calls"     icon={<HiPuzzle />}    label="Calls"           onClick={closeSidebar} isActive={isActive("/admin/crm/calls")} />
+//               </Section>
+//               <Section title="Stock" icon={<HiOutlineCube />} isOpen={openMenu === "Stock"} onToggle={() => toggleMenu("Stock")}>
+//                 <Item href="/admin/InventoryView"            icon={<HiOutlineLibrary />} label="Inventory View"   onClick={closeSidebar} isActive={isActive("/admin/InventoryView")} />
+//                 <Item href="/admin/InventoryEntry"           icon={<HiOutlineLibrary />} label="Inventory Entry"  onClick={closeSidebar} isActive={isActive("/admin/InventoryEntry")} />
+//                 <Item href="/admin/InventoryAdjustmentsView" icon={<HiOutlineLibrary />} label="Inventory Ledger" onClick={closeSidebar} isActive={isActive("/admin/InventoryAdjustmentsView")} />
+//                 <Item href="/admin/gate-entry"               icon={<HiOutlineLibrary />} label="Gate Entry"       onClick={closeSidebar} isActive={isActive("/admin/gate-entry")} />
+//               </Section>
+//               <Section title="Payment" icon={<HiOutlineCreditCard />} isOpen={openMenu === "Payment"} onToggle={() => toggleMenu("Payment")}>
+//                 <Item href="/admin/Payment" icon={<HiCurrencyDollar />} label="Payment Form" onClick={closeSidebar} isActive={isActive("/admin/Payment")} />
+//               </Section>
+
+//               {/* ========== FINANCE SECTION (UPDATED) ========== */}
+//               <Section title="Finance" icon={<HiOutlineCreditCard />} isOpen={openMenu === "finance"} onToggle={() => toggleMenu("finance")}>
+//                 <Submenu isOpen={!!openSubmenus["journalEntry"]} onToggle={() => toggleSubmenu("journalEntry")} icon={<HiCurrencyDollar />} label="Journal Entry">
+//                   <Item href="/admin/finance/journal-entry" icon={<HiOutlineCreditCard />} label="Journal Entry" onClick={closeSidebar} isActive={isActive("/admin/finance/journal-entry")} />
+//                 </Submenu>
+//                 <Submenu isOpen={!!openSubmenus["report"]} onToggle={() => toggleSubmenu("report")} icon={<HiChartSquareBar />} label="Report">
+//                   <Submenu isOpen={!!openSubmenus["financialReport"]} onToggle={() => toggleSubmenu("financialReport")} icon={<HiOutlineLibrary />} label="Financial Report">
+//                     <Item href="/admin/finance/report/trial-balance" icon={<HiDocumentText />} label="Trial Balance"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/trial-balance")} />
+//                     <Item href="/admin/finance/report/profit-loss"   icon={<HiDocumentText />} label="Profit & Loss"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/profit-loss")} />
+//                     <Item href="/admin/finance/report/balance-sheet" icon={<HiDocumentText />} label="Balance Sheet"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/balance-sheet")} />
+//                     <Item href="/admin/finance/report/cash-flow"     icon={<HiCurrencyDollar />} label="Cash Flow Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/cash-flow")} />
+//                     <Item href="/admin/finance/report/bank-reconciliation" icon={<HiOutlineCreditCard />} label="Bank Reconciliation" onClick={closeSidebar} isActive={isActive("/admin/finance/report/bank-reconciliation")} />
+//                   </Submenu>
+//                   <Submenu isOpen={!!openSubmenus["gstReport"]} onToggle={() => toggleSubmenu("gstReport")} icon={<HiReceiptTax />} label="GST Report">
+//                     <Item href="/admin/finance/report/gst" icon={<HiDocumentText />} label="GSTR‑1 / GSTR‑3B" onClick={closeSidebar} isActive={isActive("/admin/finance/report/gst")} />
+//                   </Submenu>
+//                   <Submenu isOpen={!!openSubmenus["budgetReport"]} onToggle={() => toggleSubmenu("budgetReport")} icon={<HiChartSquareBar />} label="Budgeting">
+//                     <Item href="/admin/finance/budget" icon={<HiDocumentText />} label="Budget & Variance" onClick={closeSidebar} isActive={isActive("/admin/finance/budget")} />
+//                   </Submenu>
+//                   <Submenu isOpen={!!openSubmenus["ageingReport"]} onToggle={() => toggleSubmenu("ageingReport")} icon={<HiUserGroup />} label="Ageing">
+//                     <Item href="/admin/finance/report/ageing/customer" icon={<HiUser />} label="Customer Ageing"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/customer")} />
+//                     <Item href="/admin/finance/report/ageing/supplier" icon={<HiUser />} label="Supplier Ageing"  onClick={closeSidebar} isActive={isActive("/admin/finance/report/ageing/supplier")} />
+//                   </Submenu>
+//                   <Submenu isOpen={!!openSubmenus["statementReport"]} onToggle={() => toggleSubmenu("statementReport")} icon={<HiReceiptTax />} label="Statement">
+//                     <Item href="/admin/finance/report/statement/customer" icon={<HiUser />}              label="Customer Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/customer")} />
+//                     <Item href="/admin/finance/report/statement/supplier" icon={<HiUser />}              label="Supplier Statement" onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/supplier")} />
+//                     <Item href="/admin/finance/report/statement/bank"     icon={<HiOutlineCreditCard />} label="Bank Statement"     onClick={closeSidebar} isActive={isActive("/admin/finance/report/statement/bank")} />
+//                   </Submenu>
+//                 </Submenu>
+//               </Section>
+
+//               <Section title="Production" icon={<HiPuzzle />} isOpen={openMenu === "Production"} onToggle={() => toggleMenu("Production")}>
+//                 <Item href="/admin/bom"             icon={<HiOutlineCube />} label="BoM"              onClick={closeSidebar} isActive={isActive("/admin/bom")} />
+//                 <Item href="/admin/ProductionOrder" icon={<HiReceiptTax />}  label="Production Order" onClick={closeSidebar} isActive={isActive("/admin/ProductionOrder")} />
+//               </Section>
+//               <Section title="Production View" icon={<HiOutlineLibrary />} isOpen={openMenu === "ProductionView"} onToggle={() => toggleMenu("ProductionView")}>
+//                 <Item href="/admin/bom-view"                   icon={<HiOutlineCube />}    label="BoM View"               onClick={closeSidebar} isActive={isActive("/admin/bom-view")} />
+//                 <Item href="/admin/productionorders-list-view" icon={<HiReceiptTax />}     label="Production Orders View" onClick={closeSidebar} isActive={isActive("/admin/productionorders-list-view")} />
+//                 <Item href="/admin/production-board"           icon={<HiChartSquareBar />} label="Production Board"       onClick={closeSidebar} isActive={isActive("/admin/production-board")} />
+//               </Section>
+//               <Section title="Project" icon={<HiViewGrid />} isOpen={openMenu === "project"} onToggle={() => toggleMenu("project")}>
+//                 <Item href="/admin/project/workspaces"  icon={<HiOutlineOfficeBuilding />} label="Workspaces"  onClick={closeSidebar} isActive={isActive("/admin/project/workspaces")} />
+//                 <Item href="/admin/project/projects"    icon={<HiOutlineCube />}           label="Projects"    onClick={closeSidebar} isActive={isActive("/admin/project/projects")} />
+//                 <Item href="/admin/project/tasks/board" icon={<HiPuzzle />}                label="Tasks Board" onClick={closeSidebar} isActive={isActive("/admin/project/tasks/board")} />
+//                 <Item href="/admin/project/tasks"       icon={<HiPuzzle />}                label="Tasks List"  onClick={closeSidebar} isActive={isActive("/admin/project/tasks")} />
+//               </Section>
+//               <Section title="HR" icon={<HiUserGroup />} isOpen={openMenu === "hr"} onToggle={() => toggleMenu("hr")}>
+//                 <Item href="/admin/hr/employee-onboarding" icon={<HiUserGroup />} label="Employee Onboarding" onClick={closeSidebar} isActive={isActive("/admin/hr/employee-onboarding")} />
+//                 <Item href="/admin/hr/Dashboard"           icon={<HiUserGroup />} label="Employee Details"    onClick={closeSidebar} isActive={isActive("/admin/hr/Dashboard")} />
+//                 <Item href="/admin/hr/masters"             icon={<HiUserGroup />} label="Department"          onClick={closeSidebar} isActive={isActive("/admin/hr/masters")} />
+//                 <Item href="/admin/hr/leaves"              icon={<HiUserGroup />} label="Leave"               onClick={closeSidebar} isActive={isActive("/admin/hr/leaves")} />
+//                 <Item href="/admin/hr/attendance"          icon={<HiUserGroup />} label="Attendance"          onClick={closeSidebar} isActive={isActive("/admin/hr/attendance")} />
+//                 <Item href="/admin/hr/salary"              icon={<HiUserGroup />} label="Salary"              onClick={closeSidebar} isActive={isActive("/admin/hr/salary")} />
+//                 <Item href="/admin/hr/payroll"             icon={<HiUserGroup />} label="Payroll"             onClick={closeSidebar} isActive={isActive("/admin/hr/payroll")} />
+//                 <Item href="/admin/hr/employees"           icon={<HiUserGroup />} label="Employee"            onClick={closeSidebar} isActive={isActive("/admin/hr/employees")} />
+//                 <Item href="/admin/hr/reports"             icon={<HiUserGroup />} label="Reports"             onClick={closeSidebar} isActive={isActive("/admin/hr/reports")} />
+//                 <Item href="/admin/hr/settings"            icon={<HiCog />}       label="Settings"            onClick={closeSidebar} isActive={isActive("/admin/hr/settings")} />
+//                 <Item href="/admin/hr/holidays"            icon={<HiGlobeAlt />}  label="Holidays"            onClick={closeSidebar} isActive={isActive("/admin/hr/holidays")} />
+//                 <Item href="/admin/hr/profile"             icon={<HiUser />}      label="Profile"             onClick={closeSidebar} isActive={isActive("/admin/hr/profile")} />
+//               </Section>
+//               <Section title="PPC" icon={<HiPuzzle />} isOpen={openMenu === "ppc"} onToggle={() => toggleMenu("ppc")}>
+//                 <Item href="/admin/ppc/operatorsPage"              icon={<HiUser />}           label="Operators"                onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorsPage")} />
+//                 <Item href="/admin/ppc/machinesPage"               icon={<HiOutlineCube />}    label="Machines"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/machinesPage")} />
+//                 <Item href="/admin/ppc/resourcesPage"              icon={<HiOutlineLibrary />} label="Resources"                onClick={closeSidebar} isActive={isActive("/admin/ppc/resourcesPage")} />
+//                 <Item href="/admin/ppc/machineOutputPage"          icon={<HiOutlineLibrary />} label="Machine Outputs"          onClick={closeSidebar} isActive={isActive("/admin/ppc/machineOutputPage")} />
+//                 <Item href="/admin/ppc/holidaysPage"               icon={<HiGlobeAlt />}       label="Holidays"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/holidaysPage")} />
+//                 <Item href="/admin/ppc/operatorMachineMappingPage" icon={<HiPuzzle />}         label="Machine-Operator Mapping" onClick={closeSidebar} isActive={isActive("/admin/ppc/operatorMachineMappingPage")} />
+//                 <Item href="/admin/ppc/operations"                 icon={<HiPuzzle />}         label="Operations"               onClick={closeSidebar} isActive={isActive("/admin/ppc/operations")} />
+//                 <Item href="/admin/ppc/productionOrderPage"        icon={<HiReceiptTax />}     label="Production Planning"      onClick={closeSidebar} isActive={isActive("/admin/ppc/productionOrderPage")} />
+//                 <Item href="/admin/ppc/jobcards"                   icon={<HiReceiptTax />}     label="Job Card"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/jobcards")} />
+//                 <Item href="/admin/ppc/downtime"                   icon={<HiReceiptTax />}     label="Downtime"                 onClick={closeSidebar} isActive={isActive("/admin/ppc/downtime")} />
+//               </Section>
+//               <Section title="Helpdesk" icon={<HiUser />} isOpen={openMenu === "helpdesk"} onToggle={() => toggleMenu("helpdesk")}>
+//                 <Item href="/admin/helpdesk/tickets"            icon={<HiDocumentText />}   label="Tickets"           onClick={closeSidebar} isActive={isActive("/admin/helpdesk/tickets")} />
+//                 <Item href="/admin/helpdesk/agents"             icon={<HiUsers />}          label="Agents"            onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents")} />
+//                 <Item href="/admin/helpdesk/categories"         icon={<HiUserGroup />}      label="Categories"        onClick={closeSidebar} isActive={isActive("/admin/helpdesk/categories")} />
+//                 <Item href="/admin/helpdesk/agents/manage"      icon={<HiPuzzle />}         label="Create Agent"      onClick={closeSidebar} isActive={isActive("/admin/helpdesk/agents/manage")} />
+//                 <Item href="/admin/helpdesk/settings"           icon={<HiCog />}            label="Settings"          onClick={closeSidebar} isActive={isActive("/admin/helpdesk/settings")} />
+//                 <Item href="/admin/helpdesk/feedback"           icon={<HiDocumentText />}   label="Feedback"          onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback")} />
+//                 <Item href="/admin/helpdesk/feedback/analytics" icon={<HiChartSquareBar />} label="Feedback Analysis" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback/analytics")} />
+//                 <Item href="/admin/helpdesk/report"             icon={<HiChartSquareBar />} label="Report"            onClick={closeSidebar} isActive={isActive("/admin/helpdesk/report")} />
+//               </Section>
+//             </>
+//           )}
+
+//           {!hasFullAccess &&
+//             Object.entries(modules).map(([moduleName, data]) => {
+//               if (!canAccessModule(data)) return null;
+//               const moduleRoutes = MODULE_ROUTE_MAP[moduleName];
+//               if (!moduleRoutes) return null;
+//               const permissions = data?.permissions || {};
+//               const visibleRoutes = moduleRoutes.filter(route => {
+//                 if (route.needsCreate && !permissions.create) return false;
+//                 if (route.needsView   && !permissions.view)   return false;
+//                 return true;
+//               });
+//               if (!visibleRoutes.length) return null;
+//               return (
+//                 <Section key={moduleName} title={moduleName} icon={<HiOutlineCube />}
+//                   isOpen={openMenu === moduleName} onToggle={() => toggleMenu(moduleName)}>
+//                   {visibleRoutes.map(route => (
+//                     <Item key={route.path} href={route.path} icon={<HiViewGrid />}
+//                       label={route.label} onClick={closeSidebar} isActive={isActive(route.path)} />
+//                   ))}
+//                 </Section>
+//               );
+//             })
+//           }
+
+//           <div className="p-4 mt-4 border-t border-gray-200">
+//             <LogoutButton />
+//           </div>
+//         </nav>
+//       </aside>
+
+//       {/* CONTENT AREA */}
+//       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+//         <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm shrink-0">
+//           <div className="flex items-center justify-between px-4 h-14">
+//             <div className="flex items-center gap-3 min-w-0">
+//               <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+//                 className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 transition-colors">
+//                 {isSidebarOpen ? <HiX size={24} /> : <HiMenu size={24} />}
+//               </button>
+//             <h1 className="text-sm md:text-base font-bold text-gray-800 truncate tracking-tight">
+//   {session?.companyName || (isCompany ? "Company Administrator" : isAdmin ? "Admin Dashboard" : "Dashboard")}
+// </h1>
+//             </div>
+
+//             <div className="flex items-center gap-3 shrink-0 relative">
+//               <div className="relative">
+//                 <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 text-gray-600 hover:text-gray-900">
+//                   <HiBell size={22} />
+//                   {unreadCount > 0 && (
+//                     <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 rounded-full">{unreadCount}</span>
+//                   )}
+//                 </button>
+//                 {openNotif && (
+//                   <div className="absolute right-0 mt-2 w-80 bg-white text-gray-800 rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50">
+//                     <div className="p-3 font-bold border-b border-gray-200">Notifications</div>
+//                     <div className="max-h-80 overflow-y-auto">
+//                       {notifications.length === 0 ? (
+//                         <div className="p-4 text-sm text-gray-500">No notifications</div>
+//                       ) : (
+//                         notifications.map(n => (
+//                           <div key={n._id} onClick={() => markAsRead(n._id)}
+//                             className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${!n.isRead ? "bg-gray-50 font-semibold" : ""}`}>
+//                             <div className="text-sm">{n.title}</div>
+//                             <div className="text-xs text-gray-500">{n.message}</div>
+//                           </div>
+//                         ))
+//                       )}
+//                     </div>
+//                   </div>
+//                 )}
+//               </div>
+//               <div className="hidden md:flex items-center gap-3 text-sm text-gray-600">
+//                 <span>{session.name || session.email}</span>
+//               </div>
+//               <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold border-2 border-white/20 shadow-sm" title={session.email}>
+//                 {session.email?.charAt(0).toUpperCase()}
+//               </div>
+//             </div>
+//           </div>
+//         </header>
+
+//         <main className="flex-1 overflow-y-auto bg-gray-50">
+//           {children}
+//         </main>
+//       </div>
+//     </div>
+//   );
+// }
 
 
 

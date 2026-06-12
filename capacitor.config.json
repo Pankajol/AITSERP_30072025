@@ -5,5 +5,12 @@
   "server": {
     "url": "https://pankajalerp.vercel.app/",
     "cleartext": true
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "LIGHT",
+      "backgroundColor": "#F8FAFC"
+    }
   }
 }

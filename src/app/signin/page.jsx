@@ -252,7 +252,13 @@ export default function LoginPage() {
 
               {/* Forgot */}
               <div className="forgot-row">
-                <button type="button" className="forgot-btn">Forgot password?</button>
+                <button
+                  type="button"
+                  className="forgot-btn"
+                  onClick={() => router.push('/forgetpassword')}
+                >
+                  Forgot password?
+                </button>
               </div>
 
               {/* Submit */}

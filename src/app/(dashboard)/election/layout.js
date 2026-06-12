@@ -9,7 +9,7 @@ import {
   FiLayout, FiFlag, FiMapPin, FiHome, FiUsers, FiUserCheck,
   FiClipboard, FiMic, FiDollarSign, FiRadio, FiMenu,
   FiUpload, FiList, FiCheckSquare, FiTrendingUp, FiShield, FiLogOut,
-  FiChevronDown, FiUser, FiKey
+  FiChevronDown, FiUser, FiKey, FiArrowLeft
 } from "react-icons/fi";
 import NotificationBell from "@/components/election/NotificationBell";
 
@@ -66,6 +66,39 @@ function decodeTokenPayload(token) {
   } catch {
     return null;
   }
+}
+
+const routeLabels = {
+  "/election": "Dashboard",
+  "/election/parties": "Parties / Candidates",
+  "/election/constituencies": "Constituencies",
+  "/election/booths": "Booths",
+  "/election/voters": "Voters",
+  "/election/voter-import": "Import Voters",
+  "/election/workers": "Workers",
+  "/election/worker-activity": "Worker Activity",
+  "/election/surveys": "Surveys",
+  "/election/survey-response": "Fill Survey",
+  "/election/rallies": "Rallies & Events",
+  "/election/expenses": "Election Expenses",
+  "/election/media": "Media Campaigns",
+  "/election/analytics": "Analytics",
+  "/election/profile": "Profile",
+  "/election/change-password": "Change Password",
+};
+
+function getLabelFromPath(path) {
+  if (!path) return "Dashboard";
+  if (routeLabels[path]) return routeLabels[path];
+  const segment = path.split("/").pop() || "Dashboard";
+  return segment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getParentPath(path) {
+  if (!path || path === "/election") return null;
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length <= 1) return "/election";
+  return `/${segments.slice(0, segments.length - 1).join("/")}`;
 }
 
 function UserMenu({ user: layoutUser }) {
@@ -229,8 +262,12 @@ export default function ElectionLayout({ children }) {
   }
   if (!user) return null;
 
+  const currentLabel = getLabelFromPath(pathname);
+  const parentPath = getParentPath(pathname);
+  const backLabel = parentPath ? getLabelFromPath(parentPath) : null;
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       <ToastContainer position="top-right" autoClose={5000} />
       {sidebarOpen && (
         <div
@@ -284,22 +321,35 @@ export default function ElectionLayout({ children }) {
         </div>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white">
-          <button
-            className="lg:hidden mr-2 p-2 rounded-md hover:bg-gray-100"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <FiMenu className="h-5 w-5" />
-          </button>
-          <h2 className="font-semibold text-lg truncate capitalize">
-            {pathname.split("/").pop()?.replace("-", " ") || "Dashboard"}
-          </h2>
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+          <div className="flex items-center gap-2">
+            <button
+              className="lg:hidden mr-2 p-2 rounded-md hover:bg-gray-100"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <FiMenu className="h-5 w-5" />
+            </button>
+            {parentPath && (
+              <button
+                onClick={() => router.push(parentPath)}
+                className="hidden sm:flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <FiArrowLeft className="h-4 w-4" />
+                Back to {backLabel}
+              </button>
+            )}
+          </div>
+          <div className="flex-1 text-center">
+            <h2 className="font-semibold text-lg truncate">{currentLabel}</h2>
+          </div>
           <div className="flex items-center gap-4">
             <NotificationBell />
             <UserMenu user={user} />
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 sm:p-6" style={{ paddingLeft: "env(safe-area-inset-left, 0px)", paddingRight: "env(safe-area-inset-right, 0px)" }}>
+          {children}
+        </main>
       </div>
     </div>
   );
