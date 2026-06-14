@@ -9,52 +9,27 @@ import {
   FiLayout, FiFlag, FiMapPin, FiHome, FiUsers, FiUserCheck,
   FiClipboard, FiMic, FiDollarSign, FiRadio, FiMenu,
   FiUpload, FiList, FiCheckSquare, FiTrendingUp, FiShield, FiLogOut,
-  FiChevronDown, FiUser, FiKey, FiArrowLeft
+  FiChevronDown, FiUser, FiKey, FiArrowLeft, FiInfo
 } from "react-icons/fi";
 import NotificationBell from "@/components/election/NotificationBell";
 
 const sidebarItems = [
-  // Dashboard – sabko dikhega
-  { href: "/election", label: "Dashboard", icon: FiLayout, requiredRoles: [] },
-
-  // Parties – sirf Admin/Manager
-  { href: "/election/parties", label: "Parties / Candidates", icon: FiFlag, requiredRoles: ["Election Admin", "Election Manager"] },
-
-  // Constituencies – Admin/Manager/Analyst
-  { href: "/election/constituencies", label: "Constituencies", icon: FiMapPin, requiredRoles: ["Election Admin", "Election Manager", "Election Analyst"] },
-
-  // Booths – Admin/Manager/Agent (Booth Worker nahi)
-  { href: "/election/booths", label: "Booths", icon: FiHome, requiredRoles: ["Election Admin", "Election Manager", "Election Agent"] },
-
-  // Voters – Admin/Manager/Agent/Booth Worker/Surveyor/Analyst
-  { href: "/election/voters", label: "Voters", icon: FiUsers, requiredRoles: ["Election Admin", "Election Manager", "Election Agent", "Booth Worker", "Surveyor", "Election Analyst"] },
-
-  // Import Voters – sirf Admin/Manager
-  { href: "/election/voter-import", label: "Import Voters", icon: FiUpload, requiredRoles: ["Election Admin", "Election Manager"] },
-
-  // Workers – sirf Admin/Manager (worker list aur assignment)
-  { href: "/election/workers", label: "Workers", icon: FiUserCheck, requiredRoles: ["Election Admin", "Election Manager"] },
-
-  // Worker Activity – Admin/Manager/Agent
-  { href: "/election/worker-activity", label: "Worker Activity", icon: FiList, requiredRoles: ["Election Admin", "Election Manager", "Election Agent"] },
-
-  // Surveys – Admin/Manager/Surveyor
-  { href: "/election/surveys", label: "Surveys", icon: FiClipboard, requiredRoles: ["Election Admin", "Election Manager", "Surveyor"] },
-
-  // Fill Survey – Admin/Manager/Surveyor/Agent
-  { href: "/election/survey-response", label: "Fill Survey", icon: FiCheckSquare, requiredRoles: ["Election Admin", "Election Manager", "Surveyor", "Election Agent","Booth Worker"] },
-
-  // Rallies – Admin/Manager/Campaign Manager
-  { href: "/election/rallies", label: "Rallies & Events", icon: FiMic, requiredRoles: ["Election Admin", "Election Manager", "Campaign Manager"] },
-
-  // Expenses – Admin/Manager
-  { href: "/election/expenses", label: "Election Expenses", icon: FiDollarSign, requiredRoles: ["Election Admin", "Election Manager"] },
-
-  // Media Campaigns – Admin/Manager/Campaign Manager
-  { href: "/election/media", label: "Media Campaigns", icon: FiRadio, requiredRoles: ["Election Admin", "Election Manager", "Campaign Manager"] },
-
-  // Analytics – Admin/Manager/Analyst
-  { href: "/election/analytics", label: "Analytics", icon: FiTrendingUp, requiredRoles: ["Election Admin", "Election Manager", "Election Analyst"] },
+  { href: "/election", label: "Dashboard", icon: FiLayout, moduleName: "Election Dashboard" },
+  { href: "/election/parties", label: "Parties / Candidates", icon: FiFlag, moduleName: "Parties / Candidates" },
+  { href: "/election/constituencies", label: "Constituencies", icon: FiMapPin, moduleName: "Constituencies" },
+  { href: "/election/booths", label: "Booths", icon: FiHome, moduleName: "Booths" },
+  { href: "/election/wards", label: "Wards", icon: FiMapPin, moduleName: "Booths" },
+  { href: "/election/blocks", label: "Blocks", icon: FiMapPin, moduleName: "Booths" },
+  { href: "/election/voters", label: "Voters", icon: FiUsers, moduleName: "Voters" },
+  { href: "/election/voter-import", label: "Import Voters", icon: FiUpload, moduleName: "Voters" },
+  { href: "/election/workers", label: "Workers", icon: FiUserCheck, moduleName: "Workers" },
+  { href: "/election/worker-activity", label: "Worker Activity", icon: FiList, moduleName: "Workers" },
+  { href: "/election/surveys", label: "Surveys", icon: FiClipboard, moduleName: "Election Surveys" },
+  { href: "/election/survey-response", label: "Fill Survey", icon: FiCheckSquare, moduleName: "Election Surveys" },
+  { href: "/election/rallies", label: "Rallies & Events", icon: FiMic, moduleName: "Election Campaign" },
+  { href: "/election/expenses", label: "Election Expenses", icon: FiDollarSign, moduleName: "Election Expenses" },
+  { href: "/election/media", label: "Media Campaigns", icon: FiRadio, moduleName: "Election Communication" },
+  { href: "/election/analytics", label: "Analytics", icon: FiTrendingUp, moduleName: "Election Analytics" },
 ];
 
 function decodeTokenPayload(token) {
@@ -73,6 +48,8 @@ const routeLabels = {
   "/election/parties": "Parties / Candidates",
   "/election/constituencies": "Constituencies",
   "/election/booths": "Booths",
+  "/election/wards": "Wards",
+  "/election/blocks": "Blocks",
   "/election/voters": "Voters",
   "/election/voter-import": "Import Voters",
   "/election/workers": "Workers",
@@ -210,33 +187,56 @@ export default function ElectionLayout({ children }) {
       setLoading(false);
       return;
     }
-    let userObj = {
+
+    let modules = {};
+    if (payload.modules) {
+      if (Array.isArray(payload.modules)) {
+        payload.modules.forEach(mod => {
+          if (mod.moduleName) {
+            modules[mod.moduleName] = {
+              selected: mod.selected === true,
+              permissions: mod.permissions || {}
+            };
+          }
+        });
+      } else if (typeof payload.modules === 'object') {
+        modules = payload.modules;
+      }
+    }
+
+    const userObj = {
       id: payload.id,
       email: payload.email,
       type: payload.type,
       companyId: payload.companyId,
       name: payload.companyName || payload.name,
       roles: payload.roles || [],
+      modules: modules,
+      assignedConstituency: payload.assignedConstituency,
+      assignedBlock: payload.assignedBlock,
+      assignedWard: payload.assignedWard,
+      assignedBooths: payload.assignedBooths || [],
     };
-    if (payload.type === "company") {
-      userObj.type = "company";
-      userObj.roles = [];
-    }
     setUser(userObj);
     setLoading(false);
   }, []);
 
-  const isFullAccess = user?.type === "company" || user?.roles?.includes("Admin") || user?.roles?.includes("admin") || user?.roles?.includes("Election Admin");
-  
-  const visibleItems = sidebarItems.filter(item => {
-    if (!user) return false;
-    if (isFullAccess) return true;
-    if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
-    const userRoles = user.roles || [];
-    return item.requiredRoles.some(role => userRoles.includes(role));
-  });
+  // Module access rules:
+  // - Company admin (type === "company") sees everything.
+  // - Election Admin role (legacy) sees everything.
+  // - Others: must have module selected AND view permission.
+  const hasModuleAccess = (moduleName) => {
+    if (!moduleName) return false;
+    if (moduleName === "Election Dashboard") return true; // Dashboard always visible
+    if (user?.type === "company") return true;
+    if (user?.roles?.includes("Election Admin")) return true;
+    const mod = user?.modules?.[moduleName];
+    return !!(mod?.selected === true && mod?.permissions?.view === true);
+  };
 
-  // Guard page access
+  const visibleItems = sidebarItems.filter(item => hasModuleAccess(item.moduleName));
+
+  // Guard current page access
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -244,14 +244,10 @@ export default function ElectionLayout({ children }) {
       return;
     }
     const currentItem = sidebarItems.find(item => item.href === pathname);
-    if (currentItem) {
-      let hasAccess = false;
-      if (isFullAccess) hasAccess = true;
-      else if (!currentItem.requiredRoles || currentItem.requiredRoles.length === 0) hasAccess = true;
-      else hasAccess = currentItem.requiredRoles.some(role => (user.roles || []).includes(role));
-      if (!hasAccess) router.push("/election");
+    if (currentItem && !hasModuleAccess(currentItem.moduleName)) {
+      router.push("/election");
     }
-  }, [pathname, user, loading, router, isFullAccess]);
+  }, [pathname, user, loading, router]);
 
   if (loading) {
     return (
@@ -262,18 +258,23 @@ export default function ElectionLayout({ children }) {
   }
   if (!user) return null;
 
+  // Build restriction banner text
+  const assigned = [];
+  if (user.assignedConstituency?.name) assigned.push(`Constituency: ${user.assignedConstituency.name}`);
+  if (user.assignedBlock?.blockNumber) assigned.push(`Block: ${user.assignedBlock.blockNumber}`);
+  if (user.assignedWard?.wardNumber) assigned.push(`Ward: ${user.assignedWard.wardNumber}`);
+  if (user.assignedBooths?.length) assigned.push(`Booths: ${user.assignedBooths.map(b => b.boothNumber).join(", ")}`);
+  const restrictionText = assigned.length ? `🔒 You are viewing data for: ${assigned.join(" • ")}` : null;
+
   const currentLabel = getLabelFromPath(pathname);
   const parentPath = getParentPath(pathname);
   const backLabel = parentPath ? getLabelFromPath(parentPath) : null;
 
   return (
-    <div className="flex h-screen bg-gray-50" style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    <div className="flex h-screen bg-gray-50">
       <ToastContainer position="top-right" autoClose={5000} />
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-200 lg:relative lg:translate-x-0 ${
@@ -285,25 +286,29 @@ export default function ElectionLayout({ children }) {
           <span className="ml-2 font-bold text-lg text-gray-800">Election Hub</span>
         </div>
         <nav className="mt-4 space-y-1 px-3">
-          {visibleItems.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
-                }`}
-                onClick={() => setSidebarOpen(false)}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
+          {visibleItems.length === 0 ? (
+            <div className="text-center text-gray-400 text-sm p-4">No accessible modules</div>
+          ) : (
+            visibleItems.map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? "bg-indigo-50 text-indigo-700 font-medium"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })
+          )}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t text-xs text-gray-500">
           <div className="flex items-center gap-2">
@@ -316,12 +321,12 @@ export default function ElectionLayout({ children }) {
                 {role}
               </span>
             ))}
-            {(user.roles || []).length > 2 && <span className="text-[10px]">+{(user.roles || []).length-2}</span>}
+            {(user.roles || []).length > 2 && <span className="text-[10px]">+{(user.roles || []).length - 2}</span>}
           </div>
         </div>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+        <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white">
           <div className="flex items-center gap-2">
             <button
               className="lg:hidden mr-2 p-2 rounded-md hover:bg-gray-100"
@@ -347,14 +352,21 @@ export default function ElectionLayout({ children }) {
             <UserMenu user={user} />
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 sm:p-6" style={{ paddingLeft: "env(safe-area-inset-left, 0px)", paddingRight: "env(safe-area-inset-right, 0px)" }}>
+
+        {restrictionText && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-sm text-amber-700">
+            <FiInfo className="h-4 w-4" />
+            <span>{restrictionText}</span>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-auto m-5 sm:m-8 p-4 sm:p-6">
           {children}
         </main>
       </div>
     </div>
   );
 }
-
 
 
 // // app/(dashboard)/election/layout.js

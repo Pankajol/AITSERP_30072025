@@ -1,84 +1,14 @@
-// import { NextResponse } from 'next/server';
-// import dbConnect from '@/lib/db';
-// import CompanyUser from '@/models/CompanyUser';
-// import bcrypt from 'bcryptjs';
-// import jwt from 'jsonwebtoken';
-
-// const SECRET = process.env.JWT_SECRET;
-
-// /* ───────── POST /api/login ───────── */
-// export async function POST(req) {
-//   try {
-//     const { email, password, companyId } = await req.json();
-
-//     // 1. ✅ VALIDATION: Ensure all required fields are present.
-//     if (!email || !password || !companyId) {
-//       return NextResponse.json(
-//         { message: 'Email, password, and companyId are required' },
-//         { status: 400 }
-//       );
-//     }
-
-//     await dbConnect();
-
-//     // 2. ✅ SECURITY FIX: Find the user by both email AND companyId.
-//     // This prevents a user from one company from accessing another.
-//     const user = await CompanyUser.findOne({ email, companyId });
-//     if (!user) {
-//       // Keep the error message generic to prevent user enumeration attacks.
-//       return NextResponse.json(
-//         { message: 'Invalid credentials' },
-//         { status: 401 }
-//       );
-//     }
-
-//     // 3. ✅ VALIDATE PASSWORD: Check if the provided password matches the hashed password.
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       return NextResponse.json(
-//         { message: 'Invalid credentials' },
-//         { status: 401 }
-//       );
-//     }
-
-//     // 4. ✅ GENERATE JWT: Create the token with all necessary user info for the frontend.
-//     const token = jwt.sign(
-//       {
-//         id: user._id,
-//         name: user.name, // Added for UI greetings (e.g., "Hello, John")
-//         email: user.email,
-//         companyId: user.companyId,
-//         roles: user.roles || [], // Added fallback for safety
-//         modules: user.modules || {}, // Added modules for sidebar permissions
-//         type: 'user', // Corrected type to 'user'
-//       },
-//       SECRET,
-//       { expiresIn: '7d' }
-//     );
-
-//     // 5. ✅ PREPARE RESPONSE: Remove sensitive fields before sending the user object.
-//     const { password: _, __v, ...safeUser } = user.toObject();
-
-//     return NextResponse.json({ token, user: safeUser });
-    
-//   } catch (e) {
-//     console.error('User login error:', e);
-//     return NextResponse.json({ message: 'Server error' }, { status: 500 });
-//   }
-// }
-
-
-
-
-// /app/api/login/route.js
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import CompanyUser from '@/models/CompanyUser';
 import Employee from '@/models/hr/Employee';
+import Constituency from '@/models/election/Constituency';
+import Booth from '@/models/election/Booth';
+import Block from '@/models/election/Block';
+import Ward from '@/models/election/Ward';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import {jwtDecode} from 'jwt-decode';
-
+import { jwtDecode } from 'jwt-decode';
 
 const SECRET = process.env.JWT_SECRET;
 
@@ -95,23 +25,52 @@ export async function POST(req) {
 
     await dbConnect();
 
-    // 🔐 Find user
+    // Find user and populate assigned references
     const user = await CompanyUser.findOne({ email })
-      .populate("employeeId");
+      .populate("employeeId")
+      .populate("assignedConstituency", "_id name")
+      .populate("assignedBlock", "_id blockNumber name")
+      .populate("assignedWard", "_id wardNumber name")
+      .populate("assignedBooths", "_id boothNumber name");
+
     if (!user) {
       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
 
-    // 🔐 Validate password
+    // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
 
-    // ✅ Convert modules Map to plain object
+    // Convert modules Map to plain object
     const modules = user.modules ? Object.fromEntries(user.modules) : {};
 
-    // ✅ Generate JWT
+    // Prepare assigned objects for token (only IDs or full objects)
+    const assignedConstituency = user.assignedConstituency ? {
+      _id: user.assignedConstituency._id,
+      name: user.assignedConstituency.name
+    } : null;
+
+    const assignedBlock = user.assignedBlock ? {
+      _id: user.assignedBlock._id,
+      blockNumber: user.assignedBlock.blockNumber,
+      name: user.assignedBlock.name
+    } : null;
+
+    const assignedWard = user.assignedWard ? {
+      _id: user.assignedWard._id,
+      wardNumber: user.assignedWard.wardNumber,
+      name: user.assignedWard.name
+    } : null;
+
+    const assignedBooths = user.assignedBooths ? user.assignedBooths.map(b => ({
+      _id: b._id,
+      boothNumber: b.boothNumber,
+      name: b.name
+    })) : [];
+
+    // Generate JWT with assignment fields
     const token = jwt.sign(
       {
         id: user._id,
@@ -120,23 +79,32 @@ export async function POST(req) {
         roles: Array.isArray(user.roles) ? user.roles : [],
         modules,
         type: 'user',
-        employeeId: user.employeeId?._id || user.employeeId, // Handle both populated and non-populated cases
+        employeeId: user.employeeId?._id || user.employeeId,
+        // ✅ Worker assignment fields
+        assignedConstituency,
+        assignedBlock,
+        assignedWard,
+        assignedBooths,
       },
       SECRET,
       { expiresIn: '1d' }
-
     );
-    // add console log to verify token payload
-     console.log(jwtDecode(token));
-      console.log(JSON.stringify(user.modules, null, 2));
-      
 
-    // ✅ Remove sensitive fields
+    console.log("✅ JWT payload includes assignments:", {
+      assignedConstituency,
+      assignedBlock,
+      assignedWard,
+      assignedBooths: assignedBooths.length
+    });
+
+    // Remove sensitive fields for response
     const { password: _, __v, ...safeUser } = user.toObject();
     safeUser.modules = modules;
     safeUser.employeeId = user.employeeId?._id || user.employeeId;
-    console.log(jwtDecode(token));
-    console.log(JSON.stringify(user.modules, null, 2));
+    safeUser.assignedConstituency = assignedConstituency;
+    safeUser.assignedBlock = assignedBlock;
+    safeUser.assignedWard = assignedWard;
+    safeUser.assignedBooths = assignedBooths;
 
     return NextResponse.json({ token, user: safeUser });
   } catch (e) {
@@ -144,4 +112,82 @@ export async function POST(req) {
     return NextResponse.json({ message: 'Server error' }, { status: 500 });
   }
 }
+
+
+
+
+// // /app/api/login/route.js
+// import { NextResponse } from 'next/server';
+// import dbConnect from '@/lib/db';
+// import CompanyUser from '@/models/CompanyUser';
+// import Employee from '@/models/hr/Employee';
+// import bcrypt from 'bcryptjs';
+// import jwt from 'jsonwebtoken';
+// import {jwtDecode} from 'jwt-decode';
+
+
+// const SECRET = process.env.JWT_SECRET;
+
+// export async function POST(req) {
+//   try {
+//     const { email, password } = await req.json();
+
+//     if (!email || !password) {
+//       return NextResponse.json(
+//         { message: 'Email and password are required' },
+//         { status: 400 }
+//       );
+//     }
+
+//     await dbConnect();
+
+//     // 🔐 Find user
+//     const user = await CompanyUser.findOne({ email })
+//       .populate("employeeId");
+//     if (!user) {
+//       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
+//     }
+
+//     // 🔐 Validate password
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
+//     }
+
+//     // ✅ Convert modules Map to plain object
+//     const modules = user.modules ? Object.fromEntries(user.modules) : {};
+
+//     // ✅ Generate JWT
+//     const token = jwt.sign(
+//       {
+//         id: user._id,
+//         companyId: user.companyId,
+//         email: user.email,
+//         roles: Array.isArray(user.roles) ? user.roles : [],
+//         modules,
+//         type: 'user',
+//         employeeId: user.employeeId?._id || user.employeeId, // Handle both populated and non-populated cases
+//       },
+//       SECRET,
+//       { expiresIn: '1d' }
+
+//     );
+//     // add console log to verify token payload
+//      console.log(jwtDecode(token));
+//       console.log(JSON.stringify(user.modules, null, 2));
+      
+
+//     // ✅ Remove sensitive fields
+//     const { password: _, __v, ...safeUser } = user.toObject();
+//     safeUser.modules = modules;
+//     safeUser.employeeId = user.employeeId?._id || user.employeeId;
+//     console.log(jwtDecode(token));
+//     console.log(JSON.stringify(user.modules, null, 2));
+
+//     return NextResponse.json({ token, user: safeUser });
+//   } catch (e) {
+//     console.error('Login error:', e);
+//     return NextResponse.json({ message: 'Server error' }, { status: 500 });
+//   }
+// }
 

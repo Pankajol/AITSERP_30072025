@@ -36,6 +36,8 @@ export async function PUT(req) {
         workerRole: role,
         assignedConstituency: constituencyId || null,
         assignedBooths: boothIds || [],
+        assignedBlock: body.blockId || null,
+        assignedWard: body.wardId || null,
       },
       { new: true }
     ).select("-password");

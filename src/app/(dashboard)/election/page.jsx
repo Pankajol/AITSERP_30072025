@@ -2,20 +2,50 @@
 "use client";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import WorkerLeaderboard from "@/components/election/WorkerLeaderboard";
-import MediaImpactChart from "@/components/election/MediaImpactChart";
 import {
-  FiUsers, FiFlag, FiTrendingUp, FiDollarSign, FiBarChart2,
-  FiUserPlus, FiActivity, FiPieChart, FiHome, FiMic, FiRadio
+  FiUsers, FiHome, FiTrendingUp, FiDollarSign, FiBarChart2,
+  FiUserPlus, FiActivity, FiPieChart, FiMic, FiRadio
 } from "react-icons/fi";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
+import WorkerLeaderboard from "@/components/election/WorkerLeaderboard";
+import MediaImpactChart from "@/components/election/MediaImpactChart";
 
 const COLORS = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
 
-// Decode JWT payload on client side
+// Worker role mapping (same as in Workers page)
+const WORKER_ROLES = {
+  "Booth Level": [
+    "BoothAgent", "BoothPresident", "BoothWorker"
+  ],
+  "Ward / Village Level": [
+    "WardPresident", "WardCoordinator", "Canvasser"
+  ],
+  "Block / Taluka Level": [
+    "BlockPresident", "BlockIncharge"
+  ],
+  "District Level": [
+    "DistrictPresident", "DistrictCoordinator", "DistrictSpokesperson"
+  ],
+  "State Level": [
+    "StatePresident", "StateSecretary", "StateSpokesperson", "StateCoordinator"
+  ],
+  "National Level": [
+    "NationalPresident", "NationalSecretary", "NationalSpokesperson", "CentralCommitteeMember"
+  ],
+};
+
+// Helper: get the level name from workerRole
+function getWorkerLevel(workerRole) {
+  for (const [level, roles] of Object.entries(WORKER_ROLES)) {
+    if (roles.includes(workerRole)) return level;
+  }
+  return null;
+}
+
+// Decode JWT payload
 function decodeTokenPayload(token) {
   if (!token) return null;
   try {
@@ -43,7 +73,7 @@ export default function ElectionDashboard() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // Build user object from token (reliable)
+  // 1. Decode user from token
   useEffect(() => {
     if (!token) {
       setLoading(false);
@@ -54,23 +84,25 @@ export default function ElectionDashboard() {
       setLoading(false);
       return;
     }
-    let userObj = {
+    const userObj = {
       id: payload.id,
       email: payload.email,
       type: payload.type,
       companyId: payload.companyId,
       name: payload.companyName || payload.name,
       roles: payload.roles || [],
+      workerRole: payload.workerRole || null,
+      modules: payload.modules || {},
+      assignedBooths: payload.assignedBooths || [],
+      assignedBlock: payload.assignedBlock || null,
+      assignedWard: payload.assignedWard || null,
+      assignedConstituency: payload.assignedConstituency || null,
     };
-    // Force company type if token says so
-    if (payload.type === "company") {
-      userObj.type = "company";
-      userObj.roles = [];
-    }
+    if (payload.type === "company") userObj.type = "company";
     setUser(userObj);
   }, [token]);
 
-  // Full access for company or admin users
+  // 2. Permission helpers
   const isFullAccess = user?.type === "company" ||
     user?.roles?.includes("Admin") ||
     user?.roles?.includes("admin") ||
@@ -79,67 +111,72 @@ export default function ElectionDashboard() {
   const hasModuleView = (moduleName) => {
     if (isFullAccess) return true;
     const mod = user?.modules?.[moduleName];
-    return mod?.selected && mod?.permissions?.view === true;
+    return !!(mod?.selected && mod?.permissions?.view === true);
   };
 
-  const hasRole = (role) => user?.roles?.includes(role);
+  const isManager = isFullAccess || (user?.roles || []).includes("Election Manager");
+  const isAnalyst = isFullAccess || (user?.roles || []).includes("Election Analyst");
+  const isCampaignManager = isFullAccess || (user?.roles || []).includes("Campaign Manager");
+  const isFieldWorker = !!user?.workerRole && !isFullAccess;
 
-  // Fetch data when user is ready
+  // 3. Fetch dashboard data
   useEffect(() => {
     if (!token || !user) return;
-
     const fetchData = async () => {
       setLoading(true);
       try {
-        // 1. Stats
-        let statsRes = { data: { success: false } };
-        if (hasModuleView("Election Dashboard")) {
-          statsRes = await axios.get("/api/election/dashboard/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => ({ data: { success: false } }));
+        const headers = { Authorization: `Bearer ${token}` };
+
+        // Build filter parameters from assigned area
+        let filterParams = {};
+        if (user.assignedBooths?.length) {
+          filterParams.boothId = user.assignedBooths[0]?._id || user.assignedBooths[0];
+        }
+        if (user.assignedWard && !filterParams.boothId) {
+          filterParams.wardId = user.assignedWard?._id || user.assignedWard;
+        }
+        if (user.assignedBlock && !filterParams.wardId && !filterParams.boothId) {
+          filterParams.blockId = user.assignedBlock?._id || user.assignedBlock;
+        }
+        if (user.assignedConstituency && !filterParams.blockId && !filterParams.wardId && !filterParams.boothId) {
+          filterParams.constituencyId = user.assignedConstituency?._id || user.assignedConstituency;
         }
 
-        // 2. Analytics (with booth filter for booth workers)
-        let analyticsParams = {};
-        if (hasRole("Booth Worker") || hasRole("Election Agent")) {
-          const assignedBooth = user.assignedBooths?.[0]?._id || user.assignedBooth;
-          if (assignedBooth) analyticsParams.boothId = assignedBooth;
-        }
+        // Stats (always)
+        const statsRes = await axios.get("/api/election/dashboard/stats", { params: filterParams, headers })
+          .catch(() => ({ data: { success: false } }));
+
+        // Analytics (only if permitted)
         let analyticsRes = { data: { success: false } };
         if (hasModuleView("Election Analytics")) {
-          analyticsRes = await axios.get("/api/election/dashboard/analytics", {
-            params: analyticsParams,
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => ({ data: { success: false } }));
+          analyticsRes = await axios.get("/api/election/dashboard/analytics", { params: filterParams, headers })
+            .catch(() => ({ data: { success: false } }));
         }
 
-        // 3. Recent voters
+        // Voters (module)
         let votersRes = { data: { success: false } };
         if (hasModuleView("Voters")) {
-          votersRes = await axios.get("/api/election/voter?limit=5&page=1", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => ({ data: { success: false } }));
+          votersRes = await axios.get("/api/election/voter?limit=5&page=1", { params: filterParams, headers })
+            .catch(() => ({ data: { success: false } }));
         }
 
-        // 4. Rallies
+        // Rallies (Campaign)
         let ralliesRes = { data: { success: false } };
         if (hasModuleView("Election Campaign")) {
-          ralliesRes = await axios.get("/api/election/rallies?limit=3", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => ({ data: { success: false } }));
+          ralliesRes = await axios.get("/api/election/rally?limit=3", { params: filterParams, headers })
+            .catch(() => ({ data: { success: false } }));
         }
 
-        // 5. Media campaigns
+        // Media (Communication)
         let mediaRes = { data: { success: false } };
-        if (hasModuleView("Election Campaign")) {
-          mediaRes = await axios.get("/api/election/media?limit=3", {
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => ({ data: { success: false } }));
+        if (hasModuleView("Election Communication")) {
+          mediaRes = await axios.get("/api/election/media?limit=3", { params: filterParams, headers })
+            .catch(() => ({ data: { success: false } }));
         }
 
         let totalExpenses = 0;
         if (analyticsRes.data.success && analyticsRes.data.data.expenseByCategory) {
-          totalExpenses = analyticsRes.data.data.expenseByCategory.reduce((s, c) => s + c.total, 0);
+          totalExpenses = analyticsRes.data.data.expenseByCategory.reduce((s, c) => s + (c.total || 0), 0);
         }
 
         setDashboardData({
@@ -148,7 +185,7 @@ export default function ElectionDashboard() {
             totalBooths: statsRes.data.data.totalBooths || 0,
             strongSupporters: statsRes.data.data.strongSupporters || 0,
             totalExpenses,
-          } : { totalVoters: 0, totalBooths: 0, strongSupporters: 0, totalExpenses },
+          } : { totalVoters: 0, totalBooths: 0, strongSupporters: 0, totalExpenses: 0 },
           topBooths: analyticsRes.data.success ? (analyticsRes.data.data.boothWiseVoters || []).slice(0, 5) : [],
           supportDist: analyticsRes.data.success ? (analyticsRes.data.data.supportDistribution || []) : [],
           expenseCategories: analyticsRes.data.success ? (analyticsRes.data.data.expenseByCategory || []) : [],
@@ -158,7 +195,7 @@ export default function ElectionDashboard() {
           mediaCampaigns: mediaRes.data.success ? (mediaRes.data.data || []).slice(0, 3) : [],
         });
       } catch (err) {
-        console.error(err);
+        console.error("Dashboard fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -173,43 +210,64 @@ export default function ElectionDashboard() {
       </div>
     );
   }
+  if (!user) {
+    return (
+      <div className="flex justify-center items-center h-64 text-gray-400">
+        Please sign in to view the dashboard.
+      </div>
+    );
+  }
 
   const supportRate = dashboardData.stats.totalVoters > 0
     ? ((dashboardData.stats.strongSupporters / dashboardData.stats.totalVoters) * 100).toFixed(1)
-    : 0;
+    : "0";
 
-  const isAdmin = isFullAccess;
-  const isAnalyst = isFullAccess || hasRole("Election Analyst");
-  const isCampaignManager = isFullAccess || hasRole("Campaign Manager");
-  const isBoothWorker = hasRole("Booth Worker") || hasRole("Election Agent");
+  // Build restriction banner text based on worker role and assigned area
+  const workerLevel = getWorkerLevel(user.workerRole);
+  const assignedAreas = [];
+  if (user.assignedConstituency?.name) assignedAreas.push(`Constituency: ${user.assignedConstituency.name}`);
+  if (user.assignedBlock?.blockNumber) assignedAreas.push(`Block: ${user.assignedBlock.blockNumber}`);
+  if (user.assignedWard?.wardNumber) assignedAreas.push(`Ward: ${user.assignedWard.wardNumber}`);
+  if (user.assignedBooths?.length) assignedAreas.push(`Booths: ${user.assignedBooths.map(b => b.boothNumber).join(", ")}`);
+  const restrictionText = isFieldWorker && assignedAreas.length
+    ? `🔒 You are logged in as a ${workerLevel || "field worker"}. Data is restricted to your assigned ${assignedAreas.join(" • ")}.`
+    : null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-extrabold text-gray-900">🗳️ Election Dashboard</h1>
-        {user && (
-          <div className="text-sm bg-gray-100 px-3 py-1 rounded-full">
-            Role: {user.type === "company" ? "Company" : (user.roles || []).join(", ")}
-          </div>
-        )}
+        <div className="text-sm bg-gray-100 px-3 py-1 rounded-full">
+          Role: {user.type === "company" ? "Company Admin" : (user.workerRole || user.roles?.join(", ") || "User")}
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Restriction banner (only for field workers) */}
+      {restrictionText && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
+          {restrictionText}
+        </div>
+      )}
+
+      {/* Basic stats cards – visible to any logged‑in user */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Voters" value={dashboardData.stats.totalVoters} icon={FiUsers} color="blue" />
         <StatCard label="Booths Covered" value={dashboardData.stats.totalBooths} icon={FiHome} color="green" />
         <StatCard label="Support Rate" value={`${supportRate}%`} icon={FiTrendingUp} color="purple" />
-        <StatCard label="Total Expenses" value={`₹ ${dashboardData.stats.totalExpenses.toLocaleString()}`} icon={FiDollarSign} color="red" />
+        {(isManager || isAnalyst || isCampaignManager) && (
+          <StatCard label="Total Expenses" value={`₹ ${dashboardData.stats.totalExpenses.toLocaleString()}`} icon={FiDollarSign} color="red" />
+        )}
       </div>
 
-      {/* Worker Leaderboard & Media Impact (two‑column) */}
+      {/* Two‑column: Worker Leaderboard + Media Impact (module‑gated) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <WorkerLeaderboard />
-        <MediaImpactChart />
+        {hasModuleView("Workers") && <WorkerLeaderboard />}
+        {hasModuleView("Election Communication") && <MediaImpactChart />}
       </div>
 
-      {/* Support Distribution */}
-      {(isAdmin || isAnalyst || isCampaignManager) && dashboardData.supportDist.length > 0 && (
+      {/* Support Distribution – requires Analytics or manager/analyst */}
+      {(isManager || isAnalyst) && dashboardData.supportDist.length > 0 && (
         <ChartCard title="Support Distribution" icon={<FiPieChart />}>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
@@ -228,8 +286,8 @@ export default function ElectionDashboard() {
         </ChartCard>
       )}
 
-      {/* Top Booths */}
-      {(isAdmin || isAnalyst) && dashboardData.topBooths.length > 0 && (
+      {/* Top Booths – requires Analytics or manager/analyst */}
+      {(isManager || isAnalyst) && dashboardData.topBooths.length > 0 && (
         <ChartCard title="Top 5 Booths (by voters)" icon={<FiBarChart2 />}>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={dashboardData.topBooths} layout="vertical" margin={{ left: 40 }}>
@@ -243,8 +301,8 @@ export default function ElectionDashboard() {
         </ChartCard>
       )}
 
-      {/* Expense Categories */}
-      {(isAdmin || isAnalyst || isCampaignManager) && dashboardData.expenseCategories.length > 0 && (
+      {/* Expense Categories – for managers/analysts/campaign managers */}
+      {(isManager || isAnalyst || isCampaignManager) && dashboardData.expenseCategories.length > 0 && (
         <ChartCard title="Expense by Category" icon={<FiDollarSign />}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -257,7 +315,7 @@ export default function ElectionDashboard() {
               <tbody>
                 {dashboardData.expenseCategories.map((cat, i) => (
                   <tr key={i} className="border-b">
-                    <td className="px-4 py-2 capitalize">{cat._id}</td>
+                    <td className="px-4 py-2 capitalize">{cat._id || "Others"}</td>
                     <td className="px-4 py-2 text-right">{cat.total.toLocaleString()}</td>
                   </tr>
                 ))}
@@ -267,41 +325,39 @@ export default function ElectionDashboard() {
         </ChartCard>
       )}
 
-      {/* Rallies & Media Campaigns */}
-      {(isAdmin || isCampaignManager) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {dashboardData.rallies.length > 0 && (
-            <ChartCard title="Upcoming Rallies" icon={<FiMic />}>
-              <ul className="divide-y">
-                {dashboardData.rallies.map(rally => (
-                  <li key={rally._id} className="py-2">
-                    <p className="font-medium">{rally.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(rally.date).toLocaleDateString()} – {rally.venue}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </ChartCard>
-          )}
-          {dashboardData.mediaCampaigns.length > 0 && (
-            <ChartCard title="Recent Media Campaigns" icon={<FiRadio />}>
-              <ul className="divide-y">
-                {dashboardData.mediaCampaigns.map(camp => (
-                  <li key={camp._id} className="py-2">
-                    <p className="font-medium">{camp.title}</p>
-                    <p className="text-xs text-gray-500">
-                      {camp.platform} • Reach: {camp.reach || 'N/A'}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </ChartCard>
-          )}
-        </div>
-      )}
+      {/* Rallies & Media Campaigns – module‑gated */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {hasModuleView("Election Campaign") && dashboardData.rallies.length > 0 && (
+          <ChartCard title="Upcoming Rallies" icon={<FiMic />}>
+            <ul className="divide-y">
+              {dashboardData.rallies.map(rally => (
+                <li key={rally._id} className="py-2">
+                  <p className="font-medium">{rally.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(rally.date).toLocaleDateString()} – {rally.venue}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </ChartCard>
+        )}
+        {hasModuleView("Election Communication") && dashboardData.mediaCampaigns.length > 0 && (
+          <ChartCard title="Recent Media Campaigns" icon={<FiRadio />}>
+            <ul className="divide-y">
+              {dashboardData.mediaCampaigns.map(camp => (
+                <li key={camp._id} className="py-2">
+                  <p className="font-medium">{camp.title}</p>
+                  <p className="text-xs text-gray-500">
+                    {camp.platform} • Reach: {camp.reach || 'N/A'}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </ChartCard>
+        )}
+      </div>
 
-      {/* Recent Voters */}
+      {/* Recent Voters – Voters module */}
       {hasModuleView("Voters") && dashboardData.recentVoters.length > 0 && (
         <ChartCard title="Recently Added Voters" icon={<FiUserPlus />}>
           <ul className="divide-y">
@@ -318,8 +374,8 @@ export default function ElectionDashboard() {
         </ChartCard>
       )}
 
-      {/* Worker Activity */}
-      {(isAdmin || isAnalyst || hasRole("Election Agent")) && dashboardData.workerActivities.length > 0 && (
+      {/* Worker Activity – requires Workers module AND manager/analyst/agent */}
+      {hasModuleView("Workers") && (isManager || isAnalyst || (user?.roles || []).includes("Election Agent")) && dashboardData.workerActivities.length > 0 && (
         <ChartCard title="Top Workers (contacts/surveys)" icon={<FiActivity />}>
           <div className="space-y-3">
             {dashboardData.workerActivities.map((w, idx) => (
@@ -337,17 +393,11 @@ export default function ElectionDashboard() {
           </div>
         </ChartCard>
       )}
-
-      {isBoothWorker && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
-          🔍 You are logged in as a booth worker. Shown data is filtered to your assigned booth only.
-        </div>
-      )}
     </div>
   );
 }
 
-// Stat Card Component
+// Helper components (unchanged)
 function StatCard({ label, value, icon: Icon, color }) {
   const colorMap = {
     blue: "bg-blue-50 text-blue-600",
@@ -368,7 +418,6 @@ function StatCard({ label, value, icon: Icon, color }) {
   );
 }
 
-// Chart Card Component
 function ChartCard({ title, icon, children }) {
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border">
@@ -380,7 +429,6 @@ function ChartCard({ title, icon, children }) {
     </div>
   );
 }
-
 
 
 // // app/(dashboard)/election/page.js

@@ -1,8 +1,9 @@
-// app/api/election/voter/import/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Voter from "@/models/election/Voter";
 import Booth from "@/models/election/Booth";
+import Block from "@/models/election/Block";
+import Ward from "@/models/election/Ward";
 import { getTokenFromHeader, verifyJWT, hasPermission } from "@/lib/auth";
 
 async function getUser(req) {
@@ -11,6 +12,55 @@ async function getUser(req) {
   const user = await verifyJWT(token);
   if (!user) return { error: "Invalid token", status: 401 };
   return { user };
+}
+
+function normalizeField(row, keys) {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
+  return undefined;
+}
+
+function normalizeVoterRow(raw) {
+  const lower = Object.keys(raw).reduce((acc, key) => {
+    acc[key.toLowerCase()] = raw[key];
+    return acc;
+  }, {});
+
+  return {
+    firstName: normalizeField(lower, ["firstname", "first name", "first_name"]),
+    middleName: normalizeField(lower, ["middlename", "middle name", "middle_name"]),
+    lastName: normalizeField(lower, ["lastname", "last name", "last_name"]),
+    voterId: normalizeField(lower, ["voterid", "voter id", "voter_id"]),
+    aadhaar: normalizeField(lower, ["aadhaar", "aadhar"]),
+    phone: normalizeField(lower, ["phone", "mobile", "mobile number"]),
+    altPhone: normalizeField(lower, ["altphone", "alt phone", "alternate phone", "alternatephone"]),
+    email: normalizeField(lower, ["email", "email address"]),
+    age: normalizeField(lower, ["age"]),
+    dob: normalizeField(lower, ["dob", "dateofbirth", "date of birth", "date_of_birth"]),
+    gender: normalizeField(lower, ["gender"]),
+    caste: normalizeField(lower, ["caste"]),
+    religion: normalizeField(lower, ["religion"]),
+    occupation: normalizeField(lower, ["occupation"]),
+    education: normalizeField(lower, ["education"]),
+    address: {
+      line1: normalizeField(lower, ["addressline1", "address line1", "address line 1", "address_line1", "address_line_1", "line1"]),
+      village: normalizeField(lower, ["village"]),
+      postOffice: normalizeField(lower, ["postoffice", "post office", "post_office"]),
+      pincode: normalizeField(lower, ["pincode", "pin code", "pin", "zip"]),
+    },
+    constituencyId: normalizeField(lower, ["constituencyid", "constituency id", "constituency_id"]),
+    block: normalizeField(lower, ["block", "blockid", "block id", "block_id"]),
+    ward: normalizeField(lower, ["ward", "wardid", "ward id", "ward_id"]),
+    booth: normalizeField(lower, ["booth", "boothid", "booth id", "booth_id"]),
+    supportLevel: normalizeField(lower, ["supportlevel", "support level", "support_level"]),
+    influenceRating: normalizeField(lower, ["influencerating", "influence rating", "influence_rating"]),
+    tags: normalizeField(lower, ["tags"]),
+    membershipNumber: normalizeField(lower, ["membershipnumber", "membership number", "membership_number"]),
+    rowNum: normalizeField(lower, ["rownum", "row num", "row_number"]),
+  };
 }
 
 export async function POST(req) {
@@ -23,9 +73,17 @@ export async function POST(req) {
 
   await dbConnect();
 
+  // Extract assigned areas from the user object (must be populated in JWT)
+  const assignedConstituency = user.assignedConstituency?._id || user.assignedConstituency || null;
+  const assignedBlock = user.assignedBlock?._id || user.assignedBlock || null;
+  const assignedWard = user.assignedWard?._id || user.assignedWard || null;
+  const assignedBooths = user.assignedBooths?.map(b => b._id) || [];
+  const isRestricted = !!(assignedConstituency || assignedBlock || assignedWard || assignedBooths.length);
+
   try {
     const body = await req.json();
-    const { voters } = body;
+    const rawVoters = body.voters;
+    let voters = Array.isArray(rawVoters) ? rawVoters.map(normalizeVoterRow) : [];
 
     if (!Array.isArray(voters) || voters.length === 0) {
       return NextResponse.json(
@@ -34,11 +92,23 @@ export async function POST(req) {
       );
     }
 
-    const requiredFields = ["firstName", "booth"];
+    // For restricted users, automatically fill missing hierarchy fields from JWT
+    if (isRestricted) {
+      voters = voters.map(v => ({
+        ...v,
+        constituencyId: v.constituencyId || assignedConstituency,
+        block: v.block || assignedBlock,
+        ward: v.ward || assignedWard,
+        // If exactly one booth assigned, use it; otherwise keep as is (CSV must provide)
+        booth: v.booth || (assignedBooths.length === 1 ? assignedBooths[0] : undefined),
+      }));
+    }
+
     const invalidRows = [];
     const successRows = [];
     const duplicateVoterIds = [];
 
+    // Check duplicate Voter IDs
     const voterIds = voters
       .map((v) => v.voterId)
       .filter((id) => id && id.trim());
@@ -54,29 +124,62 @@ export async function POST(req) {
       existingIds = existing.map((v) => v.voterId);
     }
 
-    const boothIds = voters.map((v) => v.booth);
+    // Validate booths, blocks, wards
+    const boothIds = voters.map(v => v.booth).filter(id => id);
+    const blockIds = voters.map(v => v.block).filter(id => id);
+    const wardIds = voters.map(v => v.ward).filter(id => id);
+
     const validBooths = await Booth.find({
       _id: { $in: boothIds },
       companyId: user.companyId,
-    })
-      .select("_id")
-      .lean();
-    const validBoothIdSet = new Set(validBooths.map((b) => b._id.toString()));
+    }).select("_id").lean();
+    const validBoothIdSet = new Set(validBooths.map(b => b._id.toString()));
+
+    const validBlocks = await Block.find({
+      _id: { $in: blockIds },
+      companyId: user.companyId,
+    }).select("_id").lean();
+    const validBlockIdSet = new Set(validBlocks.map(b => b._id.toString()));
+
+    const validWards = await Ward.find({
+      _id: { $in: wardIds },
+      companyId: user.companyId,
+    }).select("_id").lean();
+    const validWardIdSet = new Set(validWards.map(w => w._id.toString()));
 
     for (let i = 0; i < voters.length; i++) {
       const v = voters[i];
       const rowNum = i + 1;
 
-      if (!v.firstName?.trim() || !v.booth) {
-        invalidRows.push({ row: rowNum, reason: "Missing firstName or booth" });
+      if (!v.firstName?.trim()) {
+        invalidRows.push({ row: rowNum, reason: "Missing firstName" });
         continue;
       }
 
-      if (!validBoothIdSet.has(v.booth.toString())) {
-        invalidRows.push({ row: rowNum, reason: "Invalid booth ID" });
+      // For restricted users, at least one of booth/block/ward may have been auto-filled; check again
+      const hasLocation = !!(v.booth || v.block || v.ward);
+      if (!hasLocation) {
+        invalidRows.push({ row: rowNum, reason: "Missing booth/block/ward – at least one required" });
         continue;
       }
 
+      // Validate booth if provided
+      if (v.booth && !validBoothIdSet.has(v.booth.toString())) {
+        invalidRows.push({ row: rowNum, reason: `Invalid booth ID: ${v.booth}` });
+        continue;
+      }
+      // Validate block if provided
+      if (v.block && !validBlockIdSet.has(v.block.toString())) {
+        invalidRows.push({ row: rowNum, reason: `Invalid block ID: ${v.block}` });
+        continue;
+      }
+      // Validate ward if provided
+      if (v.ward && !validWardIdSet.has(v.ward.toString())) {
+        invalidRows.push({ row: rowNum, reason: `Invalid ward ID: ${v.ward}` });
+        continue;
+      }
+
+      // Check duplicate Voter ID
       if (v.voterId && existingIds.includes(v.voterId)) {
         duplicateVoterIds.push({ row: rowNum, voterId: v.voterId });
         continue;
@@ -100,12 +203,15 @@ export async function POST(req) {
           occupation: v.occupation || undefined,
           education: v.education || undefined,
           address: {
-            line1: v.addressLine1 || v.address?.line1 || "",
-            village: v.village || v.address?.village || "",
-            postOffice: v.postOffice || v.address?.postOffice || "",
-            pincode: v.pincode || v.address?.pincode || "",
+            line1: v.address?.line1 || "",
+            village: v.address?.village || "",
+            postOffice: v.address?.postOffice || "",
+            pincode: v.address?.pincode || "",
           },
-          booth: v.booth,
+          constituencyId: v.constituencyId || undefined,
+          block: v.block || undefined,
+          ward: v.ward || undefined,
+          booth: v.booth || undefined,
           supportLevel: v.supportLevel || undefined,
           influenceRating: v.influenceRating ? Number(v.influenceRating) : undefined,
           tags: v.tags
@@ -119,7 +225,10 @@ export async function POST(req) {
         await voter.save();
         successRows.push(voter._id);
 
-        await Booth.findByIdAndUpdate(v.booth, { $inc: { totalVoters: 1 } });
+        // Increment totalVoters on booth if present
+        if (v.booth) {
+          await Booth.findByIdAndUpdate(v.booth, { $inc: { totalVoters: 1 } });
+        }
       } catch (err) {
         invalidRows.push({ row: rowNum, reason: err.message || "Failed to save" });
       }

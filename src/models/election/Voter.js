@@ -27,6 +27,9 @@ const VoterSchema = new mongoose.Schema({
         // ❌ location को हटा दिया गया है (अभी ज़रूरत नहीं)
         // अगर भविष्य में चाहिए तो coordinates के साथ ही डालें
     },
+    // models/election/Voter.js – add these two fields
+block: { type: mongoose.Schema.Types.ObjectId, ref: 'Block' },
+ward: { type: mongoose.Schema.Types.ObjectId, ref: 'Ward' },
     booth: { type: mongoose.Schema.Types.ObjectId, ref: 'Booth', required: true },
     familyId: { type: mongoose.Schema.Types.ObjectId, ref: 'VoterFamily' },
     supportLevel: {
@@ -55,7 +58,6 @@ const VoterSchema = new mongoose.Schema({
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' }
 }, { timestamps: true });
 
-// 🔧 2dsphere index हटाया जा चुका है; नीचे की लाइन को हमेशा के लिए हटा दें
-// VoterSchema.index({ 'address.location': '2dsphere' });
+
 
 export default mongoose.models.Voter || mongoose.model('Voter', VoterSchema);

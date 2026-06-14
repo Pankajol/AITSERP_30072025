@@ -21,6 +21,8 @@ const ConstituencySchema = new mongoose.Schema({
   state: String,
   totalVoters: { type: Number, default: 0 },
   // भौगोलिक बाउंड्री (GeoJSON) – भविष्य के लिए
+  blocks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Block' }],
+  wards: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Ward' }],
   booths: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Booth' }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' }
 }, { timestamps: true });

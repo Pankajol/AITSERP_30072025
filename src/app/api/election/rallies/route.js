@@ -1,4 +1,4 @@
-// app/api/election/rallies/route.js
+// app/api/election/rally/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Rally from "@/models/election/Rally";
@@ -13,148 +13,84 @@ async function getUser(req) {
 }
 
 export async function GET(req) {
-  await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Election Campaign", "view")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
-    const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 50);
-    const constituency = searchParams.get("constituency");
-    const statusFilter = searchParams.get("status");
-    const search = searchParams.get("search") || "";
+  await dbConnect();
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100);
+  let query = { companyId: user.companyId };
 
-    if (id) {
-      const rally = await Rally.findOne({ _id: id, companyId: user.companyId })
-        .populate("organizer", "name email")
-        .populate("constituency", "name")
-        .lean();
-      if (!rally) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-      return NextResponse.json({ success: true, data: rally });
-    }
-
-    const query = { companyId: user.companyId };
-    if (constituency) query.constituency = constituency;
-    if (statusFilter) query.status = statusFilter;
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { venue: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const skip = (page - 1) * limit;
-    const [rallies, total] = await Promise.all([
-      Rally.find(query)
-        .populate("organizer", "name")
-        .populate("constituency", "name")
-        .skip(skip)
-        .limit(limit)
-        .sort({ date: -1 })
-        .lean(),
-      Rally.countDocuments(query),
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      data: rallies,
-      meta: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
+  if (id) {
+    const rally = await Rally.findOne({ _id: id, companyId: user.companyId });
+    if (!rally) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+    return NextResponse.json({ success: true, data: rally });
   }
+
+  // Restrict to assigned constituency for workers
+  if (user.assignedConstituency?._id) {
+    query.constituency = user.assignedConstituency._id;
+  }
+
+  const rallies = await Rally.find(query).sort({ date: -1 }).limit(limit);
+  return NextResponse.json({ success: true, data: rallies });
 }
 
 export async function POST(req) {
-  await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Election Campaign", "create")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
-  try {
-    const data = await req.json();
-    const required = ["name", "date", "venue"];
-    for (const field of required) {
-      if (!data[field]) {
-        return NextResponse.json({ success: false, message: `${field} is required` }, { status: 400 });
-      }
-    }
-
-    const rally = new Rally({
-      ...data,
-      companyId: user.companyId,
-      createdBy: user.id,
-    });
-    await rally.save();
-    return NextResponse.json({ success: true, data: rally }, { status: 201 });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: "Failed to create rally" }, { status: 500 });
+  await dbConnect();
+  const data = await req.json();
+  // Force assigned constituency for restricted workers
+  if (user.assignedConstituency?._id && !data.constituency) {
+    data.constituency = user.assignedConstituency._id;
   }
+  const rally = new Rally({ ...data, companyId: user.companyId, createdBy: user.id });
+  await rally.save();
+  return NextResponse.json({ success: true, data: rally }, { status: 201 });
 }
 
 export async function PUT(req) {
-  await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Election Campaign", "edit")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
-
-    const data = await req.json();
-    const updated = await Rally.findOneAndUpdate(
-      { _id: id, companyId: user.companyId },
-      { ...data },
-      { new: true, runValidators: true }
-    );
-    if (!updated) return NextResponse.json({ success: false, message: "Rally not found" }, { status: 404 });
-    return NextResponse.json({ success: true, data: updated });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: "Update failed" }, { status: 500 });
-  }
+  await dbConnect();
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
+  const data = await req.json();
+  const updated = await Rally.findOneAndUpdate(
+    { _id: id, companyId: user.companyId },
+    data,
+    { new: true }
+  );
+  if (!updated) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+  return NextResponse.json({ success: true, data: updated });
 }
 
 export async function DELETE(req) {
-  await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Election Campaign", "delete")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
-
-    const deleted = await Rally.findOneAndDelete({ _id: id, companyId: user.companyId });
-    if (!deleted) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-    return NextResponse.json({ success: true, message: "Deleted" });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });
-  }
+  await dbConnect();
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
+  const deleted = await Rally.findOneAndDelete({ _id: id, companyId: user.companyId });
+  if (!deleted) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+  return NextResponse.json({ success: true, message: "Deleted" });
 }
-
-
 
 // import { NextResponse } from "next/server";
 // import dbConnect from "@/lib/db";

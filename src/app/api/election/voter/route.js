@@ -1,8 +1,9 @@
-// app/api/election/voter/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Voter from "@/models/election/Voter";
 import Booth from "@/models/election/Booth";
+import Block from "@/models/election/Block";
+import Ward from "@/models/election/Ward";
 import { getTokenFromHeader, verifyJWT, hasPermission, hasRole } from "@/lib/auth";
 
 async function getUser(req) {
@@ -18,7 +19,6 @@ export async function GET(req) {
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  // Allow users with Voters module permission OR election workers
   const hasVotersView = hasPermission(user, "Voters", "view");
   const isElectionWorker = hasRole(user, "Booth Worker") || hasRole(user, "Election Agent") || hasRole(user, "Surveyor") || hasRole(user, "Election Analyst");
   if (!hasVotersView && !isElectionWorker) {
@@ -32,6 +32,9 @@ export async function GET(req) {
     const limit = Math.min(parseInt(searchParams.get("limit")) || 20, 200);
     const search = searchParams.get("search") || "";
     const booth = searchParams.get("booth");
+    const block = searchParams.get("block");                 // NEW
+    const ward = searchParams.get("ward");                   // NEW
+    const constituency = searchParams.get("constituency");
     const supportLevel = searchParams.get("supportLevel");
     const caste = searchParams.get("caste");
     const gender = searchParams.get("gender");
@@ -40,11 +43,33 @@ export async function GET(req) {
 
     let query = { companyId: user.companyId };
 
-    // If booth worker, restrict to assigned booths (from JWT)
+    // Hierarchy filters: constituency -> block -> ward -> booth
+    if (constituency) {
+      // If constituency is given, we can restrict by any lower level
+      if (block) {
+        query.block = block;
+      } else if (ward) {
+        query.ward = ward;
+      } else if (booth) {
+        query.booth = booth;
+      } else {
+        // Only constituency: find all booths in that constituency, then voters in those booths
+        const booths = await Booth.find({ constituency }).select("_id");
+        const boothIds = booths.map(b => b._id);
+        if (boothIds.length === 0) {
+          return NextResponse.json({ success: true, data: [], meta: { page, limit, total: 0, pages: 0 } });
+        }
+        query.booth = { $in: boothIds };
+      }
+    } else {
+      if (block) query.block = block;
+      if (ward) query.ward = ward;
+      if (booth) query.booth = booth;
+    }
+
+    // If booth worker, restrict to assigned booths (overrides everything)
     if (hasRole(user, "Booth Worker") && user.assignedBooths?.length) {
       query.booth = { $in: user.assignedBooths };
-    } else if (booth) {
-      query.booth = booth;
     }
 
     if (supportLevel) query.supportLevel = supportLevel;
@@ -65,6 +90,8 @@ export async function GET(req) {
     if (id) {
       const voter = await Voter.findOne({ _id: id, companyId: user.companyId })
         .populate("booth", "boothNumber name constituency")
+        .populate("block", "blockNumber name")           // NEW
+        .populate("ward", "wardNumber name")             // NEW
         .populate("contactHistory.createdBy", "name")
         .populate("surveys.survey", "title")
         .populate("surveys.surveyedBy", "name")
@@ -77,6 +104,8 @@ export async function GET(req) {
     const [voters, total] = await Promise.all([
       Voter.find(query)
         .populate("booth", "boothNumber name")
+        .populate("block", "blockNumber name")           // NEW
+        .populate("ward", "wardNumber name")             // NEW
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -95,24 +124,25 @@ export async function GET(req) {
   }
 }
 
-
-
+// POST – create a new voter (supports block/ward)
 export async function POST(req) {
   await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Voters", "create")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
   try {
     const data = await req.json();
-    const required = ["firstName", "booth"];
+    const required = ["firstName"];
     for (const field of required) {
       if (!data[field]) {
         return NextResponse.json({ success: false, message: `${field} is required` }, { status: 400 });
       }
+    }
+    // At least one of booth/block/ward must be present
+    if (!data.booth && !data.block && !data.ward) {
+      return NextResponse.json({ success: false, message: "At least one of booth, block, or ward is required" }, { status: 400 });
     }
 
     if (data.voterId) {
@@ -122,6 +152,24 @@ export async function POST(req) {
       }
     }
 
+    // If booth is provided, ensure it belongs to the correct constituency (optional validation)
+    if (data.booth) {
+      const boothDoc = await Booth.findOne({ _id: data.booth, companyId: user.companyId });
+      if (!boothDoc) {
+        return NextResponse.json({ success: false, message: "Invalid booth ID" }, { status: 400 });
+      }
+      // Auto-populate constituency from booth if not provided
+      if (!data.constituencyId) data.constituencyId = boothDoc.constituency;
+    }
+    if (data.block) {
+      const blockDoc = await Block.findOne({ _id: data.block, companyId: user.companyId });
+      if (!blockDoc) return NextResponse.json({ success: false, message: "Invalid block ID" }, { status: 400 });
+    }
+    if (data.ward) {
+      const wardDoc = await Ward.findOne({ _id: data.ward, companyId: user.companyId });
+      if (!wardDoc) return NextResponse.json({ success: false, message: "Invalid ward ID" }, { status: 400 });
+    }
+
     const voter = new Voter({
       ...data,
       companyId: user.companyId,
@@ -129,7 +177,10 @@ export async function POST(req) {
     });
     await voter.save();
 
-    await Booth.findByIdAndUpdate(data.booth, { $inc: { totalVoters: 1 } });
+    // Increment totalVoters on the booth if present
+    if (data.booth) {
+      await Booth.findByIdAndUpdate(data.booth, { $inc: { totalVoters: 1 } });
+    }
 
     return NextResponse.json({ success: true, data: voter }, { status: 201 });
   } catch (err) {
@@ -138,21 +189,34 @@ export async function POST(req) {
   }
 }
 
+// PUT – update voter (supports block/ward)
 export async function PUT(req) {
   await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Voters", "edit")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
-
     const data = await req.json();
+
+    // Optional validation for booth/block/ward existence
+    if (data.booth) {
+      const boothDoc = await Booth.findOne({ _id: data.booth, companyId: user.companyId });
+      if (!boothDoc) return NextResponse.json({ success: false, message: "Invalid booth ID" }, { status: 400 });
+    }
+    if (data.block) {
+      const blockDoc = await Block.findOne({ _id: data.block, companyId: user.companyId });
+      if (!blockDoc) return NextResponse.json({ success: false, message: "Invalid block ID" }, { status: 400 });
+    }
+    if (data.ward) {
+      const wardDoc = await Ward.findOne({ _id: data.ward, companyId: user.companyId });
+      if (!wardDoc) return NextResponse.json({ success: false, message: "Invalid ward ID" }, { status: 400 });
+    }
+
     const updated = await Voter.findOneAndUpdate(
       { _id: id, companyId: user.companyId },
       { ...data },
@@ -166,31 +230,224 @@ export async function PUT(req) {
   }
 }
 
+// DELETE – remove voter and decrement booth totalVoters if booth exists
 export async function DELETE(req) {
   await dbConnect();
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
-
   if (!hasPermission(user, "Voters", "delete")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
-
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
-
     const voter = await Voter.findOneAndDelete({ _id: id, companyId: user.companyId });
     if (!voter) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-
-    await Booth.findByIdAndUpdate(voter.booth, { $inc: { totalVoters: -1 } });
-
+    if (voter.booth) {
+      await Booth.findByIdAndUpdate(voter.booth, { $inc: { totalVoters: -1 } });
+    }
     return NextResponse.json({ success: true, message: "Deleted" });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });
   }
 }
+
+
+// // app/api/election/voter/route.js
+// import { NextResponse } from "next/server";
+// import dbConnect from "@/lib/db";
+// import Voter from "@/models/election/Voter";
+// import Booth from "@/models/election/Booth";
+// import { getTokenFromHeader, verifyJWT, hasPermission, hasRole } from "@/lib/auth";
+
+// async function getUser(req) {
+//   const token = getTokenFromHeader(req);
+//   if (!token) return { error: "Token missing", status: 401 };
+//   const user = await verifyJWT(token);
+//   if (!user) return { error: "Invalid token", status: 401 };
+//   return { user };
+// }
+
+// export async function GET(req) {
+//   await dbConnect();
+//   const { user, error, status } = await getUser(req);
+//   if (error) return NextResponse.json({ success: false, message: error }, { status });
+
+//   // Allow users with Voters module permission OR election workers
+//   const hasVotersView = hasPermission(user, "Voters", "view");
+//   const isElectionWorker = hasRole(user, "Booth Worker") || hasRole(user, "Election Agent") || hasRole(user, "Surveyor") || hasRole(user, "Election Analyst");
+//   if (!hasVotersView && !isElectionWorker) {
+//     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+//   }
+
+//   try {
+//     const { searchParams } = new URL(req.url);
+//     const id = searchParams.get("id");
+//     const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
+//     const limit = Math.min(parseInt(searchParams.get("limit")) || 20, 200);
+//     const search = searchParams.get("search") || "";
+//     const booth = searchParams.get("booth");
+//     const supportLevel = searchParams.get("supportLevel");
+//     const caste = searchParams.get("caste");
+//     const gender = searchParams.get("gender");
+//     const phone = searchParams.get("phone");
+//     const voterId = searchParams.get("voterId");
+
+//     let query = { companyId: user.companyId };
+
+//     // If booth worker, restrict to assigned booths (from JWT)
+//     if (hasRole(user, "Booth Worker") && user.assignedBooths?.length) {
+//       query.booth = { $in: user.assignedBooths };
+//     } else if (booth) {
+//       query.booth = booth;
+//     }
+
+//     if (supportLevel) query.supportLevel = supportLevel;
+//     if (caste) query.caste = caste;
+//     if (gender) query.gender = gender;
+//     if (phone) query.phone = phone;
+//     if (voterId) query.voterId = voterId;
+
+//     if (search) {
+//       query.$or = [
+//         { firstName: { $regex: search, $options: "i" } },
+//         { lastName: { $regex: search, $options: "i" } },
+//         { voterId: { $regex: search, $options: "i" } },
+//         { phone: { $regex: search, $options: "i" } },
+//       ];
+//     }
+
+//     if (id) {
+//       const voter = await Voter.findOne({ _id: id, companyId: user.companyId })
+//         .populate("booth", "boothNumber name constituency")
+//         .populate("contactHistory.createdBy", "name")
+//         .populate("surveys.survey", "title")
+//         .populate("surveys.surveyedBy", "name")
+//         .lean();
+//       if (!voter) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+//       return NextResponse.json({ success: true, data: voter });
+//     }
+
+//     const skip = (page - 1) * limit;
+//     const [voters, total] = await Promise.all([
+//       Voter.find(query)
+//         .populate("booth", "boothNumber name")
+//         .skip(skip)
+//         .limit(limit)
+//         .sort({ createdAt: -1 })
+//         .lean(),
+//       Voter.countDocuments(query),
+//     ]);
+
+//     return NextResponse.json({
+//       success: true,
+//       data: voters,
+//       meta: { page, limit, total, pages: Math.ceil(total / limit) },
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
+//   }
+// }
+
+
+
+// export async function POST(req) {
+//   await dbConnect();
+//   const { user, error, status } = await getUser(req);
+//   if (error) return NextResponse.json({ success: false, message: error }, { status });
+
+//   if (!hasPermission(user, "Voters", "create")) {
+//     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+//   }
+
+//   try {
+//     const data = await req.json();
+//     const required = ["firstName", "booth"];
+//     for (const field of required) {
+//       if (!data[field]) {
+//         return NextResponse.json({ success: false, message: `${field} is required` }, { status: 400 });
+//       }
+//     }
+
+//     if (data.voterId) {
+//       const exists = await Voter.findOne({ voterId: data.voterId, companyId: user.companyId });
+//       if (exists) {
+//         return NextResponse.json({ success: false, message: "Voter ID already exists" }, { status: 400 });
+//       }
+//     }
+
+//     const voter = new Voter({
+//       ...data,
+//       companyId: user.companyId,
+//       createdBy: user.id,
+//     });
+//     await voter.save();
+
+//     await Booth.findByIdAndUpdate(data.booth, { $inc: { totalVoters: 1 } });
+
+//     return NextResponse.json({ success: true, data: voter }, { status: 201 });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Failed to create voter" }, { status: 500 });
+//   }
+// }
+
+// export async function PUT(req) {
+//   await dbConnect();
+//   const { user, error, status } = await getUser(req);
+//   if (error) return NextResponse.json({ success: false, message: error }, { status });
+
+//   if (!hasPermission(user, "Voters", "edit")) {
+//     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+//   }
+
+//   try {
+//     const { searchParams } = new URL(req.url);
+//     const id = searchParams.get("id");
+//     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
+
+//     const data = await req.json();
+//     const updated = await Voter.findOneAndUpdate(
+//       { _id: id, companyId: user.companyId },
+//       { ...data },
+//       { new: true, runValidators: true }
+//     );
+//     if (!updated) return NextResponse.json({ success: false, message: "Voter not found" }, { status: 404 });
+//     return NextResponse.json({ success: true, data: updated });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Update failed" }, { status: 500 });
+//   }
+// }
+
+// export async function DELETE(req) {
+//   await dbConnect();
+//   const { user, error, status } = await getUser(req);
+//   if (error) return NextResponse.json({ success: false, message: error }, { status });
+
+//   if (!hasPermission(user, "Voters", "delete")) {
+//     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
+//   }
+
+//   try {
+//     const { searchParams } = new URL(req.url);
+//     const id = searchParams.get("id");
+//     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
+
+//     const voter = await Voter.findOneAndDelete({ _id: id, companyId: user.companyId });
+//     if (!voter) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+
+//     await Booth.findByIdAndUpdate(voter.booth, { $inc: { totalVoters: -1 } });
+
+//     return NextResponse.json({ success: true, message: "Deleted" });
+//   } catch (err) {
+//     console.error(err);
+//     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });
+//   }
+// }
 
 
 

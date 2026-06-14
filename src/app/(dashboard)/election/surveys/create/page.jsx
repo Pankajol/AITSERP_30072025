@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { FiPlus, FiTrash2, FiX, FiCheck } from "react-icons/fi";
-import { SearchableSelect } from "@/components/SearchableSelect"; // ✅ अब उपलब्ध है
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 export default function CreateSurveyPage() {
   const router = useRouter();
@@ -14,14 +14,33 @@ export default function CreateSurveyPage() {
   const [questions, setQuestions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [assignedConstituency, setAssignedConstituency] = useState(null);
+  const [isRestricted, setIsRestricted] = useState(false);
 
-  // Constituency dropdown options
   const [constituencyOptions, setConstituencyOptions] = useState([]);
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // Fetch constituencies for dropdown
+  // Decode JWT to get assigned constituency
   useEffect(() => {
     if (!token) return;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const assigned = payload.assignedConstituency;
+      if (assigned && assigned._id) {
+        setAssignedConstituency({ _id: assigned._id, name: assigned.name });
+        setConstituencyId(assigned._id);
+        setIsRestricted(true);
+      } else {
+        setIsRestricted(false);
+      }
+    } catch (err) {
+      console.error("Failed to decode token", err);
+    }
+  }, [token]);
+
+  // Fetch constituencies for dropdown (only needed for unrestricted users)
+  useEffect(() => {
+    if (!token || isRestricted) return;
     const load = async () => {
       try {
         const { data } = await axios.get("/api/election/constituency", {
@@ -33,7 +52,7 @@ export default function CreateSurveyPage() {
       } catch (e) { console.error(e); }
     };
     load();
-  }, [token]);
+  }, [token, isRestricted]);
 
   const addQuestion = () => {
     setQuestions([...questions, { questionText: "", type: "SingleSelect", options: [""], required: false }]);
@@ -92,6 +111,13 @@ export default function CreateSurveyPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-extrabold text-gray-900 mb-6">Create New Survey</h1>
+
+      {isRestricted && assignedConstituency && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-700">
+          🔒 You are restricted to constituency: <strong>{assignedConstituency.name}</strong>. Survey will automatically be linked to this constituency.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         {error && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -105,19 +131,35 @@ export default function CreateSurveyPage() {
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Booth Level Opinion"
             className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-sm" required />
         </div>
+
         <div>
           <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Description</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
             className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-sm" />
         </div>
+
         <div>
-          <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Constituency (optional)</label>
-          <SearchableSelect
-            options={constituencyOptions}
-            value={constituencyId}
-            onChange={(val) => setConstituencyId(val)}
-            placeholder="Search constituency..."
-          />
+          <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Constituency</label>
+          {isRestricted ? (
+            <input
+              type="text"
+              value={assignedConstituency?.name || "Assigned constituency"}
+              disabled
+              className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-500"
+            />
+          ) : (
+            <SearchableSelect
+              options={constituencyOptions}
+              value={constituencyId}
+              onChange={(val) => setConstituencyId(val)}
+              placeholder="Search constituency..."
+            />
+          )}
+          <p className="text-xs text-gray-400 mt-1">
+            {isRestricted
+              ? "Your survey will be visible only within your assigned constituency."
+              : "Leave empty to make the survey available for all constituencies."}
+          </p>
         </div>
 
         <div>

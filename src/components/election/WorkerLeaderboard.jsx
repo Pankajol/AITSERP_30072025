@@ -13,7 +13,7 @@ export default function WorkerLeaderboard() {
     if (!token) return;
     const fetchLeaderboard = async () => {
       try {
-        const res = await axios.get("/api/election/worker/leaderboard", {
+        const res = await axios.get("api/election/worker/leaderboard", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.data.success) setWorkers(res.data.data);

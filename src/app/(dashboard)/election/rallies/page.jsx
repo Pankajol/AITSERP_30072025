@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { FiPlus, FiTrash2, FiEdit2, FiSearch, FiMic, FiX } from "react-icons/fi";
+import { SearchableSelect } from "@/components/SearchableSelect"; // for unrestricted users
 
 const RALLY_FORM_FIELDS = [
   { name: "name", label: "Name *", type: "text", required: true },
@@ -13,7 +14,6 @@ const RALLY_FORM_FIELDS = [
   ]},
   { name: "date", label: "Date *", type: "datetime-local", required: true },
   { name: "venue", label: "Venue *", type: "text", required: true },
-  { name: "constituency", label: "Constituency ID", type: "text" },
   { name: "budget", label: "Budget", type: "number" },
   { name: "expectedCrowd", label: "Expected Crowd", type: "number" },
   { name: "actualCrowd", label: "Actual Crowd", type: "number" },
@@ -35,13 +35,55 @@ export default function RalliesPage() {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [assignedConstituency, setAssignedConstituency] = useState(null);
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [constituencyOptions, setConstituencyOptions] = useState([]); // for unrestricted
+
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
+  // Decode JWT to get assigned constituency
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const assigned = payload.assignedConstituency;
+      if (assigned && assigned._id) {
+        setAssignedConstituency({ _id: assigned._id, name: assigned.name });
+        setIsRestricted(true);
+      } else {
+        setIsRestricted(false);
+      }
+    } catch (err) {
+      console.error("Failed to decode token", err);
+    }
+  }, [token]);
+
+  // Fetch constituencies (only for unrestricted users)
+  useEffect(() => {
+    if (!token || isRestricted) return;
+    const load = async () => {
+      try {
+        const { data } = await axios.get("/api/election/constituency", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (data.success) {
+          setConstituencyOptions(data.data.map(c => ({ value: c._id, label: c.name })));
+        }
+      } catch (e) { console.error(e); }
+    };
+    load();
+  }, [token, isRestricted]);
+
+  // Fetch rallies – automatically filter by assigned constituency if restricted
   const fetchData = async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const { data } = await axios.get("/api/election/rally", {
+      let url = "/api/election/rally";
+      if (isRestricted && assignedConstituency) {
+        url += `?constituency=${assignedConstituency._id}`;
+      }
+      const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setRecords(data.success ? data.data : []);
@@ -49,11 +91,22 @@ export default function RalliesPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, [token]);
+  useEffect(() => {
+    if (token && (assignedConstituency !== null || !isRestricted)) {
+      fetchData();
+    }
+  }, [token, assignedConstituency, isRestricted]);
 
   const resetForm = () => { setForm({}); setEditingId(null); setError(""); };
 
-  const openCreate = () => { resetForm(); setModalOpen(true); };
+  const openCreate = () => {
+    resetForm();
+    if (isRestricted && assignedConstituency) {
+      setForm(prev => ({ ...prev, constituency: assignedConstituency._id }));
+    }
+    setModalOpen(true);
+  };
+
   const openEdit = (item) => {
     setEditingId(item._id);
     setForm({
@@ -75,12 +128,17 @@ export default function RalliesPage() {
     if (!form.name || !form.date || !form.venue) return setError("Name, Date and Venue are required.");
     setSaving(true);
     try {
+      // Ensure constituency is set for restricted users
+      const payload = { ...form };
+      if (isRestricted && assignedConstituency) {
+        payload.constituency = assignedConstituency._id;
+      }
       if (editingId) {
-        await axios.put(`/api/election/rally?id=${editingId}`, form, {
+        await axios.put(`/api/election/rally?id=${editingId}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       } else {
-        await axios.post("/api/election/rally", form, {
+        await axios.post("/api/election/rally", payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
@@ -116,6 +174,12 @@ export default function RalliesPage() {
 
   return (
     <div className="max-w-screen-xl mx-auto">
+      {isRestricted && assignedConstituency && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-700">
+          🔒 You are restricted to constituency: <strong>{assignedConstituency.name}</strong>. Only rallies in this constituency are shown.
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Rallies & Events</h1>
@@ -128,7 +192,7 @@ export default function RalliesPage() {
 
       <div className="relative mb-5 max-w-sm">
         <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm" />
-        <input className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300 transition-all"
+        <input className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           value={search} onChange={e => setSearch(e.target.value)} placeholder="Search rallies..." />
       </div>
 
@@ -162,10 +226,10 @@ export default function RalliesPage() {
                   <p className="text-sm text-gray-500">{new Date(item.date).toLocaleDateString()} - {item.venue}</p>
                 </div>
                 <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(item)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors">
+                  <button onClick={() => openEdit(item)} className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100">
                     <FiEdit2 className="text-xs" />
                   </button>
-                  <button onClick={() => handleDelete(item._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition-colors">
+                  <button onClick={() => handleDelete(item._id)} className="w-7 h-7 rounded-lg bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100">
                     <FiTrash2 className="text-xs" />
                   </button>
                 </div>
@@ -186,7 +250,7 @@ export default function RalliesPage() {
         </div>
       )}
 
-      {/* Modal same pattern */}
+      {/* Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl">
@@ -200,7 +264,7 @@ export default function RalliesPage() {
                   <p className="text-xs text-gray-400">Enter rally details</p>
                 </div>
               </div>
-              <button onClick={() => { setModalOpen(false); resetForm(); }} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-all">
+              <button onClick={() => { setModalOpen(false); resetForm(); }} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 hover:text-gray-600">
                 <FiX />
               </button>
             </div>
@@ -212,12 +276,33 @@ export default function RalliesPage() {
                     <p className="text-sm text-red-600 font-medium">{error}</p>
                   </div>
                 )}
+
+                {/* Constituency field – locked for restricted users */}
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Constituency</label>
+                  {isRestricted ? (
+                    <input
+                      type="text"
+                      value={assignedConstituency?.name || "Assigned constituency"}
+                      disabled
+                      className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-500"
+                    />
+                  ) : (
+                    <SearchableSelect
+                      options={constituencyOptions}
+                      value={form.constituency || ""}
+                      onChange={(val) => setForm(prev => ({ ...prev, constituency: val }))}
+                      placeholder="Select constituency (optional)"
+                    />
+                  )}
+                </div>
+
                 {RALLY_FORM_FIELDS.map(field => (
                   <div key={field.name}>
                     <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">{field.label}</label>
                     {field.type === "select" ? (
                       <select name={field.name} value={form[field.name] || ""} onChange={handleFieldChange} required={field.required}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all">
+                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         <option value="">Select...</option>
                         {field.options?.map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -225,14 +310,14 @@ export default function RalliesPage() {
                       </select>
                     ) : (
                       <input name={field.name} type={field.type} value={form[field.name] || ""} onChange={handleFieldChange} required={field.required}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-gray-300 transition-all"
+                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                         placeholder={`Enter ${field.label.replace(" *","")}`} />
                     )}
                   </div>
                 ))}
               </div>
               <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200 transition-all">Cancel</button>
+                <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm font-bold hover:bg-gray-200">Cancel</button>
                 <button type="submit" disabled={saving} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-white text-sm font-bold transition-all ${saving ? "bg-gray-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200"}`}>
                   {saving ? (<><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>) : (<><FiPlus className="text-sm" /> {editingId ? "Update" : "Create"}</>)}
                 </button>

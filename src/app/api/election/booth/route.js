@@ -18,7 +18,6 @@ export async function GET(req) {
   const { user, error, status } = await getUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  // Check permission: module "Booths", action "view"
   if (!hasPermission(user, "Booths", "view")) {
     return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
   }
@@ -27,6 +26,8 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const constituencyId = searchParams.get("constituency");
+    const blockId = searchParams.get("block");          // NEW
+    const wardId = searchParams.get("ward");            // NEW
     const page = Math.max(parseInt(searchParams.get("page")) || 1, 1);
     const limit = Math.min(parseInt(searchParams.get("limit")) || 10, 100);
     const search = searchParams.get("search") || "";
@@ -36,6 +37,8 @@ export async function GET(req) {
         .populate("assignedAgent", "name email")
         .populate("incharge", "name email")
         .populate("constituency", "name")
+        .populate("block", "blockNumber name")          // NEW
+        .populate("ward", "wardNumber name")            // NEW
         .lean();
       if (!booth) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
       return NextResponse.json({ success: true, data: booth });
@@ -43,6 +46,8 @@ export async function GET(req) {
 
     const query = { companyId: user.companyId };
     if (constituencyId) query.constituency = constituencyId;
+    if (blockId) query.block = blockId;
+    if (wardId) query.ward = wardId;
     if (search) {
       query.$or = [
         { boothNumber: { $regex: search, $options: "i" } },
@@ -56,6 +61,8 @@ export async function GET(req) {
         .populate("assignedAgent", "name")
         .populate("incharge", "name")
         .populate("constituency", "name")
+        .populate("block", "blockNumber name")          // NEW
+        .populate("ward", "wardNumber name")            // NEW
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -85,21 +92,33 @@ export async function POST(req) {
 
   try {
     const data = await req.json();
+    const payload = { ...data };
+    if (payload.totalVoters != null) payload.totalVoters = Number(payload.totalVoters) || 0;
+    if (payload.address?.location?.coordinates) {
+      payload.address = {
+        ...payload.address,
+        location: {
+          type: payload.address.location.type || "Point",
+          coordinates: payload.address.location.coordinates.map(coord => Number(coord) || 0),
+        },
+      };
+    }
+
     const required = ["boothNumber", "constituency"];
     for (const field of required) {
-      if (!data[field]) {
+      if (!payload[field]) {
         return NextResponse.json({ success: false, message: `${field} is required` }, { status: 400 });
       }
     }
 
     const booth = new Booth({
-      ...data,
+      ...payload,
       companyId: user.companyId,
       createdBy: user.id,
     });
     await booth.save();
 
-    // Constituency के booths array में जोड़ें
+    // Add to constituency's booths array
     await Constituency.findByIdAndUpdate(data.constituency, {
       $push: { booths: booth._id },
     });
@@ -126,9 +145,21 @@ export async function PUT(req) {
     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
 
     const data = await req.json();
+    const payload = { ...data };
+    if (payload.totalVoters != null) payload.totalVoters = Number(payload.totalVoters) || 0;
+    if (payload.address?.location?.coordinates) {
+      payload.address = {
+        ...payload.address,
+        location: {
+          type: payload.address.location.type || "Point",
+          coordinates: payload.address.location.coordinates.map(coord => Number(coord) || 0),
+        },
+      };
+    }
+
     const updated = await Booth.findOneAndUpdate(
       { _id: id, companyId: user.companyId },
-      { ...data },
+      { ...payload },
       { new: true, runValidators: true }
     );
     if (!updated) return NextResponse.json({ success: false, message: "Booth not found" }, { status: 404 });
@@ -156,7 +187,6 @@ export async function DELETE(req) {
     const booth = await Booth.findOneAndDelete({ _id: id, companyId: user.companyId });
     if (!booth) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
 
-    // Constituency से भी हटाएँ
     await Constituency.findByIdAndUpdate(booth.constituency, {
       $pull: { booths: booth._id },
     });
@@ -167,7 +197,6 @@ export async function DELETE(req) {
     return NextResponse.json({ success: false, message: "Delete failed" }, { status: 500 });
   }
 }
-
 
 
 // import { NextResponse } from "next/server";

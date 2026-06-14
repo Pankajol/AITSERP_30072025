@@ -1,13 +1,11 @@
-// models/Booth.js
+// models/Ward.js
 import mongoose from 'mongoose';
 
-const BoothSchema = new mongoose.Schema({
-    companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
-  boothNumber: { type: String, required: true },
+const WardSchema = new mongoose.Schema({
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", required: true },
+  wardNumber: { type: String, required: true },      // analogous to boothNumber
   name: String,
   constituency: { type: mongoose.Schema.Types.ObjectId, ref: 'Constituency', required: true },
-    block: { type: mongoose.Schema.Types.ObjectId, ref: 'Block' },           // NEW
-  ward: { type: mongoose.Schema.Types.ObjectId, ref: 'Ward' },             // NEW
   address: {
     line1: String,
     village: String,
@@ -18,12 +16,13 @@ const BoothSchema = new mongoose.Schema({
       coordinates: { type: [Number], default: [0, 0] }  // [lng, lat]
     }
   },
+  block: { type: mongoose.Schema.Types.ObjectId, ref: 'Block' },
   totalVoters: { type: Number, default: 0 },
-  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },  // बूथ एजेंट
+  assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },  // वार्ड एजेंट
   incharge: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' },       // प्रभारी
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'CompanyUser' }
 }, { timestamps: true });
 
-BoothSchema.index({ 'address.location': '2dsphere' });
+WardSchema.index({ 'address.location': '2dsphere' });
 
-export default mongoose.models.Booth || mongoose.model('Booth', BoothSchema);
+export default mongoose.models.Ward || mongoose.model('Ward', WardSchema);
