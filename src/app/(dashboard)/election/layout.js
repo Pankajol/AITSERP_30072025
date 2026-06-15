@@ -124,6 +124,7 @@ function getParentPath(path) {
   return `/${segments.slice(0, segments.length - 1).join("/")}`;
 }
 
+// ------------------------- Components that use Safe View -------------------------
 function SafeViewToggleButton() {
   const { safeViewEnabled, toggleSafeView } = useSafeView();
   return (
@@ -139,6 +140,17 @@ function SafeViewToggleButton() {
       {safeViewEnabled ? <FiEyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <FiEye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
       <span className="hidden sm:inline">{safeViewEnabled ? "Safe ON" : "Safe View"}</span>
     </button>
+  );
+}
+
+function SafeViewBanner() {
+  const { safeViewEnabled } = useSafeView();
+  if (!safeViewEnabled) return null;
+  return (
+    <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-xs sm:text-sm text-blue-700">
+      <FiEyeOff className="h-4 w-4 shrink-0" />
+      <span>🛡️ Safe View Mode ON — personal info hidden</span>
+    </div>
   );
 }
 
@@ -258,6 +270,7 @@ function SidebarUserInfo({ user }) {
   );
 }
 
+// ------------------------- Main ElectionLayout -------------------------
 export default function ElectionLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
@@ -351,8 +364,6 @@ export default function ElectionLayout({ children }) {
 
   const currentLabel = getLabelFromPath(pathname);
   const parentPath = getParentPath(pathname);
-  const backLabel = parentPath ? getLabelFromPath(parentPath) : null;
-  const { safeViewEnabled } = useSafeView();
 
   return (
     <SafeViewProvider>
@@ -400,47 +411,41 @@ export default function ElectionLayout({ children }) {
           </div>
         </aside>
         <div className="flex-1 flex flex-col min-w-0">
-       <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white shadow-sm">
-  {/* Left section */}
-  <div className="flex items-center gap-2 min-w-0 flex-nowrap">
-    <button
-      className="lg:hidden p-2 rounded-md hover:bg-gray-100 shrink-0"
-      onClick={() => setSidebarOpen(true)}
-    >
-      <FiMenu className="h-5 w-5" />
-    </button>
-
-    {/* Back button using browser history */}
-    <button
-      onClick={() => {
-        if (window.history.length > 1) {
-          router.back();
-        } else if (parentPath) {
-          router.push(parentPath);
-        } else {
-          router.push("/election");
-        }
-      }}
-      className="flex items-center gap-1 sm:gap-2 rounded-md border border-gray-200 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap shrink-0"
-    >
-      <FiArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-      <span className="hidden sm:inline">Back</span>
-      <span className="sm:hidden">Back</span>
-    </button>
-  </div>
-
-  {/* Center title */}
-  <div className="flex-1 text-center px-2">
-    <h2 className="font-semibold text-sm sm:text-lg truncate">{currentLabel}</h2>
-  </div>
-
-  {/* Right section */}
-  <div className="flex items-center gap-1 sm:gap-4 shrink-0">
-    <SafeViewToggleButton />
-    <NotificationBell />
-    <UserMenu user={user} />
-  </div>
-</header>
+          {/* Header with safe area top padding */}
+          <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 border-b bg-white shadow-sm pt-safe-top">
+            <div className="flex items-center gap-2 min-w-0 flex-nowrap">
+              <button
+                className="lg:hidden p-2 rounded-md hover:bg-gray-100 shrink-0"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <FiMenu className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => {
+                  if (window.history.length > 1) {
+                    router.back();
+                  } else if (parentPath) {
+                    router.push(parentPath);
+                  } else {
+                    router.push("/election");
+                  }
+                }}
+                className="flex items-center gap-1 sm:gap-2 rounded-md border border-gray-200 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap shrink-0"
+              >
+                <FiArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Back</span>
+                <span className="sm:hidden">Back</span>
+              </button>
+            </div>
+            <div className="flex-1 text-center px-2">
+              <h2 className="font-semibold text-sm sm:text-lg truncate">{currentLabel}</h2>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-4 shrink-0">
+              <SafeViewToggleButton />
+              <NotificationBell />
+              <UserMenu user={user} />
+            </div>
+          </header>
 
           {restrictionText && (
             <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-xs sm:text-sm text-amber-700">
@@ -449,14 +454,10 @@ export default function ElectionLayout({ children }) {
             </div>
           )}
 
-          {safeViewEnabled && (
-            <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-xs sm:text-sm text-blue-700">
-              <FiEyeOff className="h-4 w-4 shrink-0" />
-              <span>🛡️ Safe View Mode ON — personal info hidden</span>
-            </div>
-          )}
+          <SafeViewBanner />
 
-          <main className="flex-1 overflow-auto p-4 sm:p-6">
+          {/* Main content with safe area bottom padding */}
+          <main className="flex-1 overflow-auto p-4 sm:p-6 pb-safe-bottom">
             {children}
           </main>
         </div>
