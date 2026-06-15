@@ -10,7 +10,12 @@ body {
   background: #f8fafc;
   overscroll-behavior-y: none;
 }
-
+.pt-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 body {
   min-height: 100vh;
   min-height: 100dvh;

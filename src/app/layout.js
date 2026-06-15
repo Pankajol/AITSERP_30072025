@@ -19,6 +19,7 @@ const geistMono = localFont({
 export const metadata = {
   title: "Pankajal ERP",
   description: "Pankajal ERP - Cloud ERP for Indian businesses",
+   viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
 };
 
 export const viewport = {
@@ -30,6 +31,9 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+</head>
       {/* viewport-fit=cover is essential for notches / dynamic island */}
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

@@ -60,7 +60,7 @@ export const maskEmail = (email, safeViewActive) => {
   return `${maskedLocal}@${maskedDomain}.${tld || ""}`;
 };
 
-// ------------------------- MODULE_ROUTE_MAP (full – keep as is) -------------------------
+// ------------------------- MODULE_ROUTE_MAP (complete – keep as is) -------------------------
 const MODULE_ROUTE_MAP = {
   "Sales Quotation": [
     { label: "Quotation View",   path: "/admin/sales-quotation-view", needsView: true },
@@ -250,10 +250,7 @@ function canAccessModule(data) {
 // ------------------------- Sidebar Components -------------------------
 const Section = ({ title, icon, isOpen, onToggle, children }) => (
   <div className="border-b border-gray-100/80">
-    <button
-      onClick={onToggle}
-      className="flex justify-between w-full px-4 py-3 hover:bg-indigo-50/30 transition-all duration-200 text-left group"
-    >
+    <button onClick={onToggle} className="flex justify-between w-full px-4 py-3 hover:bg-indigo-50/30 transition-all duration-200 text-left group">
       <span className="flex gap-3 items-center text-sm font-medium text-gray-700">
         <span className="text-lg text-gray-500 group-hover:text-indigo-500 transition-colors">{icon}</span>
         <span className="truncate">{title}</span>
@@ -266,10 +263,7 @@ const Section = ({ title, icon, isOpen, onToggle, children }) => (
 
 const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
   <div className="mt-1">
-    <button
-      onClick={onToggle}
-      className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-indigo-600 uppercase tracking-wider transition-colors"
-    >
+    <button onClick={onToggle} className="flex justify-between w-full px-4 py-2 text-xs font-semibold text-gray-500 hover:text-indigo-600 uppercase tracking-wider transition-colors">
       <span className="flex gap-2 items-center"><span className="text-sm">{icon}</span><span>{label}</span></span>
       <span className="text-xs">{isOpen ? "−" : "+"}</span>
     </button>
@@ -278,18 +272,8 @@ const Submenu = ({ label, icon, isOpen, onToggle, children }) => (
 );
 
 const SidebarItem = ({ href, icon, label, onClick, isActive }) => (
-  <Link
-    href={href}
-    onClick={onClick}
-    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
-      isActive
-        ? "bg-gradient-to-r from-indigo-50 to-white text-indigo-700 shadow-sm"
-        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-    }`}
-  >
-    <span className={`text-base flex-shrink-0 transition-all duration-200 ${
-      isActive ? "text-indigo-600 scale-105" : "text-gray-400 group-hover:text-indigo-500 group-hover:scale-105"
-    }`}>{icon}</span>
+  <Link href={href} onClick={onClick} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${isActive ? "bg-gradient-to-r from-indigo-50 to-white text-indigo-700 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+    <span className={`text-base flex-shrink-0 transition-all duration-200 ${isActive ? "text-indigo-600 scale-105" : "text-gray-400 group-hover:text-indigo-500 group-hover:scale-105"}`}>{icon}</span>
     <span className="truncate">{label}</span>
     {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-sm flex-shrink-0" />}
   </Link>
@@ -299,13 +283,7 @@ const SidebarItem = ({ href, icon, label, onClick, isActive }) => (
 function SafeViewToggleButton() {
   const { safeViewEnabled, toggleSafeView } = useSafeView();
   return (
-    <button
-      onClick={toggleSafeView}
-      className={`flex items-center gap-1.5 rounded-full px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
-        safeViewEnabled ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-      }`}
-      title={safeViewEnabled ? "Disable Safe View" : "Enable Safe View"}
-    >
+    <button onClick={toggleSafeView} className={`flex items-center gap-1.5 rounded-full px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${safeViewEnabled ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
       {safeViewEnabled ? <FiEyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <FiEye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
       <span className="hidden sm:inline">{safeViewEnabled ? "Safe ON" : "Safe View"}</span>
     </button>
@@ -323,16 +301,56 @@ function SafeViewBanner() {
   );
 }
 
-// ------------------------- Main Layout -------------------------
+function UserMenu({ session, handleLogout }) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const { safeViewEnabled } = useSafeView();
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const displayName = safeViewEnabled ? maskName(session.name || session.email, true) : (session.name || session.email || "User");
+  const displayEmail = safeViewEnabled ? maskEmail(session.email, true) : session.email;
+  const userInitial = session.email?.charAt(0).toUpperCase() || "U";
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button onClick={() => setOpen(!open)} className="flex items-center gap-2 focus:outline-none group">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center text-sm font-medium shadow-md group-hover:scale-105 transition-transform">
+          {userInitial}
+        </div>
+        <span className="hidden sm:inline text-sm font-medium text-gray-700">{displayName.split(" ")[0]}</span>
+        <HiCog size={14} className="text-gray-400 hidden sm:block group-hover:rotate-90 transition-transform duration-300" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-48 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-100 py-1 z-50">
+          <div className="px-4 py-2 border-b border-gray-100">
+            <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+            <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
+          </div>
+          <Link href="/societymanagement/profile" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50" onClick={() => setOpen(false)}><HiUser size={16} /> Profile</Link>
+          <Link href="/societymanagement/change-password" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50" onClick={() => setOpen(false)}><HiCog size={16} /> Change Password</Link>
+          <button onClick={() => { setOpen(false); handleLogout(); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100"><HiX size={16} /> Logout</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------- MAIN LAYOUT -------------------------
 export default function Layout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   const [openSubmenus, setOpenSubmenus] = useState({});
   const [session, setSession] = useState(null);
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const dropdownRef = useRef(null);
+  const sidebarRef = useRef(null);
   const mainContentRef = useRef(null);
 
   const [notifications, setNotifications] = useState([]);
@@ -353,14 +371,7 @@ export default function Layout({ children }) {
     }
   };
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setUserDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
+  // fetch notifications (same as before)
   const fetchNotifications = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -372,7 +383,6 @@ export default function Layout({ children }) {
       }
     } catch (err) { console.error(err); }
   };
-
   const markAsRead = async (id) => {
     try {
       const token = localStorage.getItem("token");
@@ -380,9 +390,9 @@ export default function Layout({ children }) {
       fetchNotifications();
     } catch (err) { console.error(err); }
   };
-
   useEffect(() => { fetchNotifications(); }, []);
 
+  // session check
   useEffect(() => {
     async function getSession() {
       try {
@@ -397,13 +407,8 @@ export default function Layout({ children }) {
     getSession();
   }, [router]);
 
+  // close sidebar on route change
   useEffect(() => { setIsSidebarOpen(false); }, [pathname]);
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") { setIsSidebarOpen(false); setUserDropdownOpen(false); } };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
 
   if (!session) {
     return (
@@ -422,31 +427,41 @@ export default function Layout({ children }) {
   const toggleMenu = (m) => setOpenMenu(openMenu === m ? null : m);
   const closeSidebar = () => setIsSidebarOpen(false);
   const isActive = (path) => pathname === path;
+  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); router.push("/signin"); };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/signin");
-  };
-
-  // For user display (masked via SafeView child component)
   return (
     <SafeViewProvider>
-      <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden font-sans">
-        {isSidebarOpen && <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />}
-        <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 backdrop-blur-md shadow-2xl transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:shadow-xl md:w-72 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } flex flex-col border-r border-gray-200/50 safe-left`}>
-          <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200/50 shrink-0 safe-top bg-white/80 backdrop-blur-sm">
+      {/* Root container: no overflow on this div – scrolling handled inside main */}
+      <div className="flex h-screen overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+        {/* Overlay for mobile */}
+        {isSidebarOpen && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 md:hidden" onClick={closeSidebar} aria-hidden="true" />
+        )}
+
+        {/* SIDEBAR – fixed, does NOT scroll with page */}
+        <aside
+          ref={sidebarRef}
+          className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 backdrop-blur-md shadow-2xl transform transition-transform duration-300 ease-out md:relative md:translate-x-0 md:shadow-xl md:w-72 ${
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } flex flex-col border-r border-gray-200/50`}
+        >
+          <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200/50 shrink-0 bg-white/80 backdrop-blur-sm">
             <Link href="/admin" className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-200"><HiHome className="text-white text-sm" /></div>
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-200">
+                <HiHome className="text-white text-sm" />
+              </div>
               <span className="text-gray-800">ERP<span className="text-indigo-600">System</span></span>
             </Link>
-            <button onClick={closeSidebar} className="md:hidden p-2 rounded-xl hover:bg-gray-100 text-gray-500"><HiX size={20} /></button>
+            <button onClick={closeSidebar} className="md:hidden p-2 rounded-xl hover:bg-gray-100 text-gray-500">
+              <HiX size={20} />
+            </button>
           </div>
-          <nav className="flex-1 overflow-y-auto py-5 px-4 space-y-1 safe-bottom">
+
+          {/* Scrollable navigation inside sidebar */}
+          <nav className="flex-1 overflow-y-auto py-5 px-4 space-y-1">
             {hasFullAccess && (
               <>
+                {/* ========== Your complete sidebar sections (exactly as you had) ========== */}
                 <Section title="Masters" icon={<HiUsers />} isOpen={openMenu === "master"} onToggle={() => toggleMenu("master")}>
                   <SidebarItem href="/admin/Countries" icon={<HiGlobeAlt />} label="Countries" onClick={closeSidebar} isActive={isActive("/admin/Countries")} />
                   <SidebarItem href="/admin/State" icon={<HiFlag />} label="State" onClick={closeSidebar} isActive={isActive("/admin/State")} />
@@ -639,11 +654,16 @@ export default function Layout({ children }) {
           </nav>
         </aside>
 
+        {/* MAIN CONTENT AREA */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm safe-top">
+          {/* Header with top safe area – uses CSS variables set by your PhoneSafeView */}
+          <header
+            className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm shrink-0"
+            style={{ paddingTop: "var(--safe-top, env(safe-area-inset-top, 0px))" }}
+          >
             <div className="flex items-center justify-between h-16 px-4 md:px-6">
               <div className="flex items-center gap-2 min-w-0 flex-nowrap">
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors shrink-0">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600 shrink-0">
                   {isSidebarOpen ? <HiX size={20} /> : <HiMenu size={20} />}
                 </button>
                 <h1 className="text-sm sm:text-base font-semibold text-gray-800 truncate max-w-[120px] sm:max-w-none">
@@ -657,7 +677,7 @@ export default function Layout({ children }) {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-2 sm:gap-4 shrink-0 safe-right">
+              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                 <SafeViewToggleButton />
                 <div className="relative">
                   <button onClick={() => setOpenNotif(!openNotif)} className="relative p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-600">
@@ -683,8 +703,15 @@ export default function Layout({ children }) {
               </div>
             </div>
           </header>
+
           <SafeViewBanner />
-          <main ref={mainContentRef} className="flex-1 overflow-y-auto p-4 md:p-6 safe-bottom safe-left safe-right">
+
+          {/* Main content – safe bottom area */}
+          <main
+            ref={mainContentRef}
+            className="flex-1 overflow-y-auto p-4 md:p-6"
+            style={{ paddingBottom: "var(--safe-bottom, env(safe-area-inset-bottom, 1rem))" }}
+          >
             {children}
           </main>
         </div>
@@ -692,55 +719,6 @@ export default function Layout({ children }) {
     </SafeViewProvider>
   );
 }
-
-// ------------------------- UserMenu Component (uses safe view) -------------------------
-function UserMenu({ session, handleLogout }) {
-  const [open, setOpen] = useState(false);
-  const dropdownRef = useRef(null);
-  const { safeViewEnabled } = useSafeView();
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const displayName = safeViewEnabled ? maskName(session.name || session.email, true) : (session.name || session.email || "User");
-  const displayEmail = safeViewEnabled ? maskEmail(session.email, true) : session.email;
-  const userInitial = session.email?.charAt(0).toUpperCase() || "U";
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)} className="flex items-center gap-2 focus:outline-none group">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center text-sm font-medium shadow-md group-hover:scale-105 transition-transform">
-          {userInitial}
-        </div>
-        <span className="hidden sm:inline text-sm font-medium text-gray-700">{displayName.split(" ")[0]}</span>
-        <HiCog size={14} className="text-gray-400 hidden sm:block group-hover:rotate-90 transition-transform duration-300" />
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-2 w-48 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-100 py-1 z-50">
-          <div className="px-4 py-2 border-b border-gray-100">
-            <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-            <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
-          </div>
-          <Link href="/societymanagement/profile" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50" onClick={() => setOpen(false)}>
-            <HiUser size={16} /> Profile
-          </Link>
-          <Link href="/societymanagement/change-password" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50" onClick={() => setOpen(false)}>
-            <HiCog size={16} /> Change Password
-          </Link>
-          <button onClick={() => { setOpen(false); handleLogout(); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100">
-            <HiX size={16} /> Logout
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 
 // "use client";
 
