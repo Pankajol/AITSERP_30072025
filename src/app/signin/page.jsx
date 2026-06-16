@@ -44,79 +44,162 @@ export default function LoginPage() {
 
   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+
   const submit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!form.email || !validateEmail(form.email)) {
-      setEmailError('Please enter a valid email address');
-      triggerShake('email');
+  if (!form.email || !validateEmail(form.email)) {
+    setEmailError('Please enter a valid email address');
+    triggerShake('email');
+    return;
+  }
+  if (!form.password) {
+    triggerShake('password');
+    toast.error("Password is required");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const urls = {
+      Company: "/api/company/login",
+      User: "/api/users/login",
+      Customer: "/api/customers/login",
+    };
+
+    const res = await axios.post(urls[mode], form);
+    const { token, company, user, customer } = res.data;
+    const finalUser = company || user || customer;
+
+    if (!token || !finalUser) throw new Error("Authentication failed");
+
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(finalUser));
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+    toast.success(`Welcome back, ${finalUser.name || finalUser.companyName || "User"}!`);
+
+    // ─── ✅ CHECK SUBSCRIPTION EXPIRY FIRST ───────────────────
+    if (finalUser.expired) {
+      router.push("/billing");
       return;
     }
-    if (!form.password) {
-      triggerShake('password');
-      toast.error("Password is required");
-      return;
-    }
 
-    setLoading(true);
+    // ─── NORMAL REDIRECTION (unchanged) ──────────────────────
+    let redirect = "/admin";
 
-    try {
-      const urls = {
-        Company: "/api/company/login",
-        User: "/api/users/login",
-        Customer: "/api/customers/login",
-      };
-
-      const res = await axios.post(urls[mode], form);
-      const { token, company, user, customer } = res.data;
-      const finalUser = company || user || customer;
-
-      if (!token || !finalUser) throw new Error("Authentication failed");
-
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(finalUser));
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-      toast.success(`Welcome back, ${finalUser.name || finalUser.companyName || "User"}!`);
-
-      let redirect = "/admin";
-
-      if (mode === "Customer") {
-        redirect = "/customer-dashboard";
-      } else if (mode === "User") {
-        const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
-        if (hasElectionRole(finalUser.roles)) {
-          redirect = "/election";
-        } else if (roles.includes("guard") || roles.includes("housekeeper")) {
-          redirect = "/societymanagement/guard";
-        } else if (roles.includes("resident")) {
-          redirect = "/societymanagement/dashboard";
-        } else if (roles.includes("society manager")) {
-          redirect = "/societymanagement";
-        } else if (roles.includes("employee")) {
-          redirect = "/admin/hr/employees";
-        } else if (roles.includes("admin")) {
-          redirect = "/admin";
-        } else {
-          redirect = "/admin";
-        }
-      } else if (mode === "Company") {
-        const managementType = finalUser?.managementType?.toLowerCase() || "erp";
-        if (managementType === "society") redirect = "/societymanagement";
-        else if (managementType === "healthcare") redirect = "/healthcare-dashboard";
-        else if (managementType === "education") redirect = "/education-dashboard";
-        else if (managementType === "retail") redirect = "/retail-dashboard";
-        else if (managementType === "election") redirect = "/election";
-        else redirect = "/admin";
+    if (mode === "Customer") {
+      redirect = "/customer-dashboard";
+    } else if (mode === "User") {
+      const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+      if (hasElectionRole(finalUser.roles)) {
+        redirect = "/election";
+      } else if (roles.includes("guard") || roles.includes("housekeeper")) {
+        redirect = "/societymanagement/guard";
+      } else if (roles.includes("resident")) {
+        redirect = "/societymanagement/dashboard";
+      } else if (roles.includes("society manager")) {
+        redirect = "/societymanagement";
+      } else if (roles.includes("employee")) {
+        redirect = "/admin/hr/employees";
+      } else if (roles.includes("admin")) {
+        redirect = "/admin";
+      } else {
+        redirect = "/admin";
       }
-
-      router.push(redirect);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || "Authentication failed");
-    } finally {
-      setLoading(false);
+    } else if (mode === "Company") {
+      const managementType = finalUser?.managementType?.toLowerCase() || "erp";
+      if (managementType === "society") redirect = "/societymanagement";
+      else if (managementType === "healthcare") redirect = "/healthcare-dashboard";
+      else if (managementType === "education") redirect = "/education-dashboard";
+      else if (managementType === "retail") redirect = "/retail-dashboard";
+      else if (managementType === "election") redirect = "/election";
+      else redirect = "/admin";
     }
-  };
+
+    router.push(redirect);
+  } catch (error) {
+    toast.error(error?.response?.data?.message || "Authentication failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+  // const submit = async (e) => {
+  //   e.preventDefault();
+
+  //   if (!form.email || !validateEmail(form.email)) {
+  //     setEmailError('Please enter a valid email address');
+  //     triggerShake('email');
+  //     return;
+  //   }
+  //   if (!form.password) {
+  //     triggerShake('password');
+  //     toast.error("Password is required");
+  //     return;
+  //   }
+
+  //   setLoading(true);
+
+  //   try {
+  //     const urls = {
+  //       Company: "/api/company/login",
+  //       User: "/api/users/login",
+  //       Customer: "/api/customers/login",
+  //     };
+
+  //     const res = await axios.post(urls[mode], form);
+  //     const { token, company, user, customer } = res.data;
+  //     const finalUser = company || user || customer;
+
+  //     if (!token || !finalUser) throw new Error("Authentication failed");
+
+  //     localStorage.setItem("token", token);
+  //     localStorage.setItem("user", JSON.stringify(finalUser));
+  //     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+  //     toast.success(`Welcome back, ${finalUser.name || finalUser.companyName || "User"}!`);
+
+  //     let redirect = "/admin";
+
+  //     if (mode === "Customer") {
+  //       redirect = "/customer-dashboard";
+  //     } else if (mode === "User") {
+  //       const roles = finalUser?.roles?.map((r) => r.toLowerCase()) || [];
+  //       if (hasElectionRole(finalUser.roles)) {
+  //         redirect = "/election";
+  //       } else if (roles.includes("guard") || roles.includes("housekeeper")) {
+  //         redirect = "/societymanagement/guard";
+  //       } else if (roles.includes("resident")) {
+  //         redirect = "/societymanagement/dashboard";
+  //       } else if (roles.includes("society manager")) {
+  //         redirect = "/societymanagement";
+  //       } else if (roles.includes("employee")) {
+  //         redirect = "/admin/hr/employees";
+  //       } else if (roles.includes("admin")) {
+  //         redirect = "/admin";
+  //       } else {
+  //         redirect = "/admin";
+  //       }
+  //     } else if (mode === "Company") {
+  //       const managementType = finalUser?.managementType?.toLowerCase() || "erp";
+  //       if (managementType === "society") redirect = "/societymanagement";
+  //       else if (managementType === "healthcare") redirect = "/healthcare-dashboard";
+  //       else if (managementType === "education") redirect = "/education-dashboard";
+  //       else if (managementType === "retail") redirect = "/retail-dashboard";
+  //       else if (managementType === "election") redirect = "/election";
+  //       else redirect = "/admin";
+  //     }
+
+  //     router.push(redirect);
+  //   } catch (error) {
+  //     toast.error(error?.response?.data?.message || "Authentication failed");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const tabs = [
     { id: 'Company', icon: <FiBriefcase size={13} /> },

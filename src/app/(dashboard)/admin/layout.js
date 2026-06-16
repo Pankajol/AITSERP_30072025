@@ -7,7 +7,7 @@ import {
   HiUsers, HiGlobeAlt, HiFlag, HiUserGroup, HiOutlineCube, HiOutlineLibrary,
   HiCurrencyDollar, HiOutlineCreditCard, HiChartSquareBar, HiReceiptTax,
   HiPuzzle, HiViewGrid, HiUser, HiDocumentText, HiOutlineOfficeBuilding,
-  HiCube, HiShoppingCart, HiCog, HiMenu, HiX, HiHome, HiBell, 
+  HiCube, HiShoppingCart, HiCog, HiMenu, HiX, HiHome, HiBell, HiCreditCard,
 } from "react-icons/hi";
 import { FiArrowLeft, FiEye, FiEyeOff } from "react-icons/fi";
 import { GiStockpiles } from "react-icons/gi";
@@ -623,6 +623,12 @@ export default function Layout({ children }) {
                   <SidebarItem href="/admin/helpdesk/feedback" icon={<HiDocumentText />} label="Feedback" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback")} />
                   <SidebarItem href="/admin/helpdesk/feedback/analytics" icon={<HiChartSquareBar />} label="Feedback Analysis" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/feedback/analytics")} />
                   <SidebarItem href="/admin/helpdesk/report" icon={<HiChartSquareBar />} label="Report" onClick={closeSidebar} isActive={isActive("/admin/helpdesk/report")} />
+                </Section>
+                <Section title="Billing" icon={<HiCreditCard />} isOpen={openMenu === "billing"} onToggle={() => toggleMenu("billing")}>
+                  <SidebarItem href="/admin/billing" icon={<HiOutlineOfficeBuilding />} label="Plans" onClick={closeSidebar} isActive={isActive("/admin/billing/plans")} />
+                  <SidebarItem href="/admin/billing/subscriptions" icon={<HiOutlineCreditCard />} label="Subscriptions" onClick={closeSidebar} isActive={isActive("/admin/billing/subscriptions")} />
+                  <SidebarItem href="/admin/billing/invoices" icon={<HiReceiptTax />} label="Invoices" onClick={closeSidebar} isActive={isActive("/admin/billing/invoices")} />
+                  <SidebarItem href="/admin/billing/payment-methods" icon={<HiCurrencyDollar />} label="Payment Methods" onClick={closeSidebar} isActive={isActive("/admin/billing/payment-methods")} />
                 </Section>
               </>
             )}

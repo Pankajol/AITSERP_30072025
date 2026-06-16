@@ -94,7 +94,36 @@ const CompanySchema = new mongoose.Schema(
       trim: true,
       // regex removed – validation in API (only for India)
     },
+       // Subscription / plan
+    plan: {
+      type: String,
+      enum: ["starter", "growth"],
+      default: "starter",
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["upi", "card", "netbanking", "razorpay", "qr", "cash", "paylater", "trial"],
+      default: null,
+    },
+    planActivatedAt: { type: Date, default: null },
+    trialEndsAt: { type: Date, default: null },
 
+    // NEW FIELDS (add these)
+    planType: {
+      type: String,
+      enum: ['trial', 'monthly', 'yearly', 'lifetime'],
+      default: 'trial',
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ['active', 'trialing', 'past_due', 'canceled', 'expired'],
+      default: 'trialing',
+    },
+    currentPeriodStart: { type: Date, default: null },
+    currentPeriodEnd: { type: Date, default: null },
+    cancelAtPeriodEnd: { type: Boolean, default: false },
+    razorpaySubscriptionId: { type: String, default: null },
+    razorpayPlanId: { type: String, default: null },
     // Subscription / plan
     plan: {
       type: String,
