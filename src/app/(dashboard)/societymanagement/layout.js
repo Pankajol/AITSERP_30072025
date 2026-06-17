@@ -40,6 +40,7 @@ const ALL_MODULES = [
   { name: "Gate Entries", href: "/societymanagement/gate-entry", icon: FiTruck, moduleKey: "Gate Entry" },
   { name: "Notice Board", href: "/societymanagement/notice", icon: FiBell, moduleKey: "Notice Board" },
   { name: "Visitor Pass", href: "/societymanagement/visitor-pass", icon: FiClipboard, moduleKey: "Visitor Pass" },
+  { name : "billing", href: "/societymanagement/billing", icon: FiDollarSign, moduleKey: "Billing" },
 ];
 
 // Bottom nav items for mobile (most-used 4 + "More")

@@ -241,6 +241,8 @@ export default function PankajalRegistration() {
     constituencyName: "", electionType: "", electionDate: "", boothCount: "",
   });
 
+  const UPI_ID = "pankajdyadav10699@okhdfcbank"; // ← change to your actual UPI ID
+
   const price = useMemo(() => BUNDLES.find(b => b.id === activeBundle), [activeBundle]);
 
   // Load Razorpay script
@@ -529,22 +531,73 @@ export default function PankajalRegistration() {
             <GradientButton label={`PAY ₹${price?.price?.toLocaleString('en-IN') ?? "0"} VIA RAZORPAY`} onClick={handleRazorpayPayment} loading={submitting} fullWidth accent={theme.accent} />
           </div>
         );
-      case "qr":
+       case "qr": {
+        const upiUrl = `upi://pay?pa=${UPI_ID}&pn=Pankajal%20ERP&am=${getPrice()}&cu=INR`;
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}`;
+
         return (
           <div>
             <BackBtn />
-            <div style={{ textAlign: "center", padding: "16px", background: "rgba(225,29,72,0.1)", borderRadius: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, color: "#e11d48", fontWeight: 700, marginBottom: 10 }}>📱 Scan QR Code to Pay</div>
-              {/* Replace with your actual QR code image URL */}
-              <img src="/qr-code.png" alt="Payment QR Code" style={{ width: 200, height: 200, margin: "0 auto", borderRadius: 12 }} />
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 12 }}>Amount: ₹{price?.price?.toLocaleString('en-IN') ?? "0"}</p>
+            <div style={{ textAlign: "center", padding: "16px 12px", background: "#fef2f2", borderRadius: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 700, marginBottom: 10 }}>📱 Scan QR Code to Pay</div>
+              {!qrImageError ? (
+                <img
+                  src={qrImageUrl}
+                  alt="UPI Payment QR Code"
+                  style={{
+                    width: "100%",
+                    maxWidth: 220,
+                    height: "auto",
+                    margin: "0 auto",
+                    borderRadius: 12,
+                    display: "block",
+                  }}
+                  onError={() => setQrImageError(true)}
+                />
+              ) : (
+                <div style={{ padding: "20px 16px", background: "#fff", borderRadius: 12, color: "#6b7280", fontSize: 13 }}>
+                  QR generation failed. Please use the UPI ID below.
+                </div>
+              )}
+              <p style={{ fontSize: 12, color: "#4b5563", marginTop: 12 }}>
+                Amount: ₹{getPrice().toLocaleString('en-IN')}
+              </p>
+              <div style={{ marginTop: 12, padding: 8, background: "#fff", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                <span style={{ fontSize: 11, color: "#6b7280" }}>UPI ID: </span>
+                <strong style={{ fontSize: 13, color: "#1f2937" }}>{UPI_ID}</strong>
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(UPI_ID);
+                    alert("UPI ID copied to clipboard!");
+                  }}
+                  style={{ marginLeft: 8, background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontSize: 12 }}
+                >
+                  Copy
+                </button>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 10, color: "#6b7280" }}>
+                Scan with any UPI app or pay manually using the UPI ID above.
+              </div>
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, color: "white" }}>
-              <input type="checkbox" checked={qrConfirmed} onChange={(e) => setQrConfirmed(e.target.checked)} /> I have made the payment via QR code
+            <label style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, color: "#1f2937" }}>
+              <input type="checkbox" checked={qrConfirmed} onChange={(e) => setQrConfirmed(e.target.checked)} /> I have made the payment via QR code / UPI
             </label>
-            <GradientButton label="CONFIRM PAYMENT" onClick={handleQRConfirm} loading={submitting} fullWidth accent={theme.accent} />
+            <GradientButton
+              label="CONFIRM PAYMENT"
+              onClick={() => {
+                if (qrConfirmed) {
+                  handleRenew("qr");
+                } else {
+                  setErrors({ general: "Please confirm that you have made the payment." });
+                }
+              }}
+              loading={submitting}
+              fullWidth
+              accent="#dc2626"
+            />
           </div>
         );
+      }
       case "cash":
         return (
           <div>

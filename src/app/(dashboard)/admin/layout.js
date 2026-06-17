@@ -626,9 +626,7 @@ export default function Layout({ children }) {
                 </Section>
                 <Section title="Billing" icon={<HiCreditCard />} isOpen={openMenu === "billing"} onToggle={() => toggleMenu("billing")}>
                   <SidebarItem href="/admin/billing" icon={<HiOutlineOfficeBuilding />} label="Plans" onClick={closeSidebar} isActive={isActive("/admin/billing/plans")} />
-                  <SidebarItem href="/admin/billing/subscriptions" icon={<HiOutlineCreditCard />} label="Subscriptions" onClick={closeSidebar} isActive={isActive("/admin/billing/subscriptions")} />
-                  <SidebarItem href="/admin/billing/invoices" icon={<HiReceiptTax />} label="Invoices" onClick={closeSidebar} isActive={isActive("/admin/billing/invoices")} />
-                  <SidebarItem href="/admin/billing/payment-methods" icon={<HiCurrencyDollar />} label="Payment Methods" onClick={closeSidebar} isActive={isActive("/admin/billing/payment-methods")} />
+             
                 </Section>
               </>
             )}

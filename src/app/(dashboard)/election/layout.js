@@ -87,7 +87,7 @@ const sidebarItems = [
   { href: "/election/expenses", label: "Election Expenses", icon: FiDollarSign, moduleName: "Election Expenses" },
   { href: "/election/media", label: "Media Campaigns", icon: FiRadio, moduleName: "Election Communication" },
   { href: "/election/analytics", label: "Analytics", icon: FiTrendingUp, moduleName: "Election Analytics" },
-  { href: "/billing", label: "Billing", icon: FiInfo, moduleName: "Election Billing" },
+  { href: "/election/billing", label: "Billing", icon: FiInfo, moduleName: "Election Billing" },
 ];
 
 const routeLabels = {
@@ -109,6 +109,7 @@ const routeLabels = {
   "/election/analytics": "Analytics",
   "/election/profile": "Profile",
   "/election/change-password": "Change Password",
+  "/election/billing": "Billing",
 };
 
 function getLabelFromPath(path) {
