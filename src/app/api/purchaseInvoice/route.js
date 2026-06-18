@@ -302,15 +302,18 @@ export async function POST(req) {
       const [createdInvoice] = await PurchaseInvoice.create([invoiceData], { session });
       invoice = createdInvoice;
 
-      // Determine flow type
-      const isFromGRN = invoiceData.invoiceType === "GRNCopy" && invoiceData.grn;
-      const isFromPO = !isFromGRN && (invoiceData.invoiceType === "POCopy" || invoiceData.purchaseOrder);
-      const isDirect = !isFromGRN && !isFromPO;
+      // ===================== FIXED FLOW DETECTION =====================
+      // Determine flow based on actual document references, not the invoiceType string.
+      // - If grn is present AND no purchaseOrder → GRN copy (stock already updated by GRN)
+      // - If purchaseOrder is present (regardless of grn) → PO copy (update stock & PO)
+      // - Otherwise → Direct invoice (increase physical stock, no onOrder change)
+      const hasGRN = !!invoiceData.grn;
+      const hasPO = !!invoiceData.purchaseOrder;
 
-      console.log(`🔍 Flow: isFromGRN=${isFromGRN}, isFromPO=${isFromPO}, isDirect=${isDirect}`);
+      console.log(`🔍 Flow: hasGRN=${hasGRN}, hasPO=${hasPO}`);
 
-      if (isFromGRN) {
-        // GRN copy: no stock update, just close GRN
+      if (hasGRN && !hasPO) {
+        // GRN copy: close the GRN, do NOT change stock
         if (invoiceData.grn) {
           const grnDoc = await GRN.findById(invoiceData.grn).session(session);
           if (grnDoc) {
@@ -319,13 +322,14 @@ export async function POST(req) {
             await grnDoc.save({ session });
           }
         }
-      } else if (isFromPO || isDirect) {
-        // PO copy or direct invoice: update stock (decrease onOrder if linked to PO)
-        const linkedToPO = isFromPO;
+      } else {
+        // PO copy or Direct invoice → process stock (increase physical, decrease onOrder if PO)
+        const linkedToPO = hasPO;
         for (const it of invoiceData.items) {
           await processInvoiceItem(it, invoice._id, decoded, session, linkedToPO);
         }
       }
+      // ==================================================================
 
       // Update linked Purchase Order (received quantity & status)
       if (invoiceData.purchaseOrder) {
@@ -553,7 +557,6 @@ export async function DELETE(req) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
-
 
 // import { NextResponse } from "next/server";
 // import mongoose, { Types } from "mongoose";
