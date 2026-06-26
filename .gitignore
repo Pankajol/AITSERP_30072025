@@ -31,6 +31,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+/src/app/signup
+/src/app/signin
+/src/app/page.js
+/src/app/(dashboard)/election
+/src/app/(dashboard)/marketplace
+/src/app/(dashboard)/societymanagement
+
+/src/api/election
+/src/api/societymanagement
+/src/api/marketplace
 
 # vercel
 .vercel
