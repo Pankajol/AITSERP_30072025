@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { 
-  FaUser, FaBuilding, FaPhoneAlt, FaInfoCircle, 
-  FaSave, FaArrowLeft, FaCheckCircle, FaPlus
+import {
+  FaUser, FaBuilding, FaPhoneAlt, FaInfoCircle,
+  FaSave, FaArrowLeft, FaCheckCircle, FaPlus, FaExclamationCircle
 } from "react-icons/fa";
 import DynamicCustomFields from "@/components/DynamicCustomFields";
 
@@ -26,7 +26,7 @@ const iconColorMap = {
   gray: "text-gray-500 bg-gray-100",
 };
 
-// --- Memoized Section Card (prevents unnecessary re-renders) ---
+// --- Memoized Section Card ---
 const SectionCard = React.memo(({ icon: Icon, title, subtitle, children, color = "indigo" }) => {
   const bgClass = colorMap[color] || colorMap.indigo;
   const iconClass = iconColorMap[color] || iconColorMap.indigo;
@@ -76,6 +76,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [confirmation, setConfirmation] = useState({ isVisible: false, message: "" });
+  const [errorMessage, setErrorMessage] = useState(""); // <-- New error state
 
   const isEditMode = Boolean(leadId);
 
@@ -86,7 +87,10 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
       headers: { Authorization: `Bearer ${token}` }
     }).then(res => {
       if (res.data?.data) setCustomFieldsConfig(res.data.data);
-    }).catch(err => console.error("Failed to load custom fields", err));
+    }).catch(err => {
+      console.error("Failed to load custom fields", err);
+      setErrorMessage("Could not load custom fields. Please refresh.");
+    });
   }, []);
 
   // Prefill Data for edit mode
@@ -96,6 +100,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
     } else if (isEditMode && leadId) {
       const fetchLead = async () => {
         setLoading(true);
+        setErrorMessage("");
         try {
           const token = localStorage.getItem("token");
           const res = await axios.get(`/api/crm/lead/${leadId}`, {
@@ -104,7 +109,7 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
           setFormData(res.data);
         } catch (err) {
           console.error("Error fetching lead:", err);
-          alert("Failed to load lead data.");
+          setErrorMessage(err.response?.data?.message || "Failed to load lead data.");
         } finally {
           setLoading(false);
         }
@@ -113,22 +118,24 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
     }
   }, [leadId, initialData, isEditMode]);
 
-  // --- Stable event handlers (prevents unnecessary re-renders) ---
+  // --- Stable event handlers ---
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear error for this field if exists
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: "" }));
     }
-  }, [errors]);
+    // Clear global error when user starts typing
+    if (errorMessage) setErrorMessage("");
+  }, [errors, errorMessage]);
 
   const handleCustomChange = useCallback((e, fieldName) => {
     setFormData(prev => ({
       ...prev,
       customFields: { ...prev.customFields, [fieldName]: e.target.value }
     }));
-  }, []);
+    if (errorMessage) setErrorMessage("");
+  }, [errorMessage]);
 
   // Validation
   const validateForm = useCallback(() => {
@@ -147,9 +154,10 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
     if (!validateForm()) return;
 
     setSubmitting(true);
+    setErrorMessage("");
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("No authentication token found");
+      setErrorMessage("No authentication token found. Please log in again.");
       setSubmitting(false);
       return;
     }
@@ -166,13 +174,13 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
       setTimeout(() => router.push("/admin/crm/leads-view"), 1500);
     } catch (error) {
       console.error(error);
-      alert(error.response?.data?.message || "Failed to save lead.");
+      setErrorMessage(error.response?.data?.message || "Failed to save lead. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }, [validateForm, isEditMode, leadId, formData, router]);
 
-  // --- Helper for input classes (does NOT change on every keystroke) ---
+  // --- Helper for input classes ---
   const getInputClass = useCallback((fieldName) => {
     const hasError = errors[fieldName];
     return `w-full px-3 py-2.5 rounded-lg border ${hasError ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-200'} bg-white text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none placeholder:text-gray-300`;
@@ -197,8 +205,8 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
           <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-500 font-bold text-sm hover:text-indigo-600 transition-colors">
             <FaArrowLeft size={12} /> Back
           </button>
-          <button 
-            onClick={handleSubmit} 
+          <button
+            onClick={handleSubmit}
             disabled={submitting}
             className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all disabled:opacity-50"
           >
@@ -213,6 +221,14 @@ const LeadDetailsForm = ({ leadId, initialData = null }) => {
           <div className="mb-6 p-4 rounded-xl bg-emerald-500 text-white font-bold flex items-center shadow-lg">
             <FaCheckCircle className="mr-3 text-xl" />
             {confirmation.message}
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="mb-6 p-4 rounded-xl bg-red-500 text-white font-bold flex items-center shadow-lg">
+            <FaExclamationCircle className="mr-3 text-xl" />
+            {errorMessage}
           </div>
         )}
 

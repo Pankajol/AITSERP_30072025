@@ -475,11 +475,16 @@ export default function Layout({ children }) {
                   <SidebarItem href="/admin/createCustomers" icon={<HiUserGroup />} label="Create Customer" onClick={closeSidebar} isActive={isActive("/admin/createCustomers")} />
                   <SidebarItem href="/admin/supplier" icon={<HiUserGroup />} label="Supplier" onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
                   <SidebarItem href="/admin/item" icon={<HiCube />} label="Item" onClick={closeSidebar} isActive={isActive("/admin/item")} />
+                  <SidebarItem href="/admin/account-bankhead" icon={<HiOutlineLibrary />} label="Account Head View" onClick={closeSidebar} isActive={isActive("/admin/account-bankhead")} />
+                  <SidebarItem href="/admin/bank-head-details" icon={<HiCurrencyDollar />} label="General Ledger View" onClick={closeSidebar} isActive={isActive("/admin/bank-head-details")} />
+                  <SidebarItem href="/admin/email-templates" icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
+                  <SidebarItem href="/admin/email-masters" icon={<HiOutlineCreditCard />} label="Email & App Password Master" onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
+                  <SidebarItem href="/admin/price-list" icon={<HiOutlineOfficeBuilding />} label="Price List" onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
                   <SidebarItem href="/admin/WarehouseDetailsForm" icon={<HiOutlineLibrary />} label="Warehouse Details" onClick={closeSidebar} isActive={isActive("/admin/WarehouseDetailsForm")} />
                   <SidebarItem href="/admin/backup-settings" icon={<HiOutlineLibrary />} label="Backup Settings" onClick={closeSidebar} isActive={isActive("/admin/backup-settings")} />
                 </Section>
 
-                <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
+                {/* <Section title="Masters View" icon={<HiViewGrid />} isOpen={openMenu === "masterView"} onToggle={() => toggleMenu("masterView")}>
                   <SidebarItem href="/admin/customer-view" icon={<HiUsers />} label="Customer View" onClick={closeSidebar} isActive={isActive("/admin/customer-view")} />
                   <SidebarItem href="/admin/supplier" icon={<HiUserGroup />} label="Supplier View" onClick={closeSidebar} isActive={isActive("/admin/supplier")} />
                   <SidebarItem href="/admin/item" icon={<HiCube />} label="Item View" onClick={closeSidebar} isActive={isActive("/admin/item")} />
@@ -488,7 +493,7 @@ export default function Layout({ children }) {
                   <SidebarItem href="/admin/email-templates" icon={<HiDocumentText />} label="Email Templates" onClick={closeSidebar} isActive={isActive("/admin/email-templates")} />
                   <SidebarItem href="/admin/email-masters" icon={<HiOutlineCreditCard />} label="Email & App Password Master" onClick={closeSidebar} isActive={isActive("/admin/email-masters")} />
                   <SidebarItem href="/admin/price-list" icon={<HiOutlineOfficeBuilding />} label="Price List" onClick={closeSidebar} isActive={isActive("/admin/price-list")} />
-                </Section>
+                </Section> */}
 
                 <Section title="Transactions View" icon={<HiOutlineCreditCard />} isOpen={openMenu === "transactionsView"} onToggle={() => toggleMenu("transactionsView")}>
                   <Submenu isOpen={!!openSubmenus["tvSales"]} onToggle={() => toggleSubmenu("tvSales")} icon={<HiShoppingCart />} label="Sales">
@@ -599,9 +604,9 @@ export default function Layout({ children }) {
                   <SidebarItem href="/admin/hr/payroll" icon={<HiUserGroup />} label="Payroll" onClick={closeSidebar} isActive={isActive("/admin/hr/payroll")} />
                   <SidebarItem href="/admin/hr/employees" icon={<HiUserGroup />} label="Employee" onClick={closeSidebar} isActive={isActive("/admin/hr/employees")} />
                   <SidebarItem href="/admin/hr/reports" icon={<HiUserGroup />} label="Reports" onClick={closeSidebar} isActive={isActive("/admin/hr/reports")} />
-                  <SidebarItem href="/admin/hr/settings" icon={<HiCog />} label="Settings" onClick={closeSidebar} isActive={isActive("/admin/hr/settings")} />
-                  <SidebarItem href="/admin/hr/holidays" icon={<HiGlobeAlt />} label="Holidays" onClick={closeSidebar} isActive={isActive("/admin/hr/holidays")} />
-                  <SidebarItem href="/admin/hr/profile" icon={<HiUser />} label="Profile" onClick={closeSidebar} isActive={isActive("/admin/hr/profile")} />
+                  {/* <SidebarItem href="/admin/hr/settings" icon={<HiCog />} label="Settings" onClick={closeSidebar} isActive={isActive("/admin/hr/settings")} /> */}
+                  {/* <SidebarItem href="/admin/hr/holidays" icon={<HiGlobeAlt />} label="Holidays" onClick={closeSidebar} isActive={isActive("/admin/hr/holidays")} /> */}
+                  {/* <SidebarItem href="/admin/hr/profile" icon={<HiUser />} label="Profile" onClick={closeSidebar} isActive={isActive("/admin/hr/profile")} /> */}
                 </Section>
 
                 <Section title="PPC" icon={<HiPuzzle />} isOpen={openMenu === "ppc"} onToggle={() => toggleMenu("ppc")}>
