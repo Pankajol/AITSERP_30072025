@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
-import JobCard from "@/models/ppc/JobCard";   // use your correct model path
+import JobCard from "@/models/ppc/JobCardModel";   // use your correct model path
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 // ─── Auth helpers (same as before) ─────────────────────────────

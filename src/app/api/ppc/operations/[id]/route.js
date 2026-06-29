@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
-import Operator from "@/models/ppc/Operator";
+import Operator from "@/models/ppc/operatorModel";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
 // ─── Auth Helper (same as above) ──────────────────────────────────────────
