@@ -2,10 +2,15 @@ import mongoose from "mongoose";
 
 const OperatorSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+    },
     operatorCode: {
       type: String,
-      unique: true,
       required: true,
+      unique: true,
       trim: true,
     },
     name: {
@@ -13,26 +18,40 @@ const OperatorSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    cost: {
+    skill: {
+      type: String,
+      enum: ["machine", "assembly", "welding", "fabrication", "other"],
+      default: "other",
+    },
+    costPerHour: {
       type: Number,
-      required: true,
       default: 0,
+      min: 0,
     },
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "companyUser",
+    costPerDay: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
-    companyId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Company",
+    efficiency: {
+      type: Number,
+      default: 100,
+      min: 0,
+      max: 100,
+    },
+    status: {
+      type: String,
+      enum: ["active", "inactive", "on-leave"],
+      default: "active",
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "companyUser",
+      ref: "CompanyUser",
     },
   },
   { timestamps: true }
 );
 
-export default mongoose.models.Operator ||
-  mongoose.model("Operator", OperatorSchema);
+// No pre-save hook – operatorCode must be entered manually
+
+export default mongoose.models.Operator || mongoose.model("Operator", OperatorSchema);

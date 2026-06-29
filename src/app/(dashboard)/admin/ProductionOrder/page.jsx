@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Select from "react-select";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
@@ -8,27 +8,91 @@ import { v4 as uuidv4 } from "uuid";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FiTrash2 } from "react-icons/fi";
-import { 
-  FaIndustry, FaBox, FaCogs, FaWarehouse, 
-  FaCalendarAlt, FaCheck, FaArrowLeft, FaPlus, FaTools 
+import {
+  FaIndustry,
+  FaBox,
+  FaCogs,
+  FaCheck,
+  FaArrowLeft,
+  FaPlus,
+  FaTools,
 } from "react-icons/fa";
 import SalesOrderSearch from "@/components/SalesOrderSearch";
 
+// ─── Reusable SectionCard (outside to avoid re‑creation) ────────
+const colorMap = {
+  indigo: {
+    headerBg: "bg-indigo-50/40",
+    iconBg: "bg-indigo-100",
+    iconText: "text-indigo-500",
+  },
+  emerald: {
+    headerBg: "bg-emerald-50/40",
+    iconBg: "bg-emerald-100",
+    iconText: "text-emerald-500",
+  },
+  amber: {
+    headerBg: "bg-amber-50/40",
+    iconBg: "bg-amber-100",
+    iconText: "text-amber-500",
+  },
+  blue: {
+    headerBg: "bg-blue-50/40",
+    iconBg: "bg-blue-100",
+    iconText: "text-blue-500",
+  },
+};
+
+const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => {
+  const c = colorMap[color] || colorMap.indigo;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 ${c.headerBg}`}>
+        <div className={`w-8 h-8 rounded-lg ${c.iconBg} flex items-center justify-center ${c.iconText}`}>
+          <Icon className="text-sm" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-900">{title}</p>
+          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
+};
+
+const Lbl = ({ text, req }) => (
+  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+    {text}
+    {req && <span className="text-red-500 ml-0.5">*</span>}
+  </label>
+);
+
+const fi =
+  "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
+
 export default function Page() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400 font-medium italic">Initializing Manufacturing Workspace...</div>}>
-      <ProductionOrderPage />
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-gray-400 font-medium italic">
+          Loading Manufacturing Workspace...
+        </div>
+      }
+    >
+      <ProductionOrderForm />
     </Suspense>
   );
 }
 
-function ProductionOrderPage() {
+function ProductionOrderForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
 
   const [token, setToken] = useState(null);
   const [loadingMaster, setLoadingMaster] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Master data
   const [boms, setBoms] = useState([]);
@@ -54,6 +118,7 @@ function ProductionOrderPage() {
   const [salesOrder, setSalesOrder] = useState([]);
   const [operationFlow, setOperationFlow] = useState([]);
 
+  // ─── Token from localStorage ────────────────────────
   useEffect(() => {
     const tk = localStorage.getItem("token");
     if (tk) setToken(tk);
@@ -66,7 +131,7 @@ function ProductionOrderPage() {
     const config = { headers: { Authorization: `Bearer ${token}` } };
     (async () => {
       try {
-        const [ops, bom, itm, wh, res, mac, opr] = await Promise.all([
+        const [opsRes, bomRes, itmRes, whRes, resRes, macRes, oprRes] = await Promise.all([
           axios.get("/api/ppc/operations", config),
           axios.get("/api/bom", config),
           axios.get("/api/items", config),
@@ -75,160 +140,524 @@ function ProductionOrderPage() {
           axios.get("/api/ppc/machines", config),
           axios.get("/api/ppc/operators", config),
         ]);
-        setOperationOptions((ops.data.data || ops.data).map(o => ({ label: o.operationName, value: o._id })));
-        setBoms(bom.data.data || bom.data || []);
-        setAllItems(itm.data.data || itm.data || []);
-        setResources(res.data.data || res.data || []);
-        setMachines((mac.data.data || mac.data).map(m => ({ label: m.machineName, value: m._id })));
-        setOperators((opr.data.data || opr.data).map(o => ({ label: o.operatorName, value: o._id })));
-        setWarehouseOptions((wh.data.data || wh.data).map(w => ({ value: w._id, label: w.warehouseName })));
-      } finally { setLoadingMaster(false); }
+
+        const opsData = opsRes.data.data || opsRes.data || [];
+        setOperationOptions(opsData.map((o) => ({ label: `${o.name} (${o.code})`, value: o._id })));
+
+        setBoms(bomRes.data.data || bomRes.data || []);
+
+        const itemsData = itmRes.data.data || itmRes.data || [];
+        setAllItems(itemsData);
+
+        const resData = resRes.data.data || resRes.data || [];
+        setResources(resData);
+
+        const macData = macRes.data.data || macRes.data || [];
+        setMachines(macData.map((m) => ({ label: `${m.name} (${m.code})`, value: m._id })));
+
+        const oprData = oprRes.data.data || oprRes.data || [];
+        setOperators(oprData.map((o) => ({ label: `${o.name} (${o.operatorCode})`, value: o._id })));
+
+        const whData = whRes.data.data || whRes.data || [];
+        setWarehouseOptions(whData.map((w) => ({ value: w._id, label: w.warehouseName || w.name })));
+      } catch (err) {
+        toast.error("Failed to load master data");
+        console.error(err);
+      } finally {
+        setLoadingMaster(false);
+      }
     })();
   }, [token]);
 
-  // 2. Load BOM Details (Auto-populate tables)
+  // 2. Load existing order (EDIT MODE) – uses dynamic route
+  useEffect(() => {
+    if (!id || !token) return;
+    if (operationOptions.length === 0 || machines.length === 0 || operators.length === 0) return;
+
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    axios
+      .get(`/api/production-orders/${id}`, config)
+      .then((res) => {
+        const o = res.data;
+        setSelectedBomId(o.bomId?._id || "");
+        setStatus(o.status || "Open");
+        setPriority(o.priority || "Normal");
+        setWarehouse(o.warehouse?._id || o.warehouse || "");
+        setProductDesc(o.productDesc || "");
+        setQuantity(o.quantity || 1);
+        setProductionDate(
+          o.productionDate ? new Date(o.productionDate).toISOString().split("T")[0] : ""
+        );
+        if (o.salesOrder) {
+          setSalesOrder(Array.isArray(o.salesOrder) ? o.salesOrder : []);
+        }
+        // Items
+        setBomItems(
+          (o.items || []).map((it) => ({
+            id: uuidv4(),
+            type: "Item",
+            item: it.item?._id || it.item,
+            itemCode: it.itemCode || it.item?.itemCode || "",
+            itemName: it.itemName || it.item?.itemName || "",
+            quantity: it.quantity || 1,
+            unitPrice: it.unitPrice || it.item?.unitPrice || 0,
+            total: (it.quantity || 1) * (it.unitPrice || it.item?.unitPrice || 0),
+            warehouse: it.warehouse?._id || it.warehouse || "",
+          }))
+        );
+        // Resources
+        setBomResources(
+          (o.resources || []).map((r) => ({
+            id: uuidv4(),
+            type: "Resource",
+            resource: r.resource?._id || r.resource,
+            code: r.code || r.resource?.code || "",
+            name: r.name || r.resource?.name || "",
+            quantity: r.quantity || 1,
+            unitPrice: r.unitPrice || 0,
+            total: (r.quantity || 1) * (r.unitPrice || 0),
+            warehouse: r.warehouse?._id || r.warehouse || "",
+          }))
+        );
+        // Operation flow
+        setOperationFlow(
+          (o.operationFlow || []).map((f) => ({
+            id: uuidv4(),
+            operation: f.operation
+              ? { value: f.operation._id || f.operation, label: f.operation.name || f.operation.operationName }
+              : null,
+            machine: f.machine
+              ? { value: f.machine._id || f.machine, label: f.machine.name || f.machine.machineName }
+              : null,
+            operator: f.operator
+              ? { value: f.operator._id || f.operator, label: f.operator.name || f.operator.operatorName }
+              : null,
+            expectedStartDate: f.expectedStartDate ? new Date(f.expectedStartDate).toISOString().split("T")[0] : "",
+            expectedEndDate: f.expectedEndDate ? new Date(f.expectedEndDate).toISOString().split("T")[0] : "",
+          }))
+        );
+      })
+      .catch((err) => {
+        console.error("Edit order load failed:", err);
+        toast.error("Failed to load production order data");
+      });
+  }, [id, token, operationOptions, machines, operators]);
+
+  // 3. Load BOM Details when a new BOM is selected (CREATE MODE only)
   useEffect(() => {
     if (!selectedBomId || !token || id) return;
-    axios.get(`/api/bom/${selectedBomId}`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => {
-      const data = res.data?.data || res.data || {};
-      setBomItems((data.items || []).map(it => ({
-        id: uuidv4(), type: "Item", item: it.item?._id || it.item,
-        itemCode: it.itemCode, itemName: it.itemName, 
-        quantity: it.quantity, unitPrice: it.unitPrice || 0, 
-        total: (it.quantity * (it.unitPrice || 0)), warehouse: it.warehouse
-      })));
-      setBomResources((data.resources || []).map(r => ({
-        id: uuidv4(), type: "Resource", resource: r.resource?._id || r.resource,
-        code: r.code, name: r.name, 
-        quantity: r.quantity, unitPrice: r.unitPrice || 0, 
-        total: (r.quantity * (r.unitPrice || 0))
-      })));
-      setProductDesc(data.productDesc || "");
-    });
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    axios
+      .get(`/api/bom/${selectedBomId}`, config)
+      .then((res) => {
+        const data = res.data?.data || res.data || {};
+        const items = (data.items || []).map((it) => ({
+          id: uuidv4(),
+          type: "Item",
+          item: it.item?._id || it.item,
+          itemCode: it.itemCode || (it.item?.itemCode ?? ""),
+          itemName: it.itemName || (it.item?.itemName ?? ""),
+          quantity: it.quantity || 1,
+          unitPrice: it.unitPrice || (it.item?.unitPrice ?? 0),
+          total: (it.quantity || 1) * (it.unitPrice || it.item?.unitPrice || 0),
+          warehouse: it.warehouse || "",
+        }));
+        const resourcesList = (data.resources || []).map((r) => ({
+          id: uuidv4(),
+          type: "Resource",
+          resource: r.resource?._id || r.resource,
+          code: r.code || (r.resource?.code ?? ""),
+          name: r.name || (r.resource?.name ?? ""),
+          quantity: r.quantity || 1,
+          unitPrice: r.unitPrice || 0,
+          total: (r.quantity || 1) * (r.unitPrice || 0),
+          warehouse: r.warehouse || "",
+        }));
+        setBomItems(items);
+        setBomResources(resourcesList);
+        setProductDesc(data.productDesc || "");
+      })
+      .catch((err) => {
+        toast.error("Could not load BOM details");
+        console.error(err);
+      });
   }, [selectedBomId, token, id]);
 
-  // 3. Calculation Handlers
+  // 4. Handlers
   const handleQtyChange = (type, index, val) => {
-    const setter = type === "item" ? setBomItems : setBomResources;
-    setter(prev => prev.map((it, i) => i === index ? { ...it, quantity: val, total: val * (it.unitPrice || 0) } : it));
+    if (type === "item") {
+      setBomItems((prev) =>
+        prev.map((it, i) =>
+          i === index ? { ...it, quantity: val, total: val * (it.unitPrice || 0) } : it
+        )
+      );
+    } else {
+      setBomResources((prev) =>
+        prev.map((r, i) =>
+          i === index ? { ...r, quantity: val, total: val * (r.unitPrice || 0) } : r
+        )
+      );
+    }
   };
 
   const handleItemSelect = (index, opt) => {
     const d = opt.data;
-    setBomItems(prev => prev.map((it, i) => i === index ? { 
-      ...it, item: d._id, itemCode: d.itemCode, itemName: d.itemName, 
-      unitPrice: d.unitPrice || 0, total: (d.unitPrice || 0) * it.quantity 
-    } : it));
+    setBomItems((prev) =>
+      prev.map((it, i) =>
+        i === index
+          ? {
+              ...it,
+              item: d._id,
+              itemCode: d.itemCode,
+              itemName: d.itemName,
+              unitPrice: d.unitPrice || 0,
+              total: (d.unitPrice || 0) * it.quantity,
+            }
+          : it
+      )
+    );
   };
 
   const handleResourceSelect = (index, opt) => {
     const d = opt.data;
-    setBomResources(prev => prev.map((r, i) => i === index ? { 
-      ...r, resource: d._id, code: d.code, name: d.name, 
-      unitPrice: d.unitPrice || 0, total: (d.unitPrice || 0) * r.quantity 
-    } : r));
+    setBomResources((prev) =>
+      prev.map((r, i) =>
+        i === index
+          ? {
+              ...r,
+              resource: d._id,
+              code: d.code,
+              name: d.name,
+              unitPrice: d.unitPrice || 0,
+              total: (d.unitPrice || 0) * r.quantity,
+            }
+          : r
+      )
+    );
   };
 
+  const handleItemWarehouseChange = (index, val) => {
+    setBomItems((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, warehouse: val } : it))
+    );
+  };
+
+  const handleResourceWarehouseChange = (index, val) => {
+    setBomResources((prev) =>
+      prev.map((r, i) => (i === index ? { ...r, warehouse: val } : r))
+    );
+  };
+
+  // 5. Save
   const handleSave = async () => {
-    if (!selectedBomId || !productionDate) return toast.warning("BOM and Date are required");
+    if (!selectedBomId) return toast.warning("Please select a BOM");
+    if (!productionDate) return toast.warning("Production Date is required");
+    if (bomItems.length === 0 && bomResources.length === 0)
+      return toast.warning("Add at least one material or resource");
+
     const payload = {
-      bomId: selectedBomId, status, priority, warehouse, productDesc, quantity, productionDate,
-      salesOrder, items: bomItems, resources: bomResources,
-      operationFlow: operationFlow.map(f => ({ 
-        operation: f.operation?.value, machine: f.machine?.value, 
-        operator: f.operator?.value, expectedStartDate: f.expectedStartDate, expectedEndDate: f.expectedEndDate 
-      }))
+      bomId: selectedBomId,
+      status,
+      priority,
+      warehouse,
+      productDesc,
+      quantity,
+      productionDate,
+      salesOrder: salesOrder.map((so) => so._id || so),
+      items: bomItems.map((it) => ({
+        item: it.item,
+        itemCode: it.itemCode,
+        itemName: it.itemName,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        total: it.total,
+        warehouse: it.warehouse,
+      })),
+      resources: bomResources.map((r) => ({
+        resource: r.resource,
+        code: r.code,
+        name: r.name,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+        total: r.total,
+        warehouse: r.warehouse,
+      })),
+      operationFlow: operationFlow.map((f) => ({
+        operation: f.operation?.value,
+        machine: f.machine?.value,
+        operator: f.operator?.value,
+        expectedStartDate: f.expectedStartDate,
+        expectedEndDate: f.expectedEndDate || "",
+      })),
     };
+
     try {
+      setSaving(true);
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.post("/api/production-orders", payload, config);
-      toast.success("Production Order Saved Successfully");
+      if (id) {
+        await axios.put(`/api/production-orders/${id}`, payload, config);
+        toast.success("Production Order Updated");
+      } else {
+        await axios.post("/api/production-orders", payload, config);
+        toast.success("Production Order Created");
+      }
       router.push("/admin/productionorders-list-view");
-    } catch (err) { toast.error("Error saving production order"); }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save production order");
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const itemOptions = useMemo(() => allItems.map(it => ({ value: it._id, label: `${it.itemCode} - ${it.itemName}`, data: it })), [allItems]);
-  const resOptions = useMemo(() => resources.map(r => ({ value: r._id, label: `${r.code} - ${r.name}`, data: r })), [resources]);
+  // Options for react-select
+  const itemOptions = useMemo(
+    () =>
+      allItems.map((it) => ({
+        value: it._id,
+        label: `${it.itemCode} - ${it.itemName}`,
+        data: it,
+      })),
+    [allItems]
+  );
+  const resOptions = useMemo(
+    () =>
+      resources.map((r) => ({
+        value: r._id,
+        label: `${r.code || ""} - ${r.name}`,
+        data: r,
+      })),
+    [resources]
+  );
 
-  // --- UI Helpers ---
-  const Lbl = ({ text, req }) => (
-    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">{text}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
-  );
-  const fi = "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
-  
-  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
-      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
-        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}><Icon className="text-sm" /></div>
-        <div><p className="text-sm font-bold text-gray-900">{title}</p>{subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}</div>
+  if (loadingMaster)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-400">
+        Loading master data...
       </div>
-      <div className="px-6 py-5">{children}</div>
-    </div>
-  );
+    );
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
       <div className="max-w-7xl mx-auto">
-        
         {/* Sticky Header */}
         <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border border-gray-100 rounded-2xl px-6 py-4 mb-8 shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => router.back()} className="text-gray-400 hover:text-indigo-600 transition-colors"><FaArrowLeft /></button>
-            <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">{id ? "Edit" : "New"} Production Order</h1>
+            <button onClick={() => router.back()} className="text-gray-400 hover:text-indigo-600">
+              <FaArrowLeft />
+            </button>
+            <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">
+              {id ? "Edit" : "New"} Production Order
+            </h1>
           </div>
-          <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100"><FaCheck size={12} /> Save Order</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 disabled:opacity-50"
+          >
+            <FaCheck size={12} /> {saving ? "Saving..." : "Save Order"}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            
-            {/* Header Data */}
+            {/* Configuration */}
             <SectionCard icon={FaIndustry} title="Order Configuration" color="indigo">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="md:col-span-2"><Lbl text="Linked Sales Order" /><SalesOrderSearch onSelectSalesOrder={setSalesOrder} selectedSalesOrders={salesOrder} /></div>
+                <div className="md:col-span-2">
+                  <Lbl text="Linked Sales Order" />
+                  <SalesOrderSearch onSelectSalesOrder={setSalesOrder} selectedSalesOrders={salesOrder} />
+                </div>
                 <div>
                   <Lbl text="Select BOM" req />
                   <select className={fi} value={selectedBomId} onChange={(e) => setSelectedBomId(e.target.value)}>
                     <option value="">Choose a BOM Definition...</option>
-                    {boms.map(b => <option key={b._id} value={b._id}>{b.productNo?.itemName || b.productDesc || b._id}</option>)}
+                    {boms.map((b) => (
+                      <option key={b._id} value={b._id}>
+                        {b.productNo?.itemName || b.productDesc || b._id}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                <div><Lbl text="Priority" /><select className={fi} value={priority} onChange={(e) => setPriority(e.target.value)}><option>Normal</option><option>Urgent</option><option>Low</option></select></div>
-                <div className="md:col-span-2"><Lbl text="Product Description" /><input className={fi} value={productDesc} onChange={(e) => setProductDesc(e.target.value)} placeholder="Auto-filled from BOM..." /></div>
-                <div><Lbl text="Planned Quantity" req /><input type="number" min={1} className={fi} value={quantity} onChange={(e) => setQuantity(+e.target.value)} /></div>
-                <div><Lbl text="Production Date" req /><input type="date" className={fi} value={productionDate} onChange={(e) => setProductionDate(e.target.value)} /></div>
+                <div>
+                  <Lbl text="Priority" />
+                  <select className={fi} value={priority} onChange={(e) => setPriority(e.target.value)}>
+                    <option>Normal</option>
+                    <option>Urgent</option>
+                    <option>Low</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <Lbl text="Product Description" />
+                  <input className={fi} value={productDesc} onChange={(e) => setProductDesc(e.target.value)} placeholder="Auto-filled from BOM..." />
+                </div>
+                <div>
+                  <Lbl text="Planned Quantity" req />
+                  <input type="number" min={1} className={fi} value={quantity} onChange={(e) => setQuantity(+e.target.value)} />
+                </div>
+                <div>
+                  <Lbl text="Production Date" req />
+                  <input type="date" className={fi} value={productionDate} onChange={(e) => setProductionDate(e.target.value)} />
+                </div>
+                <div className="relative z-50">
+                  <Lbl text="Warehouse" />
+                  <Select
+                    options={warehouseOptions}
+                    value={warehouseOptions.find((w) => w.value === warehouse) || null}
+                    onChange={(o) => setWarehouse(o?.value || "")}
+                    placeholder="Select warehouse..."
+                    menuPortalTarget={typeof window !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                    classNamePrefix="react-select"
+                    styles={{
+                      menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                    }}
+                  />
+                </div>
+                <div>
+                  <Lbl text="Status" />
+                  <select className={fi} value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option>Open</option>
+                    <option>Released</option>
+                    <option>In Progress</option>
+                    <option>Completed</option>
+                    <option>Cancelled</option>
+                  </select>
+                </div>
               </div>
             </SectionCard>
 
-            {/* Materials & Components Table */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* Materials & Resources Table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5 relative">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-emerald-50/40">
-                <div className="flex items-center gap-3"><FaBox className="text-emerald-500" /><p className="text-sm font-bold text-gray-900">Required Materials & Resources</p></div>
+                <div className="flex items-center gap-3">
+                  <FaBox className="text-emerald-500" />
+                  <p className="text-sm font-bold text-gray-900">Required Materials & Resources</p>
+                </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setBomItems([...bomItems, { id: uuidv4(), type: "Item", quantity: 1, unitPrice: 0, total: 0 }])} className="text-[10px] font-bold bg-white border border-emerald-100 px-3 py-1 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors">+ Material</button>
-                  <button onClick={() => setBomResources([...bomResources, { id: uuidv4(), type: "Resource", quantity: 1, unitPrice: 0, total: 0 }])} className="text-[10px] font-bold bg-white border border-blue-100 px-3 py-1 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">+ Resource</button>
+                  <button
+                    onClick={() =>
+                      setBomItems([...bomItems, { id: uuidv4(), type: "Item", quantity: 1, unitPrice: 0, total: 0, warehouse: "" }])
+                    }
+                    className="text-[10px] font-bold bg-white border border-emerald-100 px-3 py-1 rounded-lg text-emerald-600 hover:bg-emerald-50"
+                  >
+                    + Material
+                  </button>
+                  <button
+                    onClick={() =>
+                      setBomResources([...bomResources, { id: uuidv4(), type: "Resource", quantity: 1, unitPrice: 0, total: 0, warehouse: "" }])
+                    }
+                    className="text-[10px] font-bold bg-white border border-blue-100 px-3 py-1 rounded-lg text-blue-600 hover:bg-blue-50"
+                  >
+                    + Resource
+                  </button>
                 </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
-                  <thead><tr className="bg-gray-50 border-b border-gray-100"><th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">#</th><th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">Component / Code</th><th className="px-4 py-3 text-center text-[10px] font-bold uppercase text-gray-400 w-24">Qty</th><th className="px-4 py-3 text-right text-[10px] font-bold uppercase text-gray-400">Total</th><th className="px-4 py-3 text-center"></th></tr></thead>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">#</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">Component / Code</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold uppercase text-gray-400 w-24">Qty</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold uppercase text-gray-400">Total</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">Warehouse</th>
+                      <th className="px-4 py-3 text-center"></th>
+                    </tr>
+                  </thead>
                   <tbody className="divide-y divide-gray-50">
                     {bomItems.map((it, idx) => (
-                      <tr key={it.id} className="hover:bg-indigo-50/20 transition-colors">
+                      <tr key={it.id} className="hover:bg-indigo-50/20">
                         <td className="px-4 py-3 text-gray-300 font-mono text-xs">{idx + 1}</td>
-                        <td className="px-4 py-3"><Select options={itemOptions} value={itemOptions.find(o => o.value === it.item)} onChange={o => handleItemSelect(idx, o)} className="text-xs" styles={{ control: (b) => ({ ...b, border: 'none', backgroundColor: 'transparent' }) }} /></td>
-                        <td className="px-4 py-3"><input type="number" min={1} value={it.quantity} onChange={e => handleQtyChange("item", idx, +e.target.value)} className="w-full bg-transparent text-center font-bold text-indigo-600 outline-none" /></td>
-                        <td className="px-4 py-3 text-right font-mono font-bold">₹{Number(it.total || 0).toLocaleString("en-IN")}</td>
-                        <td className="px-4 py-3 text-center"><button onClick={() => setBomItems(bomItems.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500 transition-colors"><FiTrash2 /></button></td>
+                        <td className="px-4 py-3">
+                          <Select
+                            options={itemOptions}
+                            value={itemOptions.find((o) => o.value === it.item) || null}
+                            onChange={(o) => handleItemSelect(idx, o)}
+                            className="text-xs"
+                            styles={{ control: (base) => ({ ...base, border: "none", backgroundColor: "transparent" }) }}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min={1}
+                            value={it.quantity}
+                            onChange={(e) => handleQtyChange("item", idx, +e.target.value)}
+                            className="w-full bg-transparent text-center font-bold text-indigo-600 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold">
+                          ₹{Number(it.total || 0).toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            options={warehouseOptions}
+                            value={warehouseOptions.find((w) => w.value === it.warehouse) || null}
+                            onChange={(o) => handleItemWarehouseChange(idx, o?.value || "")}
+                            placeholder="--"
+                            className="text-xs"
+                            menuPortalTarget={typeof window !== "undefined" ? document.body : null}
+                            menuPosition="fixed"
+                            classNamePrefix="react-select"
+                            styles={{
+                              control: (base) => ({ ...base, border: "none", backgroundColor: "transparent", minWidth: "120px" }),
+                              menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button onClick={() => setBomItems(bomItems.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500">
+                            <FiTrash2 />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {bomResources.map((res, idx) => (
-                      <tr key={res.id} className="hover:bg-indigo-50/20 transition-colors">
+                      <tr key={res.id} className="hover:bg-indigo-50/20">
                         <td className="px-4 py-3 text-gray-300 font-mono text-xs">{idx + 1 + bomItems.length}</td>
-                        <td className="px-4 py-3"><Select options={resOptions} value={resOptions.find(o => o.value === res.resource)} onChange={o => handleResourceSelect(idx, o)} className="text-xs" styles={{ control: (b) => ({ ...b, border: 'none', backgroundColor: 'transparent' }) }} /></td>
-                        <td className="px-4 py-3"><input type="number" min={1} value={res.quantity} onChange={e => handleQtyChange("resource", idx, +e.target.value)} className="w-full bg-transparent text-center font-bold text-blue-600 outline-none" /></td>
-                        <td className="px-4 py-3 text-right font-mono font-bold">₹{Number(res.total || 0).toLocaleString("en-IN")}</td>
-                        <td className="px-4 py-3 text-center"><button onClick={() => setBomResources(bomResources.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500 transition-colors"><FiTrash2 /></button></td>
+                        <td className="px-4 py-3">
+                          <Select
+                            options={resOptions}
+                            value={resOptions.find((o) => o.value === res.resource) || null}
+                            onChange={(o) => handleResourceSelect(idx, o)}
+                            className="text-xs"
+                            styles={{ control: (base) => ({ ...base, border: "none", backgroundColor: "transparent" }) }}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min={1}
+                            value={res.quantity}
+                            onChange={(e) => handleQtyChange("resource", idx, +e.target.value)}
+                            className="w-full bg-transparent text-center font-bold text-blue-600 outline-none"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold">
+                          ₹{Number(res.total || 0).toLocaleString("en-IN")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            options={warehouseOptions}
+                            value={warehouseOptions.find((w) => w.value === res.warehouse) || null}
+                            onChange={(o) => handleResourceWarehouseChange(idx, o?.value || "")}
+                            placeholder="--"
+                            className="text-xs"
+                            menuPortalTarget={typeof window !== "undefined" ? document.body : null}
+                            menuPosition="fixed"
+                            classNamePrefix="react-select"
+                            styles={{
+                              control: (base) => ({ ...base, border: "none", backgroundColor: "transparent", minWidth: "120px" }),
+                              menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button onClick={() => setBomResources(bomResources.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500">
+                            <FiTrash2 />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -237,37 +666,123 @@ function ProductionOrderPage() {
             </div>
           </div>
 
-          {/* Operational Flow Sidebar */}
+          {/* Sidebar */}
           <div className="space-y-6">
             <SectionCard icon={FaCogs} title="Process Routing" subtitle="Manufacturing workflow steps" color="amber">
               <div className="space-y-4">
                 {operationFlow.map((flow, idx) => (
                   <div key={flow.id} className="p-4 rounded-xl border border-amber-100 bg-amber-50/30 space-y-3 relative group">
-                    <button onClick={() => setOperationFlow(operationFlow.filter((_, i) => i !== idx))} className="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><FiTrash2 /></button>
-                    <div><Lbl text="Operation" /><Select options={operationOptions} value={flow.operation} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, operation: o } : f))} className="text-xs" /></div>
-                    <div className="grid grid-cols-2 gap-2">
-                       <div><Lbl text="Work Center" /><Select options={machines} value={flow.machine} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, machine: o } : f))} className="text-[10px]" /></div>
-                       <div><Lbl text="Operator" /><Select options={operators} value={flow.operator} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, operator: o } : f))} className="text-[10px]" /></div>
+                    <button
+                      onClick={() => setOperationFlow(operationFlow.filter((_, i) => i !== idx))}
+                      className="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <FiTrash2 />
+                    </button>
+                    <div>
+                      <Lbl text="Operation" />
+                      <Select
+                        options={operationOptions}
+                        value={flow.operation}
+                        onChange={(o) =>
+                          setOperationFlow(operationFlow.map((f, i) => (i === idx ? { ...f, operation: o } : f)))
+                        }
+                        className="text-xs"
+                      />
                     </div>
-                    <div><Lbl text="Est. Start Date" /><input type="date" value={flow.expectedStartDate} onChange={e => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, expectedStartDate: e.target.value } : f))} className="w-full p-2 rounded-lg border border-gray-100 bg-white text-xs" /></div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Lbl text="Work Center" />
+                        <Select
+                          options={machines}
+                          value={flow.machine}
+                          onChange={(o) =>
+                            setOperationFlow(operationFlow.map((f, i) => (i === idx ? { ...f, machine: o } : f)))
+                          }
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Lbl text="Operator" />
+                        <Select
+                          options={operators}
+                          value={flow.operator}
+                          onChange={(o) =>
+                            setOperationFlow(operationFlow.map((f, i) => (i === idx ? { ...f, operator: o } : f)))
+                          }
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Lbl text="Est. Start Date" />
+                      <input
+                        type="date"
+                        value={flow.expectedStartDate}
+                        onChange={(e) =>
+                          setOperationFlow(
+                            operationFlow.map((f, i) =>
+                              i === idx ? { ...f, expectedStartDate: e.target.value } : f
+                            )
+                          )
+                        }
+                        className="w-full p-2 rounded-lg border border-gray-100 bg-white text-xs"
+                      />
+                    </div>
+                         <div>
+                      <Lbl text="Est. End Date" />
+                      <input
+                        type="date"
+                        value={flow.expectedEndDate}
+                        onChange={(e) =>
+                          setOperationFlow(
+                            operationFlow.map((f, i) =>
+                              i === idx ? { ...f, expectedEndDate: e.target.value } : f
+                            )
+                          )
+                        }
+                        className="w-full p-2 rounded-lg border border-gray-100 bg-white text-xs"
+                      />
+                    </div>
                   </div>
                 ))}
-                <button onClick={() => setOperationFlow([...operationFlow, { id: uuidv4(), operation: null, machine: null, operator: null, expectedStartDate: "" }])} className="w-full py-3 border-2 border-dashed border-amber-200 rounded-xl text-amber-600 font-bold text-xs hover:bg-amber-50 transition-all flex items-center justify-center gap-2"><FaPlus size={10} /> Add Process Step</button>
+                <button
+                  onClick={() =>
+                    setOperationFlow([
+                      ...operationFlow,
+                      { id: uuidv4(), operation: null, machine: null, operator: null, expectedStartDate: "" ,expectedEndDate:""},
+                    ])
+                  }
+                  className="w-full py-3 border-2 border-dashed border-amber-200 rounded-xl text-amber-600 font-bold text-xs hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <FaPlus size={10} /> Add Process Step
+                </button>
               </div>
             </SectionCard>
 
-            {/* Quick Summary Sidebar Card */}
             <div className="bg-indigo-900 rounded-3xl p-6 text-white shadow-xl shadow-indigo-100">
-               <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-white/10 rounded-lg"><FaTools className="text-indigo-300" /></div>
-                  <p className="text-xs font-black uppercase tracking-widest text-indigo-300">Financial Summary</p>
-               </div>
-               <div className="space-y-4 font-mono">
-                  <div className="flex justify-between text-xs text-indigo-200"><span>Materials</span><span>₹{bomItems.reduce((s, i) => s + i.total, 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between text-xs text-indigo-200"><span>Resources</span><span>₹{bomResources.reduce((s, i) => s + i.total, 0).toLocaleString()}</span></div>
-                  <hr className="border-white/10" />
-                  <div className="flex justify-between text-lg font-black tracking-tight"><span>EST. COST</span><span className="text-emerald-400">₹{(bomItems.reduce((s, i) => s + i.total, 0) + bomResources.reduce((s, i) => s + i.total, 0)).toLocaleString()}</span></div>
-               </div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <FaTools className="text-indigo-300" />
+                </div>
+                <p className="text-xs font-black uppercase tracking-widest text-indigo-300">Financial Summary</p>
+              </div>
+              <div className="space-y-4 font-mono">
+                <div className="flex justify-between text-xs text-indigo-200">
+                  <span>Materials</span>
+                  <span>₹{bomItems.reduce((s, i) => s + i.total, 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-xs text-indigo-200">
+                  <span>Resources</span>
+                  <span>₹{bomResources.reduce((s, i) => s + i.total, 0).toLocaleString()}</span>
+                </div>
+                <hr className="border-white/10" />
+                <div className="flex justify-between text-lg font-black tracking-tight">
+                  <span>EST. COST</span>
+                  <span className="text-emerald-400">
+                    ₹{(bomItems.reduce((s, i) => s + i.total, 0) + bomResources.reduce((s, i) => s + i.total, 0)).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -276,6 +791,285 @@ function ProductionOrderPage() {
     </div>
   );
 }
+
+// "use client";
+
+// import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
+// import Select from "react-select";
+// import { useRouter, useSearchParams } from "next/navigation";
+// import axios from "axios";
+// import { v4 as uuidv4 } from "uuid";
+// import { toast, ToastContainer } from "react-toastify";
+// import "react-toastify/dist/ReactToastify.css";
+// import { FiTrash2 } from "react-icons/fi";
+// import { 
+//   FaIndustry, FaBox, FaCogs, FaWarehouse, 
+//   FaCalendarAlt, FaCheck, FaArrowLeft, FaPlus, FaTools 
+// } from "react-icons/fa";
+// import SalesOrderSearch from "@/components/SalesOrderSearch";
+
+// export default function Page() {
+//   return (
+//     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400 font-medium italic">Initializing Manufacturing Workspace...</div>}>
+//       <ProductionOrderPage />
+//     </Suspense>
+//   );
+// }
+
+// function ProductionOrderPage() {
+//   const router = useRouter();
+//   const searchParams = useSearchParams();
+//   const id = searchParams.get("id");
+
+//   const [token, setToken] = useState(null);
+//   const [loadingMaster, setLoadingMaster] = useState(false);
+
+//   // Master data
+//   const [boms, setBoms] = useState([]);
+//   const [allItems, setAllItems] = useState([]);
+//   const [resources, setResources] = useState([]);
+//   const [machines, setMachines] = useState([]);
+//   const [operators, setOperators] = useState([]);
+//   const [operationOptions, setOperationOptions] = useState([]);
+//   const [warehouseOptions, setWarehouseOptions] = useState([]);
+
+//   // BOM derived tables
+//   const [bomItems, setBomItems] = useState([]);
+//   const [bomResources, setBomResources] = useState([]);
+
+//   // Form fields
+//   const [selectedBomId, setSelectedBomId] = useState("");
+//   const [status, setStatus] = useState("Open");
+//   const [priority, setPriority] = useState("Normal");
+//   const [warehouse, setWarehouse] = useState("");
+//   const [productDesc, setProductDesc] = useState("");
+//   const [quantity, setQuantity] = useState(1);
+//   const [productionDate, setProductionDate] = useState("");
+//   const [salesOrder, setSalesOrder] = useState([]);
+//   const [operationFlow, setOperationFlow] = useState([]);
+
+//   useEffect(() => {
+//     const tk = localStorage.getItem("token");
+//     if (tk) setToken(tk);
+//   }, []);
+
+//   // 1. Fetch Master Data
+//   useEffect(() => {
+//     if (!token) return;
+//     setLoadingMaster(true);
+//     const config = { headers: { Authorization: `Bearer ${token}` } };
+//     (async () => {
+//       try {
+//         const [ops, bom, itm, wh, res, mac, opr] = await Promise.all([
+//           axios.get("/api/ppc/operations", config),
+//           axios.get("/api/bom", config),
+//           axios.get("/api/items", config),
+//           axios.get("/api/warehouse", config),
+//           axios.get("/api/ppc/resources", config),
+//           axios.get("/api/ppc/machines", config),
+//           axios.get("/api/ppc/operators", config),
+//         ]);
+//         setOperationOptions((ops.data.data || ops.data).map(o => ({ label: o.operationName, value: o._id })));
+//         setBoms(bom.data.data || bom.data || []);
+//         setAllItems(itm.data.data || itm.data || []);
+//         setResources(res.data.data || res.data || []);
+//         setMachines((mac.data.data || mac.data).map(m => ({ label: m.machineName, value: m._id })));
+//         setOperators((opr.data.data || opr.data).map(o => ({ label: o.operatorName, value: o._id })));
+//         setWarehouseOptions((wh.data.data || wh.data).map(w => ({ value: w._id, label: w.warehouseName })));
+//       } finally { setLoadingMaster(false); }
+//     })();
+//   }, [token]);
+
+//   // 2. Load BOM Details (Auto-populate tables)
+//   useEffect(() => {
+//     if (!selectedBomId || !token || id) return;
+//     axios.get(`/api/bom/${selectedBomId}`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => {
+//       const data = res.data?.data || res.data || {};
+//       setBomItems((data.items || []).map(it => ({
+//         id: uuidv4(), type: "Item", item: it.item?._id || it.item,
+//         itemCode: it.itemCode, itemName: it.itemName, 
+//         quantity: it.quantity, unitPrice: it.unitPrice || 0, 
+//         total: (it.quantity * (it.unitPrice || 0)), warehouse: it.warehouse
+//       })));
+//       setBomResources((data.resources || []).map(r => ({
+//         id: uuidv4(), type: "Resource", resource: r.resource?._id || r.resource,
+//         code: r.code, name: r.name, 
+//         quantity: r.quantity, unitPrice: r.unitPrice || 0, 
+//         total: (r.quantity * (r.unitPrice || 0))
+//       })));
+//       setProductDesc(data.productDesc || "");
+//     });
+//   }, [selectedBomId, token, id]);
+
+//   // 3. Calculation Handlers
+//   const handleQtyChange = (type, index, val) => {
+//     const setter = type === "item" ? setBomItems : setBomResources;
+//     setter(prev => prev.map((it, i) => i === index ? { ...it, quantity: val, total: val * (it.unitPrice || 0) } : it));
+//   };
+
+//   const handleItemSelect = (index, opt) => {
+//     const d = opt.data;
+//     setBomItems(prev => prev.map((it, i) => i === index ? { 
+//       ...it, item: d._id, itemCode: d.itemCode, itemName: d.itemName, 
+//       unitPrice: d.unitPrice || 0, total: (d.unitPrice || 0) * it.quantity 
+//     } : it));
+//   };
+
+//   const handleResourceSelect = (index, opt) => {
+//     const d = opt.data;
+//     setBomResources(prev => prev.map((r, i) => i === index ? { 
+//       ...r, resource: d._id, code: d.code, name: d.name, 
+//       unitPrice: d.unitPrice || 0, total: (d.unitPrice || 0) * r.quantity 
+//     } : r));
+//   };
+
+//   const handleSave = async () => {
+//     if (!selectedBomId || !productionDate) return toast.warning("BOM and Date are required");
+//     const payload = {
+//       bomId: selectedBomId, status, priority, warehouse, productDesc, quantity, productionDate,
+//       salesOrder, items: bomItems, resources: bomResources,
+//       operationFlow: operationFlow.map(f => ({ 
+//         operation: f.operation?.value, machine: f.machine?.value, 
+//         operator: f.operator?.value, expectedStartDate: f.expectedStartDate, expectedEndDate: f.expectedEndDate 
+//       }))
+//     };
+//     try {
+//       const config = { headers: { Authorization: `Bearer ${token}` } };
+//       await axios.post("/api/production-orders", payload, config);
+//       toast.success("Production Order Saved Successfully");
+//       router.push("/admin/productionorders-list-view");
+//     } catch (err) { toast.error("Error saving production order"); }
+//   };
+
+//   const itemOptions = useMemo(() => allItems.map(it => ({ value: it._id, label: `${it.itemCode} - ${it.itemName}`, data: it })), [allItems]);
+//   const resOptions = useMemo(() => resources.map(r => ({ value: r._id, label: `${r.code} - ${r.name}`, data: r })), [resources]);
+
+//   // --- UI Helpers ---
+//   const Lbl = ({ text, req }) => (
+//     <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">{text}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
+//   );
+//   const fi = "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
+  
+//   const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
+//     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+//       <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
+//         <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}><Icon className="text-sm" /></div>
+//         <div><p className="text-sm font-bold text-gray-900">{title}</p>{subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}</div>
+//       </div>
+//       <div className="px-6 py-5">{children}</div>
+//     </div>
+//   );
+
+//   return (
+//     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
+//       <div className="max-w-7xl mx-auto">
+        
+//         {/* Sticky Header */}
+//         <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border border-gray-100 rounded-2xl px-6 py-4 mb-8 shadow-sm flex items-center justify-between">
+//           <div className="flex items-center gap-4">
+//             <button onClick={() => router.back()} className="text-gray-400 hover:text-indigo-600 transition-colors"><FaArrowLeft /></button>
+//             <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">{id ? "Edit" : "New"} Production Order</h1>
+//           </div>
+//           <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100"><FaCheck size={12} /> Save Order</button>
+//         </div>
+
+//         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+//           <div className="lg:col-span-2 space-y-6">
+            
+//             {/* Header Data */}
+//             <SectionCard icon={FaIndustry} title="Order Configuration" color="indigo">
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+//                 <div className="md:col-span-2"><Lbl text="Linked Sales Order" /><SalesOrderSearch onSelectSalesOrder={setSalesOrder} selectedSalesOrders={salesOrder} /></div>
+//                 <div>
+//                   <Lbl text="Select BOM" req />
+//                   <select className={fi} value={selectedBomId} onChange={(e) => setSelectedBomId(e.target.value)}>
+//                     <option value="">Choose a BOM Definition...</option>
+//                     {boms.map(b => <option key={b._id} value={b._id}>{b.productNo?.itemName || b.productDesc || b._id}</option>)}
+//                   </select>
+//                 </div>
+//                 <div><Lbl text="Priority" /><select className={fi} value={priority} onChange={(e) => setPriority(e.target.value)}><option>Normal</option><option>Urgent</option><option>Low</option></select></div>
+//                 <div className="md:col-span-2"><Lbl text="Product Description" /><input className={fi} value={productDesc} onChange={(e) => setProductDesc(e.target.value)} placeholder="Auto-filled from BOM..." /></div>
+//                 <div><Lbl text="Planned Quantity" req /><input type="number" min={1} className={fi} value={quantity} onChange={(e) => setQuantity(+e.target.value)} /></div>
+//                 <div><Lbl text="Production Date" req /><input type="date" className={fi} value={productionDate} onChange={(e) => setProductionDate(e.target.value)} /></div>
+//               </div>
+//             </SectionCard>
+
+//             {/* Materials & Components Table */}
+//             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+//               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-emerald-50/40">
+//                 <div className="flex items-center gap-3"><FaBox className="text-emerald-500" /><p className="text-sm font-bold text-gray-900">Required Materials & Resources</p></div>
+//                 <div className="flex gap-2">
+//                   <button onClick={() => setBomItems([...bomItems, { id: uuidv4(), type: "Item", quantity: 1, unitPrice: 0, total: 0 }])} className="text-[10px] font-bold bg-white border border-emerald-100 px-3 py-1 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors">+ Material</button>
+//                   <button onClick={() => setBomResources([...bomResources, { id: uuidv4(), type: "Resource", quantity: 1, unitPrice: 0, total: 0 }])} className="text-[10px] font-bold bg-white border border-blue-100 px-3 py-1 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">+ Resource</button>
+//                 </div>
+//               </div>
+//               <div className="overflow-x-auto">
+//                 <table className="w-full text-sm border-collapse">
+//                   <thead><tr className="bg-gray-50 border-b border-gray-100"><th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">#</th><th className="px-4 py-3 text-left text-[10px] font-bold uppercase text-gray-400">Component / Code</th><th className="px-4 py-3 text-center text-[10px] font-bold uppercase text-gray-400 w-24">Qty</th><th className="px-4 py-3 text-right text-[10px] font-bold uppercase text-gray-400">Total</th><th className="px-4 py-3 text-center"></th></tr></thead>
+//                   <tbody className="divide-y divide-gray-50">
+//                     {bomItems.map((it, idx) => (
+//                       <tr key={it.id} className="hover:bg-indigo-50/20 transition-colors">
+//                         <td className="px-4 py-3 text-gray-300 font-mono text-xs">{idx + 1}</td>
+//                         <td className="px-4 py-3"><Select options={itemOptions} value={itemOptions.find(o => o.value === it.item)} onChange={o => handleItemSelect(idx, o)} className="text-xs" styles={{ control: (b) => ({ ...b, border: 'none', backgroundColor: 'transparent' }) }} /></td>
+//                         <td className="px-4 py-3"><input type="number" min={1} value={it.quantity} onChange={e => handleQtyChange("item", idx, +e.target.value)} className="w-full bg-transparent text-center font-bold text-indigo-600 outline-none" /></td>
+//                         <td className="px-4 py-3 text-right font-mono font-bold">₹{Number(it.total || 0).toLocaleString("en-IN")}</td>
+//                         <td className="px-4 py-3 text-center"><button onClick={() => setBomItems(bomItems.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500 transition-colors"><FiTrash2 /></button></td>
+//                       </tr>
+//                     ))}
+//                     {bomResources.map((res, idx) => (
+//                       <tr key={res.id} className="hover:bg-indigo-50/20 transition-colors">
+//                         <td className="px-4 py-3 text-gray-300 font-mono text-xs">{idx + 1 + bomItems.length}</td>
+//                         <td className="px-4 py-3"><Select options={resOptions} value={resOptions.find(o => o.value === res.resource)} onChange={o => handleResourceSelect(idx, o)} className="text-xs" styles={{ control: (b) => ({ ...b, border: 'none', backgroundColor: 'transparent' }) }} /></td>
+//                         <td className="px-4 py-3"><input type="number" min={1} value={res.quantity} onChange={e => handleQtyChange("resource", idx, +e.target.value)} className="w-full bg-transparent text-center font-bold text-blue-600 outline-none" /></td>
+//                         <td className="px-4 py-3 text-right font-mono font-bold">₹{Number(res.total || 0).toLocaleString("en-IN")}</td>
+//                         <td className="px-4 py-3 text-center"><button onClick={() => setBomResources(bomResources.filter((_, i) => i !== idx))} className="text-red-300 hover:text-red-500 transition-colors"><FiTrash2 /></button></td>
+//                       </tr>
+//                     ))}
+//                   </tbody>
+//                 </table>
+//               </div>
+//             </div>
+//           </div>
+
+//           {/* Operational Flow Sidebar */}
+//           <div className="space-y-6">
+//             <SectionCard icon={FaCogs} title="Process Routing" subtitle="Manufacturing workflow steps" color="amber">
+//               <div className="space-y-4">
+//                 {operationFlow.map((flow, idx) => (
+//                   <div key={flow.id} className="p-4 rounded-xl border border-amber-100 bg-amber-50/30 space-y-3 relative group">
+//                     <button onClick={() => setOperationFlow(operationFlow.filter((_, i) => i !== idx))} className="absolute top-2 right-2 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><FiTrash2 /></button>
+//                     <div><Lbl text="Operation" /><Select options={operationOptions} value={flow.operation} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, operation: o } : f))} className="text-xs" /></div>
+//                     <div className="grid grid-cols-2 gap-2">
+//                        <div><Lbl text="Work Center" /><Select options={machines} value={flow.machine} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, machine: o } : f))} className="text-[10px]" /></div>
+//                        <div><Lbl text="Operator" /><Select options={operators} value={flow.operator} onChange={o => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, operator: o } : f))} className="text-[10px]" /></div>
+//                     </div>
+//                     <div><Lbl text="Est. Start Date" /><input type="date" value={flow.expectedStartDate} onChange={e => setOperationFlow(operationFlow.map((f, i) => i === idx ? { ...f, expectedStartDate: e.target.value } : f))} className="w-full p-2 rounded-lg border border-gray-100 bg-white text-xs" /></div>
+//                   </div>
+//                 ))}
+//                 <button onClick={() => setOperationFlow([...operationFlow, { id: uuidv4(), operation: null, machine: null, operator: null, expectedStartDate: "" }])} className="w-full py-3 border-2 border-dashed border-amber-200 rounded-xl text-amber-600 font-bold text-xs hover:bg-amber-50 transition-all flex items-center justify-center gap-2"><FaPlus size={10} /> Add Process Step</button>
+//               </div>
+//             </SectionCard>
+
+//             {/* Quick Summary Sidebar Card */}
+//             <div className="bg-indigo-900 rounded-3xl p-6 text-white shadow-xl shadow-indigo-100">
+//                <div className="flex items-center gap-3 mb-6">
+//                   <div className="p-2 bg-white/10 rounded-lg"><FaTools className="text-indigo-300" /></div>
+//                   <p className="text-xs font-black uppercase tracking-widest text-indigo-300">Financial Summary</p>
+//                </div>
+//                <div className="space-y-4 font-mono">
+//                   <div className="flex justify-between text-xs text-indigo-200"><span>Materials</span><span>₹{bomItems.reduce((s, i) => s + i.total, 0).toLocaleString()}</span></div>
+//                   <div className="flex justify-between text-xs text-indigo-200"><span>Resources</span><span>₹{bomResources.reduce((s, i) => s + i.total, 0).toLocaleString()}</span></div>
+//                   <hr className="border-white/10" />
+//                   <div className="flex justify-between text-lg font-black tracking-tight"><span>EST. COST</span><span className="text-emerald-400">₹{(bomItems.reduce((s, i) => s + i.total, 0) + bomResources.reduce((s, i) => s + i.total, 0)).toLocaleString()}</span></div>
+//                </div>
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//       <ToastContainer position="bottom-right" theme="colored" />
+//     </div>
+//   );
+// }
 
 // "use client";
 

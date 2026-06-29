@@ -1,18 +1,30 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import Select from "react-select";
 import { useParams, useRouter } from "next/navigation";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function ProductionOrderPage() {
   const params = useParams();
   const id = params?.id;
   const router = useRouter();
+
+  // ─── Token state – the root cause fix ─────────────────────
+  const [token, setToken] = useState(null);         // null = loading
+  const [tokenReady, setTokenReady] = useState(false);
+
+  useEffect(() => {
+    const tk = localStorage.getItem("token");
+    setToken(tk);
+    setTokenReady(true);
+  }, []);
+
+  // Helper – only used after token is ready (inside effects)
+  const authHeaders = { Authorization: `Bearer ${token}` };
 
   const typeOptions = [
     { value: "standard", label: "Standard" },
@@ -42,74 +54,102 @@ export default function ProductionOrderPage() {
   const [bomItems, setBomItems] = useState([]);
   const [selectedOption, setSelectedOption] = useState(null);
 
-  // Load static master data
+  // ─── 1. Fetch master data (after token is ready) ──────────
   useEffect(() => {
-    axios.get("/api/bom").then(res => setBoms(res.data));
-    axios.get("/api/items").then(res => setAllItems(res.data));
-    axios.get("/api/warehouse").then(res => {
-      setWarehouseOptions(
-        res.data.map(w => ({ value: w._id, label: w.warehouseName }))
-      );
-    });
-  }, []);
+    if (!token) return;
+    const fetchMaster = async () => {
+      try {
+        const [bomRes, itemsRes, whRes] = await Promise.all([
+          axios.get("/api/bom", { headers: authHeaders }),
+          axios.get("/api/items", { headers: authHeaders }),
+          axios.get("/api/warehouse", { headers: authHeaders }),
+        ]);
+        setBoms(bomRes.data?.data || bomRes.data || []);
+        setAllItems(itemsRes.data?.data || itemsRes.data || []);
+        setWarehouseOptions(
+          (whRes.data?.data || whRes.data || []).map((w) => ({
+            value: w._id,
+            label: w.warehouseName || w.name,
+          }))
+        );
+      } catch (err) {
+        toast.error("Failed to load master data");
+      }
+    };
+    fetchMaster();
+  }, [token]);   // ✅ runs only after token state is set
 
-  // Load existing order (edit mode)
+  // ─── 2. Load existing order (edit mode) ──────────────────
   useEffect(() => {
-    if (!id) return;
-    axios.get(`/api/production-orders/${id}`).then(res => {
-      const o = res.data;
-      setSelectedBomId(o.bomId);
-      setType(o.type);
-      setStatus(o.status);
-      setWarehouse(o.warehouse);
-      setProductDesc(o.productDesc);
-      setPriority(o.priority);
-      setQuantity(o.quantity);
-      setProductionDate(o.productionDate?.split("T")[0] || "");
-      setBomItems(
-        o.items.map(it => ({
+    if (!id || !token) return;
+    const fetchOrder = async () => {
+      try {
+        const res = await axios.get(`/api/production-orders?id=${id}`, {
+          headers: authHeaders,
+        });
+        const o = res.data?.data || res.data;
+        setSelectedBomId(o.bomId || "");
+        setType(o.type || "standard");
+        setStatus(o.status || "planned");
+        setWarehouse(o.warehouse || "");
+        setProductDesc(o.productDesc || "");
+        setPriority(o.priority || "");
+        setQuantity(o.quantity || 1);
+        setProductionDate(
+          o.productionDate ? new Date(o.productionDate).toISOString().split("T")[0] : ""
+        );
+        setBomItems(
+          (o.items || []).map((it) => ({
+            id: uuidv4(),
+            item: it.item,
+            itemCode: it.itemCode,
+            itemName: it.itemName,
+            unitQty: it.quantity,
+            quantity: it.quantity,
+            requiredQty: it.quantity * (o.quantity || 1),
+            warehouse: it.warehouse || "",
+          }))
+        );
+      } catch (err) {
+        toast.error("Failed to load production order");
+      }
+    };
+    fetchOrder();
+  }, [id, token]);   // ✅ runs after token is ready
+
+  // ─── 3. Load BOM items when a new BOM is selected (create mode only) ───
+  useEffect(() => {
+    if (!selectedBomId || id || !token) return;
+    const fetchBom = async () => {
+      try {
+        const res = await axios.get(`/api/bom/${selectedBomId}`, {
+          headers: authHeaders,
+        });
+        const data = res.data?.data || res.data;
+        const items = (data.items || []).map((it) => ({
           id: uuidv4(),
-          item: it.item, // preserve ObjectId for saving
-          itemCode: it.itemCode,
-          itemName: it.itemName,
-          unitQty: it.unitQty,
+          item: it.item?._id || it.item,
+          itemCode: it.itemCode || it.item?.itemCode || "",
+          itemName: it.itemName || it.item?.itemName || "",
+          unitQty: it.quantity,
           quantity: it.quantity,
-          requiredQty: it.requiredQty,
-          warehouse: it.warehouse,
-        }))
-      );
-    });
-  }, [id]);
+          requiredQty: it.quantity * quantity,
+          warehouse: "",
+        }));
+        setBomItems(items);
+        setProductDesc(data.productDesc || "");
+      } catch (err) {
+        toast.error("Could not load BOM");
+      }
+    };
+    fetchBom();
+  }, [selectedBomId, quantity, id, token]);   // ✅ token included
 
-  // Load BOM items when new BOM selected
-  useEffect(() => {
-    if (!selectedBomId || id) return; // skip if editing
-    axios.get(`/api/bom/${selectedBomId}`).then(res => {
-      const items = res.data.items.map(it => ({
-        id: uuidv4(),
-        item: it.item, // needed for POST
-        itemCode: it.itemCode,
-        itemName: it.itemName,
-        unitQty: it.quantity,
-        quantity: it.quantity,
-        requiredQty: it.quantity * quantity,
-        warehouse: "",
-      }));
-      setBomItems(items);
-      setProductDesc(res.data.productDesc || "");
-    });
-  }, [selectedBomId, quantity, id]);
-
-  const itemOptions = allItems.map(it => ({
-    value: it._id,
-    label: `${it.itemCode} - ${it.itemName}`,
-    data: it,
-  }));
-
+  // ─── Handlers ──────────────────────────────────────────────
   const handleQuantityChange = (rowId, val) => {
     const qty = Number(val);
-    setBomItems(prev =>
-      prev.map(item =>
+    setBomItems((prev) =>
+      prev.map((item) =>
         item.id === rowId
           ? { ...item, quantity: qty, requiredQty: qty * quantity }
           : item
@@ -118,8 +158,8 @@ export default function ProductionOrderPage() {
   };
 
   const handleWarehouseChange = (rowId, val) => {
-    setBomItems(prev =>
-      prev.map(item =>
+    setBomItems((prev) =>
+      prev.map((item) =>
         item.id === rowId ? { ...item, warehouse: val } : item
       )
     );
@@ -128,7 +168,7 @@ export default function ProductionOrderPage() {
   const handleAddItem = () => {
     if (!selectedOption) return;
     const it = selectedOption.data;
-    setBomItems(prev => [
+    setBomItems((prev) => [
       ...prev,
       {
         id: uuidv4(),
@@ -144,46 +184,69 @@ export default function ProductionOrderPage() {
     setSelectedOption(null);
   };
 
-  const handleRemoveItem = rowId => {
-    setBomItems(prev => prev.filter(item => item.id !== rowId));
+  const handleRemoveItem = (rowId) => {
+    setBomItems((prev) => prev.filter((item) => item.id !== rowId));
   };
 
   const handleSaveProductionOrder = async () => {
+    if (!token) {
+      toast.error("Please log in");
+      return;
+    }
+
+    const payload = {
+      bomId: selectedBomId,
+      type,
+      status,
+      warehouse,
+      productDesc,
+      priority,
+      productionDate,
+      quantity,
+      items: bomItems.map((it) => ({
+        item: it.item,
+        itemCode: it.itemCode,
+        itemName: it.itemName,
+        quantity: it.quantity,
+        unitPrice: 0,
+        total: 0,
+        warehouse: it.warehouse,
+      })),
+    };
+
     try {
-      const payload = {
-        bomId: selectedBomId,
-        type,
-        status,
-        warehouse,
-        productDesc,
-        priority,
-        productionDate,
-        quantity,
-        items: bomItems.map(it => ({
-          item: it.item,
-          itemCode: it.itemCode,
-          itemName: it.itemName,
-          unitQty: it.unitQty,
-          quantity: it.quantity,
-          requiredQty: 1 * quantity,
-          warehouse: it.warehouse,
-        })),
-      };
-
       if (id) {
-        await axios.put(`/api/production-orders/${id}`, payload);
-        alert("Production Order updated!");
+        await axios.put(`/api/production-orders?id=${id}`, payload, {
+          headers: authHeaders,
+        });
+        toast.success("Production Order updated!");
       } else {
-        await axios.post("/api/production-orders", payload);
-        alert("Production Order created!");
+        await axios.post("/api/production-orders", payload, {
+          headers: authHeaders,
+        });
+        toast.success("Production Order created!");
       }
-
-      router.push("/admin/productionorders-list-view");
+      router.push("/admin/ppc/production-orders");
     } catch (err) {
-      console.error(err);
-      alert("Error saving Production Order");
+      toast.error(err.response?.data?.message || "Error saving production order");
     }
   };
+
+  // ─── Options for react-select ─────────────────────────────
+  const itemOptions = allItems.map((it) => ({
+    value: it._id,
+    label: `${it.itemCode} - ${it.itemName}`,
+    data: it,
+  }));
+
+  // ─── Loading state until token is known ──────────────────
+  if (!tokenReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded">
@@ -193,106 +256,62 @@ export default function ProductionOrderPage() {
 
       {/* Order Fields */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {/* BOM */}
+        {/* ... same JSX as before ... */}
         <div>
           <label className="block text-sm font-medium">Select BOM</label>
           <select
             className="w-full border p-2 rounded"
             value={selectedBomId}
-            onChange={e => setSelectedBomId(e.target.value)}
+            onChange={(e) => setSelectedBomId(e.target.value)}
           >
             <option value="">-- choose --</option>
-            {boms.map(b => (
+            {boms.map((b) => (
               <option key={b._id} value={b._id}>
-                {b.productNo} - {b.productDesc}
+                {b.productNo?.itemName || b.productDesc || b._id}
               </option>
             ))}
           </select>
         </div>
-        {/* Type */}
         <div>
           <label className="block text-sm font-medium">Type</label>
-          <select
-            className="w-full border p-2 rounded"
-            value={type}
-            onChange={e => setType(e.target.value)}
-          >
-            {typeOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+          <select className="w-full border p-2 rounded" value={type} onChange={(e) => setType(e.target.value)}>
+            {typeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>
-        {/* Status */}
         <div>
           <label className="block text-sm font-medium">Status</label>
-          <select
-            className="w-full border p-2 rounded"
-            value={status}
-            onChange={e => setStatus(e.target.value)}
-          >
-            {statusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+          <select className="w-full border p-2 rounded" value={status} onChange={(e) => setStatus(e.target.value)}>
+            {statusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>
-        {/* Warehouse */}
         <div>
           <label className="block text-sm font-medium">Warehouse</label>
-          <select
-            className="w-full border p-2 rounded"
-            value={warehouse}
-            onChange={e => setWarehouse(e.target.value)}
-          >
+          <select className="w-full border p-2 rounded" value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
             <option value="">-- select warehouse --</option>
-            {warehouseOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+            {warehouseOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>
-        {/* Product Desc */}
         <div>
           <label className="block text-sm font-medium">Product Description</label>
-          <input
-            className="w-full border p-2 rounded"
-            value={productDesc}
-            onChange={e => setProductDesc(e.target.value)}
-          />
+          <input className="w-full border p-2 rounded" value={productDesc} onChange={(e) => setProductDesc(e.target.value)} />
         </div>
-        {/* Priority */}
         <div>
           <label className="block text-sm font-medium">Priority</label>
-          <input
-            className="w-full border p-2 rounded"
-            value={priority}
-            onChange={e => setPriority(e.target.value)}
-          />
+          <input className="w-full border p-2 rounded" value={priority} onChange={(e) => setPriority(e.target.value)} />
         </div>
-        {/* Quantity */}
         <div>
           <label className="block text-sm font-medium">Planned Quantity</label>
-          <input
-            type="number"
-            className="w-full border p-2 rounded"
-            value={quantity}
-            min={1}
-            onChange={e => setQuantity(Number(e.target.value))}
-          />
+          <input type="number" className="w-full border p-2 rounded" value={quantity} min={1} onChange={(e) => setQuantity(Number(e.target.value))} />
         </div>
-        {/* Date */}
         <div>
           <label className="block text-sm font-medium">Production Date</label>
-          <input
-            type="date"
-            className="w-full border p-2 rounded"
-            value={productionDate}
-            onChange={e => setProductionDate(e.target.value)}
-          />
+          <input type="date" className="w-full border p-2 rounded" value={productionDate} onChange={(e) => setProductionDate(e.target.value)} />
         </div>
       </div>
 
@@ -309,10 +328,7 @@ export default function ProductionOrderPage() {
               placeholder="Search and select item..."
             />
           </div>
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-            onClick={handleAddItem}
-          >
+          <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={handleAddItem}>
             Add
           </button>
         </div>
@@ -324,14 +340,14 @@ export default function ProductionOrderPage() {
           <tr>
             <th className="border p-2">Item Code</th>
             <th className="border p-2">Item Name</th>
-            <th className="border p-2">Unit Qty</th>
-            <th className="border p-2">Req. Qty</th>
-            <th className="border p-2">SO Warehouse</th>
+            <th className="border p-2">Qty</th>
+            <th className="border p-2">Required Qty</th>
+            <th className="border p-2">Warehouse</th>
             <th className="border p-2">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {bomItems.map(item => (
+          {bomItems.map((item) => (
             <tr key={item.id}>
               <td className="border p-2">{item.itemCode}</td>
               <td className="border p-2">{item.itemName}</td>
@@ -340,29 +356,20 @@ export default function ProductionOrderPage() {
                   type="number"
                   className="w-full border p-1 rounded text-right"
                   value={item.quantity}
-                  onChange={e => handleQuantityChange(item.id, e.target.value)}
+                  onChange={(e) => handleQuantityChange(item.id, e.target.value)}
                 />
               </td>
               <td className="border p-2 text-right">{item.requiredQty}</td>
               <td className="border p-2">
-                <select
-                  className="w-full border p-1 rounded"
-                  value={item.warehouse}
-                  onChange={e => handleWarehouseChange(item.id, e.target.value)}
-                >
-                  <option value="">-- select warehouse --</option>
-                  {warehouseOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                <select className="w-full border p-1 rounded" value={item.warehouse} onChange={(e) => handleWarehouseChange(item.id, e.target.value)}>
+                  <option value="">-- select --</option>
+                  {warehouseOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
               </td>
               <td className="border p-2 text-center">
-                <button
-                  className="text-red-500 hover:underline"
-                  onClick={() => handleRemoveItem(item.id)}
-                >
+                <button className="text-red-500 hover:underline" onClick={() => handleRemoveItem(item.id)}>
                   Remove
                 </button>
               </td>
@@ -372,14 +379,12 @@ export default function ProductionOrderPage() {
       </table>
 
       <div className="flex justify-end">
-        <button
-          className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-          onClick={handleSaveProductionOrder}
-        >
+        <button className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700" onClick={handleSaveProductionOrder}>
           {id ? "Update Order" : "Create Order"}
         </button>
       </div>
+
+      <ToastContainer position="bottom-right" theme="colored" />
     </div>
   );
 }
-

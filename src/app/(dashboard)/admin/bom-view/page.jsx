@@ -99,7 +99,7 @@ export default function BOMListPage() {
             </h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage multi-level production structures and costs</p>
           </div>
-          <Link href="/admin/bom-new">
+          <Link href="/admin/bom">
             <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">
               <FaPlus size={12} /> Create New BOM
             </button>

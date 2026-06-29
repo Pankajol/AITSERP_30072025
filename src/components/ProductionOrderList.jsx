@@ -2,81 +2,154 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
-import { Pencil, Trash2, Eye, Loader2, Plus, Search } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Eye,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useRouter } from "next/navigation";
 import ActionMenu from "@/components/ActionMenu";
+import {
+  FaIndustry,
+  FaCheck,
+  FaSpinner,
+} from "react-icons/fa";
 
-// --- Global Styles ---
-const IndigoBadge = "font-mono text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block uppercase";
+// ─── Reusable UI ──────────────────────────────────────────────
+const IndigoBadge =
+  "font-mono text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block uppercase";
 
-// --- Modal Component (Safety Wrapped) ---
 const Modal = ({ children, onClose }) => (
-  <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+  <div
+    className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+    onClick={onClose}
+  >
+    <div
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+      onClick={(e) => e.stopPropagation()}
+    >
       {children}
     </div>
   </div>
 );
 
-// --- Create Job Card Modal ---
 const CreateJobCardModal = ({ order, createdOpCounts = {}, onClose, onConfirm }) => {
   const [selectedOperations, setSelectedOperations] = useState([]);
-  
+
   const availableOperations = useMemo(() => {
     return (order?.operationFlow || []).filter((op) => {
-      const opId = typeof op.operation === "object" ? op.operation?._id : op.operation;
+      const opId =
+        typeof op.operation === "object" ? op.operation?._id : op.operation;
       return (createdOpCounts[opId] || 0) < 1;
     });
   }, [order, createdOpCounts]);
 
   const handleSelection = (uniqueKey) => {
-    setSelectedOperations(prev => prev.includes(uniqueKey) ? prev.filter(id => id !== uniqueKey) : [...prev, uniqueKey]);
+    setSelectedOperations((prev) =>
+      prev.includes(uniqueKey)
+        ? prev.filter((id) => id !== uniqueKey)
+        : [...prev, uniqueKey]
+    );
   };
 
   return (
     <Modal onClose={onClose}>
       <div className="p-6">
         <h2 className="text-xl font-black text-gray-900 mb-1">Create Job Cards</h2>
-        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-6">Order: {order?.productionDocNo}</p>
+        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-6">
+          Order: {order?.productionDocNo || order?.orderNumber}
+        </p>
 
         {availableOperations.length > 0 ? (
           <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-100 p-2 rounded-xl bg-gray-50">
             {availableOperations.map((op, idx) => {
-              const opId = typeof op.operation === "object" ? op.operation?._id : op.operation;
-              const opName = op.operation?.name || op.operation?.operationName || `Step ${idx + 1}`;
+              const opId =
+                typeof op.operation === "object"
+                  ? op.operation?._id
+                  : op.operation;
+              const opName =
+                op.operation?.name ||
+                op.operation?.operationName ||
+                `Step ${idx + 1}`;
               const uniqueKey = `${opId}-${idx}`;
               return (
-                <div key={uniqueKey} className="flex items-center gap-3 p-3 rounded-lg bg-white border border-gray-100">
-                  <input type="checkbox" id={uniqueKey} checked={selectedOperations.includes(uniqueKey)} onChange={() => handleSelection(uniqueKey)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
-                  <label htmlFor={uniqueKey} className="text-sm font-bold text-gray-700 cursor-pointer">{opName}</label>
+                <div
+                  key={uniqueKey}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-white border border-gray-100"
+                >
+                  <input
+                    type="checkbox"
+                    id={uniqueKey}
+                    checked={selectedOperations.includes(uniqueKey)}
+                    onChange={() => handleSelection(uniqueKey)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                  />
+                  <label
+                    htmlFor={uniqueKey}
+                    className="text-sm font-bold text-gray-700 cursor-pointer"
+                  >
+                    {opName}
+                  </label>
                 </div>
               );
             })}
           </div>
-        ) : <p className="text-sm text-gray-400 italic py-4">No pending operations.</p>}
+        ) : (
+          <p className="text-sm text-gray-400 italic py-4">
+            No pending operations.
+          </p>
+        )}
 
         <div className="flex justify-end gap-3 mt-8">
-          <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-gray-400">Cancel</button>
-          <button 
-            onClick={() => onConfirm(selectedOperations.map(key => availableOperations[parseInt(key.split('-').pop())]))}
+          <button
+            onClick={onClose}
+            className="px-5 py-2 text-sm font-bold text-gray-400"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() =>
+              onConfirm(
+                selectedOperations.map(
+                  (key) => availableOperations[parseInt(key.split("-").pop())]
+                )
+              )
+            }
             className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold disabled:bg-gray-200"
             disabled={selectedOperations.length === 0}
-          >Create Selected</button>
+          >
+            Create Selected
+          </button>
         </div>
       </div>
     </Modal>
   );
 };
 
-// --- Quantity Modal ---
 const QuantityModal = ({ order, type, onClose, onConfirm }) => {
   const [quantity, setQuantity] = useState(0);
   const info = useMemo(() => {
-    if (type === "stockTransfer") return { t: "Stock Transfer", m: (order?.quantity || 0) - (order?.transferqty || 0) };
-    if (type === "issueProduction") return { t: "Issue Materials", m: (order?.transferqty || 0) - (order?.issuforproductionqty || 0) };
-    if (type === "receiptProduction") return { t: "Receipt Finished Goods", m: (order?.issuforproductionqty || 0) - (order?.reciptforproductionqty || 0) };
+    if (type === "stockTransfer")
+      return {
+        t: "Stock Transfer",
+        m: (order?.quantity || 0) - (order?.transferqty || 0),
+      };
+    if (type === "issueProduction")
+      return {
+        t: "Issue Materials",
+        m: (order?.transferqty || 0) - (order?.issuforproductionqty || 0),
+      };
+    if (type === "receiptProduction")
+      return {
+        t: "Receipt Finished Goods",
+        m:
+          (order?.issuforproductionqty || 0) -
+          (order?.reciptforproductionqty || 0),
+      };
     return { t: "Confirm Qty", m: 0 };
   }, [order, type]);
 
@@ -88,12 +161,31 @@ const QuantityModal = ({ order, type, onClose, onConfirm }) => {
         <h2 className="text-xl font-black text-gray-900 mb-6">{info.t}</h2>
         <div className="space-y-4">
           <label className="block">
-            <span className="block text-[10px] font-bold uppercase text-gray-400 mb-2">Quantity (Max: {info.m})</span>
-            <input type="number" max={info.m} min={1} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold" />
+            <span className="block text-[10px] font-bold uppercase text-gray-400 mb-2">
+              Quantity (Max: {info.m})
+            </span>
+            <input
+              type="number"
+              max={info.m}
+              min={1}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold"
+            />
           </label>
           <div className="flex justify-end gap-3 mt-8">
-            <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-gray-400">Cancel</button>
-            <button onClick={() => onConfirm(quantity)} className="px-8 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Confirm</button>
+            <button
+              onClick={onClose}
+              className="px-5 py-2 text-sm font-bold text-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onConfirm(quantity)}
+              className="px-8 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold"
+            >
+              Confirm
+            </button>
           </div>
         </div>
       </div>
@@ -101,45 +193,72 @@ const QuantityModal = ({ order, type, onClose, onConfirm }) => {
   );
 };
 
-// --- Main Component ---
+// ─── Main Component ─────────────────────────────────────────────
 export default function ProductionOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [jobCardDetails, setJobCardDetails] = useState({});
-  const [modalState, setModalState] = useState({ isOpen: false, type: null, order: null });
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    type: null,
+    order: null,
+  });
   const router = useRouter();
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("/api/production-orders", { headers: { Authorization: `Bearer ${token}` } });
-      setOrders(Array.isArray(res.data) ? res.data : (res.data?.data || []));
-    } catch (err) { toast.error("Fetch failed"); }
-    finally { setLoading(false); }
+      const res = await axios.get("/api/production-orders", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setOrders(Array.isArray(res.data) ? res.data : res.data?.orders || []);
+    } catch (err) {
+      toast.error("Failed to fetch orders");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const fetchJobCardStats = useCallback(async (orderId, flowLength) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`/api/ppc/jobcards?productionOrderId=${orderId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(
+        `/api/ppc/jobcards?productionOrderId=${orderId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       const cards = res.data?.data || [];
       const counts = cards.reduce((acc, jc) => {
         const opId = jc.operation?._id || jc.operation;
         if (opId) acc[opId] = (acc[opId] || 0) + 1;
         return acc;
       }, {});
-      setJobCardDetails(prev => ({ ...prev, [orderId]: { status: 'loaded', count: cards.length, total: flowLength || 0, opCounts: counts } }));
-    } catch (e) { console.error(e); }
+      setJobCardDetails((prev) => ({
+        ...prev,
+        [orderId]: {
+          status: "loaded",
+          count: cards.length,
+          total: flowLength || 0,
+          opCounts: counts,
+        },
+      }));
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
-  
   useEffect(() => {
-    orders.forEach(o => {
-      if (!jobCardDetails[o._id]) fetchJobCardStats(o._id, o.operationFlow?.length);
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // Fetch job card stats only for orders that don't have them yet
+  useEffect(() => {
+    orders.forEach((o) => {
+      if (!jobCardDetails[o._id]) {
+        fetchJobCardStats(o._id, o.operationFlow?.length);
+      }
     });
-  }, [orders, fetchJobCardStats, jobCardDetails]);
+  }, [orders, jobCardDetails, fetchJobCardStats]);
 
   const handleCreateJobCards = async (ops) => {
     const { order } = modalState;
@@ -147,148 +266,412 @@ export default function ProductionOrdersPage() {
       const token = localStorage.getItem("token");
       const payload = {
         productionOrderId: order._id,
-        operations: ops.map(op => ({
+        operations: ops.map((op) => ({
           operationId: op.operation?._id || op.operation,
           machineId: op.machine?._id || op.machine,
           operatorId: op.operator?._id || op.operator,
           qtyToManufacture: order.quantity,
           expectedStartDate: op.expectedStartDate,
-          expectedEndDate: op.expectedEndDate
-        }))
+          expectedEndDate: op.expectedEndDate,
+        })),
       };
-      await axios.post("/api/ppc/jobcards", payload, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post("/api/ppc/jobcards", payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success("Job cards created");
       fetchJobCardStats(order._id, order.operationFlow?.length);
       setModalState({ isOpen: false, type: null, order: null });
-    } catch (err) { toast.error("Creation failed"); }
+    } catch (err) {
+      toast.error("Creation failed");
+    }
   };
 
   const handleAction = (type, order) => {
-    if (type === "viewJobCards") router.push(`/admin/ppc/jobcards/jobcardlists?productionOrderId=${order._id}`);
+    if (type === "viewJobCards")
+      router.push(
+        `/admin/ppc/jobcards/jobcardlists?productionOrderId=${order._id}`
+      );
     else setModalState({ isOpen: true, type, order });
   };
 
-  const stats = useMemo(() => ({
-    planned: orders.filter(o => (o.transferqty || 0) === 0).length,
-    active: orders.filter(o => (o.transferqty || 0) > 0 && (o.reciptforproductionqty || 0) < o.quantity).length,
-    done: orders.filter(o => (o.reciptforproductionqty || 0) >= o.quantity).length,
-  }), [orders]);
+  const stats = useMemo(
+    () => ({
+      planned: orders.filter((o) => (o.transferqty || 0) === 0).length,
+      active: orders.filter(
+        (o) =>
+          (o.transferqty || 0) > 0 &&
+          (o.reciptforproductionqty || 0) < o.quantity
+      ).length,
+      done: orders.filter(
+        (o) => (o.reciptforproductionqty || 0) >= o.quantity
+      ).length,
+    }),
+    [orders]
+  );
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400 italic font-medium"><Loader2 className="animate-spin mr-2" /> Syncing Production Floor...</div>;
+  // ─── Mobile card for each order ─────────────────────────
+  const OrderCard = ({ order, details }) => {
+    const det = details || {};
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm space-y-3">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className={IndigoBadge}>
+              {order.productionDocNo || order.orderNumber || "Draft"}
+            </p>
+            <p className="text-sm font-semibold text-gray-800 mt-1 max-w-[200px] truncate">
+              {typeof order.productDesc === "string"
+                ? order.productDesc
+                : "BOM Product"}
+            </p>
+          </div>
+          <ActionMenu
+            actions={[
+              {
+                icon: <Eye size={14} />,
+                label: "View",
+                onClick: () =>
+                  router.push(`/admin/ProductionOrder/view?id=${order._id}`),
+              },
+              {
+                icon: <Pencil size={14} />,
+                label: "Edit",
+                onClick: () =>
+                  router.push(`/admin/ProductionOrder?id=${order._id}`),
+              },
+              {
+                icon: <Plus size={14} />,
+                label: "Job Card",
+                onClick: () => handleAction("createJobCard", order),
+                disabled: det.count >= det.total,
+              },
+              {
+                icon: <Trash2 size={14} />,
+                label: "Delete",
+                onClick: async () => {
+                  if (confirm("Delete this order?")) {
+                    const token = localStorage.getItem("token");
+                    await axios.delete(
+                      `/api/production-orders/${order._id}`,
+                      { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    fetchOrders();
+                  }
+                },
+              },
+            ]}
+          />
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-500">
+            Qty:{" "}
+            <span className="font-bold text-gray-900">{order.quantity}</span>
+          </span>
+          <span className="text-amber-500">
+            Trans:{" "}
+            <span className="font-bold">{order.transferqty || 0}</span>
+          </span>
+          <span className="text-emerald-500">
+            Rec:{" "}
+            <span className="font-bold">
+              {order.reciptforproductionqty || 0}
+            </span>
+          </span>
+          <span className="text-blue-500">
+            JC:{" "}
+            <span className="font-bold">
+              {det.count || 0}/{det.total || 0}
+            </span>
+          </span>
+        </div>
+        <div className="flex gap-2 pt-1 border-t border-gray-50">
+          <button
+            onClick={() =>
+              router.push(`/admin/ProductionOrder/view?id=${order._id}`)
+            }
+            className="flex-1 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 rounded-lg"
+          >
+            View
+          </button>
+          <button
+            onClick={() =>
+              router.push(`/admin/ProductionOrder?id=${order._id}`)
+            }
+            className="flex-1 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-lg"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-400 italic font-medium">
+        <Loader2 className="animate-spin mr-2" /> Syncing Production Floor...
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
       <div className="max-w-7xl mx-auto">
         <ToastContainer theme="colored" />
-        
+
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-gray-900">Manufacturing Orders</h1>
-            <p className="text-sm text-gray-400">Manage shop floor execution and material flow</p>
+            <h1 className="text-2xl font-black tracking-tight text-gray-900">
+              Manufacturing Orders
+            </h1>
+            <p className="text-sm text-gray-400">
+              Manage shop floor execution and material flow
+            </p>
           </div>
-          <button onClick={() => router.push('/admin/ProductionOrder')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100"><Plus size={16} /> New Order</button>
+          <button
+            onClick={() => router.push("/admin/ProductionOrder")}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+          >
+            <Plus size={16} /> New Order
+          </button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <StatCard label="Planned" val={stats.planned} icon={<FaIndustry className="text-indigo-500" />} />
-          <StatCard label="In Progress" val={stats.active} icon={<FaBoxes className="text-amber-500" />} />
-          <StatCard label="Completed" val={stats.done} icon={<FaClipboardCheck className="text-emerald-500" />} />
+          <StatCard
+            label="Planned"
+            val={stats.planned}
+            icon={<FaIndustry className="text-indigo-500" />}
+          />
+          <StatCard
+            label="In Progress"
+            val={stats.active}
+            icon={<FaSpinner className="text-amber-500" />}
+          />
+          <StatCard
+            label="Completed"
+            val={stats.done}
+            icon={<FaCheck className="text-emerald-500" />}
+          />
         </div>
 
-        {/* Table Container */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Desktop Table (hidden on mobile) */}
+        <div className="hidden md:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase text-gray-400">Order ID</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase text-gray-400">Product</th>
-                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase text-gray-400">Planned / Trans / Rec</th>
-                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase text-gray-400">Job Cards</th>
-                  <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-gray-400">Actions</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase text-gray-400">
+                    Order ID
+                  </th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black uppercase text-gray-400">
+                    Product
+                  </th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase text-gray-400">
+                    Qty / Trans / Rec
+                  </th>
+                  <th className="px-6 py-4 text-center text-[10px] font-black uppercase text-gray-400">
+                    Job Cards
+                  </th>
+                  <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-gray-400">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {orders.map((o) => {
-                  const det = jobCardDetails[o._id] || {};
-                  return (
-                    <tr key={o._id} className="hover:bg-indigo-50/20 transition-colors">
-                      <td className="px-6 py-4"><span className={IndigoBadge}>{o.productionDocNo || "Draft"}</span></td>
-                      <td className="px-6 py-4 font-bold text-gray-900 truncate max-w-[200px]">{typeof o.productDesc === 'string' ? o.productDesc : "BOM Product"}</td>
-                      <td className="px-6 py-4 text-center font-mono font-bold">
-                        <span className="text-gray-900">{o.quantity}</span>
-                        <span className="mx-2 text-gray-200">/</span>
-                        <span className="text-amber-500">{o.transferqty || 0}</span>
-                        <span className="mx-2 text-gray-200">/</span>
-                        <span className="text-emerald-500">{o.reciptforproductionqty || 0}</span>
-                      </td>
+                {orders.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-gray-400 italic">
+                      No production orders found.
+                    </td>
+                  </tr>
+                ) : (
+                  orders.map((o) => {
+                    const det = jobCardDetails[o._id] || {};
+                    return (
+                      <tr
+                        key={o._id}
+                        className="hover:bg-indigo-50/20 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <span className={IndigoBadge}>
+                            {o.productionDocNo ||
+                              o.orderNumber ||
+                              "Draft"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-gray-900 truncate max-w-[200px]">
+                          {typeof o.productDesc === "string"
+                            ? o.productDesc
+                            : "BOM Product"}
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono font-bold">
+                          <span className="text-gray-900">
+                            {o.quantity}
+                          </span>
+                          <span className="mx-2 text-gray-200">/</span>
+                          <span className="text-amber-500">
+                            {o.transferqty || 0}
+                          </span>
+                          <span className="mx-2 text-gray-200">/</span>
+                          <span className="text-emerald-500">
+                            {o.reciptforproductionqty || 0}
+                          </span>
+                        </td>
                       <td className="px-6 py-4 text-center">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${det.count >= det.total ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                          {det.count || 0} / {det.total || 0}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end items-center gap-2">
-                          <ProductionActions order={o} details={det} onAction={(t) => handleAction(t, o)} onDelete={fetchOrders} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+  <button
+    onClick={() =>
+      router.push(
+        `/admin/ppc/jobcards/jobcardlists?productionOrderId=${o._id}`
+      )
+    }
+    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+      det.count >= det.total
+        ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+        : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+    } transition-colors`}
+  >
+    {det.count || 0} / {det.total || 0}
+  </button>
+</td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-end items-center gap-2">
+                            <ProductionActions
+                              order={o}
+                              details={det}
+                              onAction={(t) => handleAction(t, o)}
+                              onDelete={fetchOrders}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
+
+        {/* Mobile Cards (visible only on small screens) */}
+        <div className="md:hidden space-y-3">
+          {orders.length === 0 && (
+            <p className="text-center text-gray-400 italic py-10">
+              No production orders found.
+            </p>
+          )}
+          {orders.map((o) => (
+            <OrderCard
+              key={o._id}
+              order={o}
+              details={jobCardDetails[o._id]}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Modals */}
-      {modalState.isOpen && modalState.type === 'createJobCard' && (
-        <CreateJobCardModal order={modalState.order} createdOpCounts={jobCardDetails[modalState.order?._id]?.opCounts} onClose={() => setModalState({ isOpen: false })} onConfirm={handleCreateJobCards} />
+      {modalState.isOpen && modalState.type === "createJobCard" && (
+        <CreateJobCardModal
+          order={modalState.order}
+          createdOpCounts={
+            jobCardDetails[modalState.order?._id]?.opCounts
+          }
+          onClose={() =>
+            setModalState({ isOpen: false, type: null, order: null })
+          }
+          onConfirm={handleCreateJobCards}
+        />
       )}
-      {modalState.isOpen && ['stockTransfer', 'issueProduction', 'receiptProduction'].includes(modalState.type) && (
-        <QuantityModal order={modalState.order} type={modalState.type} onClose={() => setModalState({ isOpen: false })} onConfirm={(qty) => {
-          const paths = { stockTransfer: 'stock-transfer', issueProduction: 'issue-production', receiptProduction: 'receipt-production' };
-          router.push(`/admin/${paths[modalState.type]}/${modalState.order?._id}?qty=${qty}`);
-        }} />
-      )}
+      {modalState.isOpen &&
+        ["stockTransfer", "issueProduction", "receiptProduction"].includes(
+          modalState.type
+        ) && (
+          <QuantityModal
+            order={modalState.order}
+            type={modalState.type}
+            onClose={() =>
+              setModalState({ isOpen: false, type: null, order: null })
+            }
+            onConfirm={(qty) => {
+              const paths = {
+                stockTransfer: "stock-transfer",
+                issueProduction: "issue-production",
+                receiptProduction: "receipt-production",
+              };
+              router.push(
+                `/admin/${paths[modalState.type]}/${modalState.order?._id}?qty=${qty}`
+              );
+            }}
+          />
+        )}
     </div>
   );
 }
 
-// --- Sub-Components for Styling ---
+// ─── Sub‑components ───────────────────────────────────────────
 const StatCard = ({ label, val, icon }) => (
   <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center">{icon}</div>
-    <div><p className="text-[10px] font-black uppercase text-gray-400">{label}</p><p className="text-xl font-bold text-gray-900">{val}</p></div>
+    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center">
+      {icon}
+    </div>
+    <div>
+      <p className="text-[10px] font-black uppercase text-gray-400">
+        {label}
+      </p>
+      <p className="text-xl font-bold text-gray-900">{val}</p>
+    </div>
   </div>
 );
 
 function ProductionActions({ order, details, onAction, onDelete }) {
   const router = useRouter();
   const acts = [
-    { icon: <Eye size={14} />, label: "View Details", onClick: () => router.push(`/admin/ProductionOrder/view?id=${order._id}`) },
-    { icon: <Pencil size={14} />, label: "Edit Order", onClick: () => router.push(`/admin/ProductionOrder?id=${order._id}`) },
-    { icon: <Plus size={14} />, label: "Create Job Card", onClick: () => onAction("createJobCard"), disabled: details.count >= details.total },
-    { icon: <Plus size={14} />, label: "Stock Transfer", onClick: () => onAction("stockTransfer"), disabled: order.quantity <= (order.transferqty || 0) },
-    { icon: <Plus size={14} />, label: "Issue Materials", onClick: () => onAction("issueProduction") },
-    { icon: <Trash2 size={14} />, label: "Delete Order", color: "text-red-600", onClick: async () => {
-      if(confirm("Delete?")) {
-        const token = localStorage.getItem("token");
-        await axios.delete(`/api/production-orders/${order._id}`, { headers: { Authorization: `Bearer ${token}` } });
-        onDelete();
-      }
-    }},
+    {
+      icon: <Eye size={14} />,
+      label: "View Details",
+      onClick: () =>
+        router.push(`/admin/ProductionOrder/view?id=${order._id}`),
+    },
+    {
+      icon: <Pencil size={14} />,
+      label: "Edit Order",
+      onClick: () => router.push(`/admin/ProductionOrder?id=${order._id}`),
+    },
+    {
+      icon: <Plus size={14} />,
+      label: "Create Job Card",
+      onClick: () => onAction("createJobCard"),
+      disabled: details.count >= details.total,
+    },
+    {
+      icon: <Plus size={14} />,
+      label: "Stock Transfer",
+      onClick: () => onAction("stockTransfer"),
+      disabled: order.quantity <= (order.transferqty || 0),
+    },
+    {
+      icon: <Plus size={14} />,
+      label: "Issue Materials",
+      onClick: () => onAction("issueProduction"),
+    },
+    {
+      icon: <Trash2 size={14} />,
+      label: "Delete Order",
+      color: "text-red-600",
+      onClick: async () => {
+        if (confirm("Delete this order?")) {
+          const token = localStorage.getItem("token");
+          await axios.delete(`/api/production-orders/${order._id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          onDelete();
+        }
+      },
+    },
   ];
   return <ActionMenu actions={acts} />;
 }
-
-// --- Icon Helpers ---
-const FaIndustry = (props) => <svg {...props} width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 10l-2 1V4l-2 1V4L4 7v13h16V10l-6 0z" /></svg>;
-const FaBoxes = (props) => <svg {...props} width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 8l-9-4-9 4v8l9 4 9-4V8z" /><path d="M12 12l9-4" /><path d="M12 12v8" /><path d="M12 12L3 8" /></svg>;
-const FaClipboardCheck = (props) => <svg {...props} width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>;
-
 // "use client";
 
 // import React, { useState, useEffect, useCallback } from "react";

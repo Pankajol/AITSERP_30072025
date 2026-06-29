@@ -1,922 +1,376 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Edit, Trash2 } from "lucide-react";
-import Select from "react-select";
 import axios from "axios";
 import { toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaUsers } from "react-icons/fa";
 
-const OperatorPage = () => {
+export default function OperatorPage() {
   const [operators, setOperators] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentOperator, setCurrentOperator] = useState(null);
+  const [editOperator, setEditOperator] = useState(null);
+
+  // Filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [modalError, setModalError] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // ✅ Generate Operator Code Automatically
-  const generateOperatorCode = (count) => {
-    const nextNum = count + 1;
-    return `OPR${String(nextNum).padStart(3, "0")}`; // OPR001, OPR002...
-  };
+  // Form state – all fields the model expects
+  const [formName, setFormName] = useState("");
+  const [formOperatorCode, setFormOperatorCode] = useState("");
+  const [formSkill, setFormSkill] = useState("other");
+  const [formCostPerHour, setFormCostPerHour] = useState("");
+  const [formCostPerDay, setFormCostPerDay] = useState("");
+  const [formEfficiency, setFormEfficiency] = useState(100);
+  const [formStatus, setFormStatus] = useState("active");
+  const [saving, setSaving] = useState(false);
 
-  // ✅ Fetch Operators
+  // ─── Fetch Operators ──────────────────────────────────────────────────
   const fetchOperators = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+    setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      if (!token) throw new Error("Authentication token missing.");
+      if (!token) return;
+      const headers = { headers: { Authorization: `Bearer ${token}` } };
+      const params = new URLSearchParams();
+      if (searchQuery) params.append("search", searchQuery);
+      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
 
-      const res = await fetch(`/api/ppc/operators?searchQuery=${searchQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch operators");
-
-      const data = await res.json();
-      setOperators(data.data || []);
+      const res = await axios.get(`/api/ppc/operators?${params.toString()}`, headers);
+      setOperators(res.data?.data || []);
     } catch (err) {
-      setError(err.message);
+      console.error("Fetch operators error:", err);
+      toast.error("Failed to fetch operators");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [searchQuery]);
-
-  // ✅ Fetch Employees
-  const fetchEmployees = async () => {
-    setLoadingEmployees(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get("/api/company/users", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rawUsers = Array.isArray(res.data.data)
-        ? res.data.data
-        : res.data;
-
-      const employeeOptions = rawUsers
-        .filter((u) => u.roles?.includes("Employee"))
-        .map((emp) => ({
-          value: emp._id,
-          label: emp.name || `${emp.firstName} ${emp.lastName}`,
-          code: emp.code || emp.employeeCode || "",
-        }));
-
-      setEmployees(employeeOptions);
-    } catch (err) {
-      console.error("Error fetching employees:", err);
-      toast.error("Failed to load employees.");
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
+  }, [searchQuery, statusFilter]);
 
   useEffect(() => {
     fetchOperators();
-    fetchEmployees();
   }, [fetchOperators]);
 
-  // ✅ Search
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchOperators();
-  };
-
-  // ✅ Open Modal
+  // ─── Modal ──────────────────────────────────────────────────────────────
   const openModal = (operator = null) => {
-    setCurrentOperator(
-      operator
-        ? { ...operator }
-        : { employeeId: "", operatorCode: "", name: "", cost: "" }
-    );
-    setModalError(null);
+    setEditOperator(operator);
+    if (operator) {
+      setFormName(operator.name || "");
+      setFormOperatorCode(operator.operatorCode || "");
+      setFormSkill(operator.skill || "other");
+      setFormCostPerHour(operator.costPerHour || "");
+      setFormCostPerDay(operator.costPerDay || "");
+      setFormEfficiency(operator.efficiency || 100);
+      setFormStatus(operator.status || "active");
+    } else {
+      setFormName("");
+      setFormOperatorCode("");
+      setFormSkill("other");
+      setFormCostPerHour("");
+      setFormCostPerDay("");
+      setFormEfficiency(100);
+      setFormStatus("active");
+    }
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setCurrentOperator(null);
-    setModalError(null);
+    setEditOperator(null);
   };
 
-  // ✅ Input Handlers
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setCurrentOperator((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleEmployeeSelect = (selectedOption) => {
-    if (!selectedOption) {
-      setCurrentOperator((prev) => ({
-        ...prev,
-        employeeId: "",
-        name: "",
-      }));
+  // ─── Submit ──────────────────────────────────────────────────────────────
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formName.trim() || !formOperatorCode.trim()) {
+      toast.error("Name and operator code are required");
       return;
     }
-    setCurrentOperator((prev) => ({
-      ...prev,
-      employeeId: selectedOption.value,
-      name: selectedOption.label,
-    }));
-  };
 
-  // ✅ Save (POST or PUT)
-  const handleSave = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return setModalError("Authentication token not found.");
-
-    setIsSaving(true);
-    setModalError(null);
-
+    setSaving(true);
     try {
-      let payload = { ...currentOperator };
+      const token = localStorage.getItem("token");
+      const headers = { headers: { Authorization: `Bearer ${token}` } };
+      const payload = {
+        name: formName.trim(),
+        operatorCode: formOperatorCode.trim(),
+        skill: formSkill,
+        costPerHour: parseFloat(formCostPerHour) || 0,
+        costPerDay: parseFloat(formCostPerDay) || 0,
+        efficiency: parseFloat(formEfficiency) || 100,
+        status: formStatus,
+      };
 
-      // Generate unique operatorCode if missing
-      if (!payload.operatorCode) {
-        payload.operatorCode = generateOperatorCode(operators.length);
+      if (editOperator) {
+        const res = await axios.put(`/api/ppc/operators?id=${editOperator._id}`, payload, headers);
+        setOperators(operators.map((o) => (o._id === editOperator._id ? res.data.data : o)));
+        toast.success("Operator updated!");
+      } else {
+        const res = await axios.post("/api/ppc/operators", payload, headers);
+        setOperators([res.data.data, ...operators]);
+        toast.success("Operator created!");
       }
-
-      const method = payload._id ? "PUT" : "POST";
-      const url = payload._id
-        ? `/api/ppc/operators/${payload._id}`
-        : "/api/ppc/operators";
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || "Failed to save operator");
-      }
-
-      await fetchOperators();
       closeModal();
-      toast.success("✅ Operator saved successfully!");
     } catch (err) {
-      setModalError(err.message);
+      console.error("Save error:", err);
+      toast.error(err.response?.data?.message || "Failed to save");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  // ✅ Delete
+  // ─── Delete ──────────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
-    const token = localStorage.getItem("token");
-    if (!token) return setError("Authentication token missing.");
-
-    if (window.confirm("Are you sure you want to delete this operator?")) {
-      try {
-        const res = await fetch(`/api/ppc/operators/${id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Failed to delete operator");
-        await fetchOperators();
-        toast.success("🗑️ Operator deleted successfully!");
-      } catch (err) {
-        setError(err.message);
-      }
+    if (!confirm("Are you sure?")) return;
+    try {
+      const token = localStorage.getItem("token");
+      const headers = { headers: { Authorization: `Bearer ${token}` } };
+      await axios.delete(`/api/ppc/operators?id=${id}`, headers);
+      setOperators(operators.filter((o) => o._id !== id));
+      toast.success("Operator deleted!");
+    } catch (err) {
+      console.error("Delete error:", err);
+      toast.error("Failed to delete");
     }
   };
 
-  return (
-    <div className="p-8 font-sans bg-gray-50 min-h-screen">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">
-        Operator Management
-      </h1>
+  // ─── UI Helpers ──────────────────────────────────────────────────────────
+  const Lbl = ({ text, req }) => (
+    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+      {text}
+      {req && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
 
-      {/* Search + Add */}
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6 flex justify-between items-center">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name or code..."
-            className="border p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-          >
-            Search
-          </button>
-        </form>
+  const inputClass =
+    "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
 
-        <button
-          onClick={() => openModal()}
-          className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center gap-2"
-        >
-          <Plus size={18} /> Add Operator
+  const StatusBadge = ({ status }) => {
+    const colors = {
+      active: "bg-emerald-100 text-emerald-700",
+      inactive: "bg-gray-100 text-gray-600",
+      "on-leave": "bg-amber-100 text-amber-700",
+    };
+    return (
+      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${colors[status] || colors.active}`}>
+        {status}
+      </span>
+    );
+  };
+
+  // ─── Mobile Card ─────────────────────────────────────────────────────────
+  const OperatorCard = ({ op }) => (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm space-y-2">
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-bold text-indigo-600">{op.operatorCode}</p>
+          <p className="text-sm font-semibold text-gray-800">{op.name}</p>
+        </div>
+        <StatusBadge status={op.status} />
+      </div>
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>Skill: {op.skill}</span>
+        <span className="font-bold text-gray-700">₹{op.costPerHour || 0}/hr</span>
+      </div>
+      <div className="flex gap-2 justify-end pt-1">
+        <button onClick={() => openModal(op)} className="p-1.5 text-gray-300 hover:text-indigo-600" aria-label="Edit">
+          <FaEdit size={14} />
+        </button>
+        <button onClick={() => handleDelete(op._id)} className="p-1.5 text-gray-300 hover:text-red-500" aria-label="Delete">
+          <FaTrash size={14} />
         </button>
       </div>
+    </div>
+  );
 
-      {/* Table */}
-      {isLoading ? (
-        <p className="text-center">Loading...</p>
-      ) : error ? (
-        <div className="text-red-600 text-center">{error}</div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-4">Operator Code</th>
-                <th className="p-4">Name</th>
-                <th className="p-4">Cost/Hour</th>
-                <th className="p-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {operators.map((op) => (
-                <tr key={op._id} className="border-b hover:bg-gray-50">
-                  <td className="p-4">{op.operatorCode}</td>
-                  <td className="p-4">{op.name}</td>
-                  <td className="p-4">{`$${op.cost}`}</td>
-                  <td className="p-4 flex gap-3">
-                    <button
-                      onClick={() => openModal(op)}
-                      className="text-blue-500 hover:text-blue-700"
-                    >
-                      <Edit size={18} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(op._id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 flex items-center gap-3">
+              <FaUsers className="text-indigo-600" /> Operator Management
+            </h1>
+            <p className="text-sm text-gray-400 mt-0.5">Manage machine operators and their costs</p>
+          </div>
+          <button
+            onClick={() => openModal()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+          >
+            <FaPlus size={12} /> Add Operator
+          </button>
         </div>
-      )}
+
+        {/* Filters */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Lbl text="Search" />
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  className={`${inputClass} pl-9`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name or code..."
+                />
+              </div>
+            </div>
+            <div>
+              <Lbl text="Status" />
+              <select className={inputClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="on-leave">On Leave</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Code</th>
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Name</th>
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Skill</th>
+                  <th className="px-6 py-4 text-right text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Cost/Hour</th>
+                  <th className="px-6 py-4 text-center text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Status</th>
+                  <th className="px-6 py-4 text-right text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-10 text-center text-gray-400 italic">Loading...</td>
+                  </tr>
+                ) : operators.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-10 text-center text-gray-400 italic">No operators found.</td>
+                  </tr>
+                ) : (
+                  operators.map((op) => (
+                    <tr key={op._id} className="hover:bg-indigo-50/20 transition-colors">
+                      <td className="px-6 py-4 font-bold text-indigo-600">{op.operatorCode}</td>
+                      <td className="px-6 py-4 font-bold text-gray-800">{op.name}</td>
+                      <td className="px-6 py-4 text-gray-500 uppercase text-[11px]">{op.skill}</td>
+                      <td className="px-6 py-4 text-right font-bold text-gray-700">₹{op.costPerHour || 0}/hr</td>
+                      <td className="px-6 py-4 text-center"><StatusBadge status={op.status} /></td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openModal(op)} className="p-1.5 text-gray-300 hover:text-indigo-600 transition-colors">
+                            <FaEdit size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(op._id)} className="p-1.5 text-gray-300 hover:text-red-500 transition-colors">
+                            <FaTrash size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            <p className="text-center text-gray-400 py-10">Loading...</p>
+          ) : operators.length === 0 ? (
+            <p className="text-center text-gray-400 py-10">No operators found.</p>
+          ) : (
+            operators.map((op) => <OperatorCard key={op._id} op={op} />)
+          )}
+        </div>
+      </div>
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">
-              {currentOperator?._id ? "Edit Operator" : "Add Operator"}
-            </h2>
-
-            {modalError && (
-              <div className="bg-red-100 text-red-700 p-2 rounded mb-3">
-                {modalError}
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-indigo-50/50">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm">
+                <FaUsers size={20} />
               </div>
-            )}
+              <h2 className="text-lg font-black text-gray-900 tracking-tight">
+                {editOperator ? "Edit Operator" : "Add Operator"}
+              </h2>
+            </div>
 
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
               <div>
-                <label className="block mb-1 text-sm font-medium">
-                  Select Employee
-                </label>
-                <Select
-                  options={employees}
-                  value={
-                    employees.find(
-                      (emp) => emp.value === currentOperator?.employeeId
-                    ) || null
-                  }
-                  onChange={handleEmployeeSelect}
-                  isClearable
-                  isLoading={loadingEmployees}
-                  placeholder="Search employee..."
+                <Lbl text="Operator Code" req />
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={formOperatorCode}
+                  onChange={(e) => setFormOperatorCode(e.target.value)}
+                  placeholder="Enter operator code"
+                  required
                 />
               </div>
-
-              <input
-                name="operatorCode"
-                type="text"
-                placeholder="Operator Code"
-                value={currentOperator?.operatorCode || ""}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md"
-              />
-
-              <input
-                name="name"
-                type="text"
-                placeholder="Name"
-                value={currentOperator?.name || ""}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md"
-              />
-
-              <input
-                name="cost"
-                type="number"
-                placeholder="Cost per Hour"
-                value={currentOperator?.cost || ""}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md"
-              />
-            </div>
-
-            <div className="mt-6 flex justify-end gap-4">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-                disabled={isSaving}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
-                disabled={isSaving}
-              >
-                {isSaving ? "Saving..." : "Save"}
-              </button>
-            </div>
+              <div>
+                <Lbl text="Name" req />
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Lbl text="Skill" />
+                  <select className={inputClass} value={formSkill} onChange={(e) => setFormSkill(e.target.value)}>
+                    <option value="machine">Machine Operator</option>
+                    <option value="assembly">Assembly</option>
+                    <option value="welding">Welding</option>
+                    <option value="fabrication">Fabrication</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <Lbl text="Status" />
+                  <select className={inputClass} value={formStatus} onChange={(e) => setFormStatus(e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on-leave">On Leave</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Lbl text="Cost Per Hour (₹)" />
+                  <input type="number" step="0.01" className={inputClass} value={formCostPerHour} onChange={(e) => setFormCostPerHour(e.target.value)} placeholder="0" />
+                </div>
+                <div>
+                  <Lbl text="Cost Per Day (₹)" />
+                  <input type="number" step="0.01" className={inputClass} value={formCostPerDay} onChange={(e) => setFormCostPerDay(e.target.value)} placeholder="0" />
+                </div>
+              </div>
+              <div>
+                <Lbl text="Efficiency (%)" />
+                <input type="number" className={inputClass} value={formEfficiency} onChange={(e) => setFormEfficiency(e.target.value)} min="0" max="100" />
+              </div>
+              <div className="flex justify-end items-center gap-3 pt-3 border-t border-gray-50">
+                <button type="button" onClick={closeModal} className="text-sm font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest">
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50">
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
   );
-};
-
-export default OperatorPage;
-
-
-
-// "use client";
-// import React, { useState, useEffect, useCallback } from "react";
-// import { Plus, Edit, Trash2 } from "lucide-react";
-// import Select from "react-select";
-// import axios from "axios";
-// import { toast } from "react-toastify";
-
-// const OperatorPage = () => {
-//   const [operators, setOperators] = useState([]);
-//   const [employees, setEmployees] = useState([]);
-//   const [loadingEmployees, setLoadingEmployees] = useState(true);
-
-//   const [isLoading, setIsLoading] = useState(true);
-//   const [error, setError] = useState(null);
-
-//   const [isModalOpen, setIsModalOpen] = useState(false);
-//   const [currentOperator, setCurrentOperator] = useState(null);
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [isSaving, setIsSaving] = useState(false);
-//   const [modalError, setModalError] = useState(null);
-
-//   // ✅ Fetch Operators
-//   const fetchOperators = useCallback(async () => {
-//     setIsLoading(true);
-//     setError(null);
-//     try {
-//       const token = localStorage.getItem("token");
-//       if (!token) throw new Error("Authentication token missing.");
-
-//       const res = await fetch(`/api/ppc/operators?searchQuery=${searchQuery}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       if (!res.ok) throw new Error("Failed to fetch operators");
-
-//       const data = await res.json();
-//       setOperators(data.data || []);
-//     } catch (err) {
-//       setError(err.message);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   }, [searchQuery]);
-
-//   // ✅ Fetch Employees (for dropdown)
-//   const fetchEmployees = async () => {
-//     setLoadingEmployees(true);
-//     try {
-//       const token = localStorage.getItem("token");
-//       if (!token) throw new Error("Authentication token missing.");
-
-//       const res = await axios.get("/api/company/users", {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-
-//       const rawUsers = Array.isArray(res.data.data)
-//         ? res.data.data
-//         : res.data;
-
-//       const employeeOptions = rawUsers
-//         .filter((u) => u.roles?.includes("Employee"))
-//         .map((emp) => ({
-//           value: emp._id,
-//           label: emp.name || `${emp.firstName} ${emp.lastName}` || "Unnamed",
-//           code: emp.code || emp.employeeCode || "", // optional field mapping
-//         }));
-
-//       setEmployees(employeeOptions);
-//     } catch (err) {
-//       console.error("Error fetching employees:", err);
-//       toast.error("Failed to load employees.");
-//     } finally {
-//       setLoadingEmployees(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     fetchOperators();
-//     fetchEmployees();
-//   }, [fetchOperators]);
-
-//   const handleSearch = (e) => {
-//     e.preventDefault();
-//     fetchOperators();
-//   };
-
-//   const openModal = (operator = null) => {
-//     setCurrentOperator(
-//       operator
-//         ? { ...operator }
-//         : { employeeId: "", code: "", name: "", cost: "" }
-//     );
-//     setModalError(null);
-//     setIsModalOpen(true);
-//   };
-
-//   const closeModal = () => {
-//     setIsModalOpen(false);
-//     setCurrentOperator(null);
-//     setModalError(null);
-//   };
-
-//   const handleInputChange = (e) => {
-//     const { name, value } = e.target;
-//     setCurrentOperator((prev) => ({ ...prev, [name]: value }));
-//   };
-
-//   // ✅ When employee selected
-//   const handleEmployeeSelect = (selectedOption) => {
-//     if (!selectedOption) {
-//       setCurrentOperator((prev) => ({
-//         ...prev,
-//         employeeId: "",
-//         code: "",
-//         name: "",
-//       }));
-//       return;
-//     }
-//     setCurrentOperator((prev) => ({
-//       ...prev,
-//       employeeId: selectedOption.value,
-//       name: selectedOption.label,
-//       code: selectedOption.code || "",
-//     }));
-//   };
-
-//   const handleSave = async () => {
-//     const token = localStorage.getItem("token");
-//     if (!token) {
-//       setModalError("Authentication token not found. Please log in again.");
-//       return;
-//     }
-
-//     setIsSaving(true);
-//     setModalError(null);
-//     const method = currentOperator._id ? "PUT" : "POST";
-//     const url = currentOperator._id
-//       ? `/api/ppc/operators/${currentOperator._id}`
-//       : "/api/ppc/operators";
-
-//     try {
-//       const res = await fetch(url, {
-//         method,
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${token}`,
-//         },
-//         body: JSON.stringify(currentOperator),
-//       });
-
-//       if (!res.ok) {
-//         const errData = await res.json();
-//         throw new Error(errData.message || "Failed to save operator");
-//       }
-
-//       await fetchOperators();
-//       closeModal();
-//       toast.success("Operator saved successfully!");
-//     } catch (err) {
-//       setModalError(err.message);
-//     } finally {
-//       setIsSaving(false);
-//     }
-//   };
-
-//   const handleDelete = async (id) => {
-//     const token = localStorage.getItem("token");
-//     if (!token) {
-//       setError("Authentication token missing.");
-//       return;
-//     }
-
-//     if (window.confirm("Are you sure you want to delete this operator?")) {
-//       try {
-//         const res = await fetch(`/api/ppc/operators/${id}`, {
-//           method: "DELETE",
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-
-//         if (!res.ok) throw new Error("Failed to delete operator");
-
-//         await fetchOperators();
-//         toast.success("Operator deleted successfully!");
-//       } catch (err) {
-//         setError(err.message);
-//       }
-//     }
-//   };
-
-//   return (
-//     <div className="p-8 font-sans bg-gray-50 min-h-screen">
-//       <h1 className="text-3xl font-bold text-gray-800 mb-6">
-//         Operator Management
-//       </h1>
-
-//       {/* Search and Add */}
-//       <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-//         <div className="flex justify-between items-center">
-//           <form onSubmit={handleSearch} className="flex gap-2">
-//             <input
-//               type="text"
-//               value={searchQuery}
-//               onChange={(e) => setSearchQuery(e.target.value)}
-//               placeholder="Search by name or code..."
-//               className="border p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-//             />
-//             <button
-//               type="submit"
-//               className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-//             >
-//               Search
-//             </button>
-//           </form>
-
-//           <button
-//             onClick={() => openModal()}
-//             className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center gap-2"
-//           >
-//             <Plus size={18} />
-//             Add Operator
-//           </button>
-//         </div>
-//       </div>
-
-//       {/* Operator Table */}
-//       {isLoading ? (
-//         <p className="text-center">Loading...</p>
-//       ) : error ? (
-//         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
-//           {error}
-//         </div>
-//       ) : (
-//         <div className="bg-white rounded-lg shadow-md overflow-x-auto">
-//           <table className="w-full text-left">
-//             <thead className="bg-gray-100">
-//               <tr>
-//                 <th className="p-4">Code</th>
-//                 <th className="p-4">Name</th>
-//                 <th className="p-4">Cost/Hour</th>
-//                 <th className="p-4">Actions</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {operators.map((op) => (
-//                 <tr key={op._id} className="border-b hover:bg-gray-50">
-//                   <td className="p-4">{op.code}</td>
-//                   <td className="p-4">{op.name}</td>
-//                   <td className="p-4">{`$${op.cost}`}</td>
-//                   <td className="p-4 flex gap-2">
-//                     <button
-//                       onClick={() => openModal(op)}
-//                       className="text-blue-500 hover:text-blue-700"
-//                     >
-//                       <Edit size={18} />
-//                     </button>
-//                     <button
-//                       onClick={() => handleDelete(op._id)}
-//                       className="text-red-500 hover:text-red-700"
-//                     >
-//                       <Trash2 size={18} />
-//                     </button>
-//                   </td>
-//                 </tr>
-//               ))}
-//             </tbody>
-//           </table>
-//         </div>
-//       )}
-
-//       {/* Modal */}
-//       {isModalOpen && (
-//         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-//           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-//             <h2 className="text-2xl font-bold mb-4">
-//               {currentOperator?._id ? "Edit Operator" : "Add Operator"}
-//             </h2>
-
-//             {modalError && (
-//               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-//                 {modalError}
-//               </div>
-//             )}
-
-//             <div className="space-y-4">
-//               {/* ✅ Searchable Employee Select */}
-//               <div>
-//                 <label className="block mb-1 text-sm font-medium">
-//                   Select Employee
-//                 </label>
-//                 <Select
-//                   options={employees}
-//                   value={
-//                     employees.find(
-//                       (emp) => emp.value === currentOperator?.employeeId
-//                     ) || null
-//                   }
-//                   onChange={handleEmployeeSelect}
-//                   isClearable
-//                   isLoading={loadingEmployees}
-//                   placeholder="Search and select employee..."
-//                 />
-//               </div>
-
-//               <input
-//                 name="code"
-//                 type="text"
-//                 placeholder="Code"
-//                 value={currentOperator?.code || ""}
-//                 onChange={handleInputChange}
-//                 className="w-full p-2 border rounded-md"
-//               />
-
-//               <input
-//                 name="name"
-//                 type="text"
-//                 placeholder="Name"
-//                 value={currentOperator?.name || ""}
-//                 onChange={handleInputChange}
-//                 className="w-full p-2 border rounded-md"
-//               />
-
-//               <input
-//                 name="cost"
-//                 type="number"
-//                 placeholder="Cost per Hour"
-//                 value={currentOperator?.cost || ""}
-//                 onChange={handleInputChange}
-//                 className="w-full p-2 border rounded-md"
-//               />
-//             </div>
-
-//             <div className="mt-6 flex justify-end gap-4">
-//               <button
-//                 onClick={closeModal}
-//                 className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-//                 disabled={isSaving}
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 onClick={handleSave}
-//                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
-//                 disabled={isSaving}
-//               >
-//                 {isSaving ? "Saving..." : "Save"}
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default OperatorPage;
-
-
-
-
-// "use client";
-// import React, { useState, useEffect, useCallback } from 'react';
-// import { Plus, Edit, Trash2 } from 'lucide-react';
-
-// const OperatorPage = () => {
-//   const [operators, setOperators] = useState([]);
-//   const [isLoading, setIsLoading] = useState(true);
-//   const [error, setError] = useState(null); // For fetch/delete errors
-//   const [isModalOpen, setIsModalOpen] = useState(false);
-//   const [currentOperator, setCurrentOperator] = useState(null);
-//   const [searchQuery, setSearchQuery] = useState('');
-  
-//   // New state for modal actions
-//   const [isSaving, setIsSaving] = useState(false);
-//   const [modalError, setModalError] = useState(null);
-
-//   const fetchOperators = useCallback(async () => {
-//     setIsLoading(true);
-//     setError(null); // Clear previous errors
-//     try {
-//         const token = localStorage.getItem('token');
-//         if (!token) {
-//             setError('Authentication token not found. Please log in again.');
-//             setIsLoading(false);
-//             return;
-//         }
-//       const response = await fetch(`/api/ppc/operators?searchQuery=${searchQuery}`, {
-//         headers: { 'Authorization': `Bearer ${token}` }
-//       });
-//       if (!response.ok) throw new Error('Failed to fetch operators');
-//       const data = await response.json();
-//       setOperators(data.data || []);
-//     } catch (err) {
-//       setError(err.message);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   }, [searchQuery]);
-
-//   useEffect(() => {
-//     fetchOperators();
-//   }, [fetchOperators]);
-  
-//   const handleSearch = (e) => {
-//     e.preventDefault();
-//     fetchOperators();
-//   };
-
-//   const openModal = (operator = null) => {
-//     setCurrentOperator(operator ? { ...operator } : { code: '', name: '', cost: '' });
-//     setModalError(null); // Clear previous modal errors
-//     setIsModalOpen(true);
-//   };
-
-//   const closeModal = () => {
-//     setIsModalOpen(false);
-//     setCurrentOperator(null);
-//     setModalError(null);
-//   };
-  
-//   // Consolidated input change handler
-//   const handleInputChange = (e) => {
-//     const { name, value } = e.target;
-//     setCurrentOperator(prev => ({ ...prev, [name]: value }));
-//   };
-
-//   const handleSave = async () => {
-//     const token = localStorage.getItem('token'); // Adjust as needed for your auth
-//       if (!token) {
-//         setModalError('Authentication token not found. Please log in again.');
-//         return;
-//       }
-      
-//     setIsSaving(true);
-//     setModalError(null);
-//     const method = currentOperator._id ? 'PUT' : 'POST';
-//     const url = currentOperator._id ? `/api/ppc/operators/${currentOperator._id}` : '/api/ppc/operators';
-
-//     try {
-//       const response = await fetch(url, {
-//         method,
-//         headers: { 
-//             'Content-Type': 'application/json',
-//             'Authorization': `Bearer ${token}`
-//         },
-//         body: JSON.stringify(currentOperator),
-//       });
-//       if (!response.ok) {
-//         const errData = await response.json();
-//         throw new Error(errData.message || 'Failed to save operator');
-//       }
-//       await fetchOperators();
-//       closeModal();
-//     } catch (err) {
-//       setModalError(err.message);
-//     } finally {
-//         setIsSaving(false);
-//     }
-//   };
-
-//   const handleDelete = async (id) => {
-//     const token = localStorage.getItem('token');
-//     if (!token) {
-//         setError('Authentication token not found. Please log in again.');
-//         return;
-//     }
-
-//     if (window.confirm('Are you sure you want to delete this operator?')) {
-//       try {
-//         const response = await fetch(`/api/ppc/operators/${id}`, { 
-//             method: 'DELETE',
-//             headers: { 'Authorization': `Bearer ${token}` }
-//         });
-//         if (!response.ok) {
-//            const errData = await response.json();
-//            throw new Error(errData.message || 'Failed to delete operator');
-//         }
-//         await fetchOperators();
-//       } catch (err) {
-//         setError(err.message); // Show delete error on the main page
-//       }
-//     }
-//   };
-
-//   return (
-//     <div className="p-8 font-sans bg-gray-50 min-h-screen">
-//       <h1 className="text-3xl font-bold text-gray-800 mb-6">Operator Management</h1>
-      
-//       <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-//         <div className="flex justify-between items-center">
-//           <form onSubmit={handleSearch} className="flex gap-2">
-//             <input
-//               type="text"
-//               value={searchQuery}
-//               onChange={(e) => setSearchQuery(e.target.value)}
-//               placeholder="Search by name or code..."
-//               className="border p-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-//             />
-//              <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">
-//               Search
-//             </button>
-//           </form>
-//           <button onClick={() => openModal()} className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center gap-2">
-//             <Plus size={18} />
-//             Add Operator
-//           </button>
-//         </div>
-//       </div>
-
-//       {isLoading && <p className="text-center">Loading...</p>}
-//       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
-      
-//       {!isLoading && !error && (
-//         <div className="bg-white rounded-lg shadow-md overflow-x-auto">
-//           <table className="w-full text-left">
-//             <thead className="bg-gray-100">
-//               <tr>
-//                 <th className="p-4">Code</th>
-//                 <th className="p-4">Name</th>
-//                 <th className="p-4">Cost per Hour</th>
-//                 <th className="p-4">Actions</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {operators.map((operator) => (
-//                 <tr key={operator._id} className="border-b hover:bg-gray-50">
-//                   <td className="p-4">{operator.code}</td>
-//                   <td className="p-4">{operator.name}</td>
-//                   <td className="p-4">{`$${operator.cost}`}</td>
-//                   <td className="p-4 flex gap-2">
-//                     <button onClick={() => openModal(operator)} className="text-blue-500 hover:text-blue-700"><Edit size={18} /></button>
-//                     <button onClick={() => handleDelete(operator._id)} className="text-red-500 hover:text-red-700"><Trash2 size={18} /></button>
-//                   </td>
-//                 </tr>
-//               ))}
-//             </tbody>
-//           </table>
-//         </div>
-//       )}
-
-//       {isModalOpen && (
-//         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-//           <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-//             <h2 className="text-2xl font-bold mb-4">{currentOperator?._id ? 'Edit Operator' : 'Add Operator'}</h2>
-            
-//             {modalError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{modalError}</div>}
-
-//             <div className="space-y-4">
-//               <input name="code" type="text" placeholder="Code" value={currentOperator.code} onChange={handleInputChange} className="w-full p-2 border rounded-md" />
-//               <input name="name" type="text" placeholder="Name" value={currentOperator.name} onChange={handleInputChange} className="w-full p-2 border rounded-md" />
-//               <input name="cost" type="number" placeholder="Cost per Hour" value={currentOperator.cost} onChange={handleInputChange} className="w-full p-2 border rounded-md" />
-//             </div>
-//             <div className="mt-6 flex justify-end gap-4">
-//               <button onClick={closeModal} className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400" disabled={isSaving}>Cancel</button>
-//               <button onClick={handleSave} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300" disabled={isSaving}>
-//                 {isSaving ? 'Saving...' : 'Save'}
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default OperatorPage;
-
+}

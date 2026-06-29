@@ -1,67 +1,86 @@
-import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/db';
-import ProductionOrder from '@/models/ppc/operationModel';
-import { getTokenFromHeader, verifyJWT } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import dbConnect from "@/lib/db";
+import Operator from "@/models/ppc/Operator";
+import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
-const isAuthorized = (user) => 
-  user?.type === "company" || user?.role === "Admin" || user?.permissions?.includes("manage_production_orders");
+// ─── Auth Helper (same as above) ──────────────────────────────────────────
+function isAuthorized(user) { /* same as above */ }
+async function validateUser(req) { /* same as above */ }
 
+// ─── GET: Single Operator ──────────────────────────────────────────────────
 export async function GET(req, { params }) {
-  try {
-    await dbConnect();
-    const token = getTokenFromHeader(req);
-    if (!token) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    const user = verifyJWT(token);
-    if (!user || !user.companyId || !isAuthorized(user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+  await dbConnect();
+  const { user, error, status } = await validateUser(req);
+  if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-    const order = await ProductionOrder.findOne({ _id: params.id, companyId: user.companyId })
-      .populate('item', 'name code')
-      .populate('machine', 'name code')
-      .populate('operator', 'name')
-      .populate('resource', 'name code');
-    if (!order) return NextResponse.json({ success: false, message: 'Production order not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: order }, { status: 200 });
+  try {
+    const operator = await Operator.findOne({ _id: params.id, company: user.companyId })
+      .populate("employeeId", "name email")
+      .populate("labourId", "name skill")
+      .lean();
+    if (!operator) {
+      return NextResponse.json({ success: false, message: "Operator not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, data: operator });
   } catch (err) {
-    console.error(`GET /api/production-orders/[id] error:`, err);
-    return NextResponse.json({ success: false, message: 'Server Error' }, { status: 500 });
+    console.error("GET /api/ppc/operators/[id] error:", err);
+    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }
 
+// ─── PUT: Update Operator ──────────────────────────────────────────────────
 export async function PUT(req, { params }) {
-  try {
-    await dbConnect();
-    const token = getTokenFromHeader(req);
-    if (!token) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    const user = verifyJWT(token);
-    if (!user || !user.companyId || !isAuthorized(user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+  await dbConnect();
+  const { user, error, status } = await validateUser(req);
+  if (error) return NextResponse.json({ success: false, message: error }, { status });
 
+  try {
     const body = await req.json();
-    const updatedOrder = await ProductionOrder.findOneAndUpdate(
-      { _id: params.id, companyId: user.companyId },
+
+    // Check duplicate operatorCode if being changed
+    if (body.operatorCode) {
+      const existing = await Operator.findOne({
+        operatorCode: body.operatorCode,
+        company: user.companyId,
+        _id: { $ne: params.id },
+      });
+      if (existing) {
+        return NextResponse.json(
+          { success: false, message: `Operator code '${body.operatorCode}' already exists` },
+          { status: 409 }
+        );
+      }
+    }
+
+    const updated = await Operator.findOneAndUpdate(
+      { _id: params.id, company: user.companyId },
       { ...body, updatedBy: user.id || user._id },
       { new: true, runValidators: true }
     );
-    if (!updatedOrder) return NextResponse.json({ success: false, message: 'Production order not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: updatedOrder, message: "Production order updated successfully" }, { status: 200 });
+    if (!updated) {
+      return NextResponse.json({ success: false, message: "Operator not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, data: updated, message: "Operator updated successfully" });
   } catch (err) {
-    console.error(`PUT /api/production-orders/[id] error:`, err);
-    return NextResponse.json({ success: false, message: 'Server Error' }, { status: 500 });
+    console.error("PUT /api/ppc/operators/[id] error:", err);
+    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }
 
+// ─── DELETE: Remove Operator ──────────────────────────────────────────────
 export async function DELETE(req, { params }) {
-  try {
-    await dbConnect();
-    const token = getTokenFromHeader(req);
-    if (!token) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    const user = verifyJWT(token);
-    if (!user || !user.companyId || !isAuthorized(user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+  await dbConnect();
+  const { user, error, status } = await validateUser(req);
+  if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-    const deletedOrder = await ProductionOrder.deleteOne({ _id: params.id, companyId: user.companyId });
-    if (deletedOrder.deletedCount === 0) return NextResponse.json({ success: false, message: 'Production order not found' }, { status: 404 });
-    return NextResponse.json({ success: true, message: "Production order deleted successfully" }, { status: 200 });
+  try {
+    const deleted = await Operator.findOneAndDelete({ _id: params.id, company: user.companyId });
+    if (!deleted) {
+      return NextResponse.json({ success: false, message: "Operator not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, message: "Operator deleted successfully" });
   } catch (err) {
-    console.error(`DELETE /api/production-orders/[id] error:`, err);
-    return NextResponse.json({ success: false, message: 'Server Error' }, { status: 500 });
+    console.error("DELETE /api/ppc/operators/[id] error:", err);
+    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }

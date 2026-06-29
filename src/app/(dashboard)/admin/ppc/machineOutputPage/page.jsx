@@ -1,21 +1,30 @@
 "use client";
+
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaCogs } from "react-icons/fa";
 import Select from "react-select";
 
 const MachineOutputPage = () => {
   const [machineOutputs, setMachineOutputs] = useState([]);
-  const [machines, setMachines] = useState([]); // dropdown
-  const [items, setItems] = useState([]); // dropdown
-
-  const [isLoading, setIsLoading] = useState(true);
+  const [machines, setMachines] = useState([]);   // dropdown
+  const [items, setItems] = useState([]);         // dropdown
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentOutput, setCurrentOutput] = useState(null);
+  const [editOutput, setEditOutput] = useState(null);
 
-  const [isSaving, setIsSaving] = useState(false);
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Form state
+  const [formItem, setFormItem] = useState(null);     // react‑select value object
+  const [formMachine, setFormMachine] = useState(null);
+  const [formPerDayOutput, setFormPerDayOutput] = useState("");
+  const [formRunningCost, setFormRunningCost] = useState("");
+  const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
 
+  // ─── Fetch Data ──────────────────────────────────────────────────────────
   const getAuthHeaders = () => {
     const token = localStorage.getItem("token");
     return {
@@ -24,9 +33,8 @@ const MachineOutputPage = () => {
     };
   };
 
-  // fetch outputs + machines + items
   const fetchData = useCallback(async () => {
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
     try {
       const [outputsRes, machinesRes, itemsRes] = await Promise.all([
@@ -53,7 +61,7 @@ const MachineOutputPage = () => {
     } catch (err) {
       setError(err.message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, []);
 
@@ -61,258 +69,410 @@ const MachineOutputPage = () => {
     fetchData();
   }, [fetchData]);
 
+  // ─── Modal ──────────────────────────────────────────────────────────────
   const openModal = (output = null) => {
-    setCurrentOutput(
-      output || {
-        itemCode: "",
-        itemName: "",
-        machine: machines[0]?._id || "",
-        perDayOutput: "",
-        machineRunningCost: "",
-      }
-    );
+    setEditOutput(output);
+    if (output) {
+      // When editing, set the react‑select values to match the populated objects
+      setFormItem(
+        output.item
+          ? {
+              value: output.item._id || output.item,
+              label: `${output.item.itemCode || ""} - ${output.item.itemName || ""}`,
+            }
+          : null
+      );
+      setFormMachine(
+        output.machine
+          ? {
+              value: output.machine._id || output.machine,
+              label: `${output.machine.code || output.machine.machineCode || ""} - ${
+                output.machine.name || ""
+              }`,
+            }
+          : null
+      );
+      setFormPerDayOutput(output.perDayOutput || "");
+      setFormRunningCost(output.machineRunningCost || "");
+    } else {
+      setFormItem(null);
+      setFormMachine(null);
+      setFormPerDayOutput("");
+      setFormRunningCost("");
+    }
     setModalError(null);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setCurrentOutput(null);
+    setEditOutput(null);
     setModalError(null);
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setCurrentOutput((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSave = async () => {
-    if (
-      !currentOutput.itemCode ||
-      !currentOutput.machine ||
-      !currentOutput.perDayOutput
-    ) {
-      setModalError("Item Code, Machine, and Per Day Output are required.");
+  // ─── Submit ──────────────────────────────────────────────────────────────
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formItem?.value || !formMachine?.value || !formPerDayOutput) {
+      setModalError("Item, Machine, and Per Day Output are required.");
       return;
     }
-    setIsSaving(true);
+
+    setSaving(true);
     setModalError(null);
 
-    const method = currentOutput._id ? "PUT" : "POST";
-    const url = currentOutput._id
-      ? `/api/ppc/machineOutputs/${currentOutput._id}`
+    const payload = {
+      item: formItem.value,
+      machine: formMachine.value,
+      perDayOutput: parseFloat(formPerDayOutput) || 0,
+      machineRunningCost: parseFloat(formRunningCost) || 0,
+    };
+
+    const method = editOutput ? "PUT" : "POST";
+    const url = editOutput
+      ? `/api/ppc/machineOutputs/${editOutput._id}`
       : "/api/ppc/machineOutputs";
 
     try {
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: getAuthHeaders(),
-        body: JSON.stringify(currentOutput),
+        body: JSON.stringify(payload),
       });
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.message || "Failed to save machine output");
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Failed to save");
       }
       await fetchData();
       closeModal();
     } catch (err) {
       setModalError(err.message);
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
+  // ─── Delete ──────────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
-    if (
-      window.confirm(
-        "Are you sure you want to delete this machine output record?"
-      )
-    ) {
-      try {
-        const response = await fetch(`/api/ppc/machineOutputs/${id}`, {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        });
-        if (!response.ok) throw new Error("Failed to delete record");
-        await fetchData();
-      } catch (err) {
-        setError(err.message);
+    if (!confirm("Are you sure you want to delete this record?")) return;
+    try {
+      const res = await fetch(`/api/ppc/machineOutputs/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Failed to delete");
       }
+      await fetchData();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-  return (
-    <div className="p-8 font-sans bg-gray-50 min-h-screen">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">
-        Machine Output Management
-      </h1>
+  // ─── Filtered data for search (by item name/code or machine name/code) ──
+  const filteredOutputs = machineOutputs.filter((output) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const itemCode = output.item?.itemCode?.toLowerCase() || "";
+    const itemName = output.item?.itemName?.toLowerCase() || "";
+    const machineCode = output.machine?.code?.toLowerCase() || output.machine?.machineCode?.toLowerCase() || "";
+    const machineName = output.machine?.name?.toLowerCase() || "";
+    return (
+      itemCode.includes(query) ||
+      itemName.includes(query) ||
+      machineCode.includes(query) ||
+      machineName.includes(query)
+    );
+  });
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6 flex justify-end">
+  // ─── UI Helpers ──────────────────────────────────────────────────────────
+  const Lbl = ({ text, req }) => (
+    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+      {text}
+      {req && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
+
+  const inputClass =
+    "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
+
+  // ─── Mobile Card ─────────────────────────────────────────────────────────
+  const OutputCard = ({ output }) => (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm space-y-2">
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-bold text-indigo-600">
+            {output.item?.itemCode || "N/A"}
+          </p>
+          <p className="text-sm font-semibold text-gray-800">
+            {output.item?.itemName || "N/A"}
+          </p>
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 space-y-1">
+        <p>
+          Machine:{" "}
+          {output.machine
+            ? `${output.machine.code || output.machine.machineCode} - ${output.machine.name}`
+            : "N/A"}
+        </p>
+        <p>Per Day: {output.perDayOutput}</p>
+        <p>Running Cost: ₹{output.machineRunningCost}</p>
+      </div>
+      <div className="flex gap-2 justify-end pt-1">
         <button
-          onClick={() => openModal()}
-          className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center gap-2"
+          onClick={() => openModal(output)}
+          className="p-1.5 text-gray-300 hover:text-indigo-600"
+          aria-label="Edit"
         >
-          <Plus size={18} /> Add Machine Output
+          <FaEdit size={14} />
+        </button>
+        <button
+          onClick={() => handleDelete(output._id)}
+          className="p-1.5 text-gray-300 hover:text-red-500"
+          aria-label="Delete"
+        >
+          <FaTrash size={14} />
         </button>
       </div>
+    </div>
+  );
 
-      {isLoading && <p className="text-center">Loading...</p>}
-      {error && (
-        <div className="bg-red-100 text-red-700 p-3 mb-4 rounded">{error}</div>
-      )}
-
-      {!isLoading && !error && (
-        <div className="bg-white rounded-lg shadow-md overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-4">Item Code</th>
-                <th className="p-4">Item Name</th>
-                <th className="p-4">Machine</th>
-                <th className="p-4">Per Day Output</th>
-                <th className="p-4">Running Cost</th>
-                <th className="p-4">Actions</th>
-              </tr>
-            </thead>
-           <tbody>
-  {(machineOutputs || []).map((output) => (
-    <tr key={output._id} className="border-b hover:bg-gray-50">
-      <td className="p-4">{output.item?.itemCode || "N/A"}</td>
-      <td className="p-4">{output.item?.itemName || "N/A"}</td>
-      <td className="p-4">
-        {output.machine ? `${output.machine.machineCode} - ${output.machine.name}` : "N/A"}
-      </td>
-      <td className="p-4">{output.perDayOutput}</td>
-      <td className="p-4">{`$${output.machineRunningCost}`}</td>
-      <td className="p-4 flex gap-2">
-        <button onClick={() => openModal(output)} className="text-blue-500 hover:text-blue-700">
-          <Edit size={18} />
-        </button>
-        <button onClick={() => handleDelete(output._id)} className="text-red-500 hover:text-red-700">
-          <Trash2 size={18} />
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
-
-          </table>
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 flex items-center gap-3">
+              <FaCogs className="text-indigo-600" /> Machine Output Management
+            </h1>
+            <p className="text-sm text-gray-400 mt-0.5">
+              Manage item outputs per machine and running costs
+            </p>
+          </div>
+          <button
+            onClick={() => openModal()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+          >
+            <FaPlus size={12} /> Add Machine Output
+          </button>
         </div>
-      )}
 
-      {isModalOpen && currentOutput && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
-            <h2 className="text-2xl font-bold mb-4">
-              {currentOutput._id ? "Edit Machine Output" : "Add Machine Output"}
-            </h2>
-
-            {modalError && (
-              <div className="bg-red-100 text-red-700 p-3 mb-4 rounded">
-                {modalError}
+        {/* Search Filter */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
+          <div className="grid grid-cols-1">
+            <div>
+              <Lbl text="Search" />
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+                <input
+                  type="text"
+                  className={`${inputClass} pl-9`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by item code, name, or machine..."
+                />
               </div>
-            )}
+            </div>
+          </div>
+        </div>
 
-            <div className="space-y-4">
-              {/* react-select for item selection */}
-            <Select
-  placeholder="Select Item"
-  value={
-    currentOutput.item
-      ? {
-          value: currentOutput.item,
-          label: `${items.find((i) => i._id === currentOutput.item)?.itemCode || ""} - ${
-            items.find((i) => i._id === currentOutput.item)?.itemName || ""
-          }`,
-        }
-      : null
-  }
-  options={items.map((item) => ({
-    value: item._id,
-    label: `${item.itemCode} - ${item.itemName}`,
-  }))}
-  onChange={(selected) =>
-    setCurrentOutput((prev) => ({
-      ...prev,
-      item: selected?.value || "",
-    }))
-  }
-/>
+        {/* Error display */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+            {error}
+          </div>
+        )}
 
-           <Select
-  placeholder="Select Machine"
-  value={
-    currentOutput.machine
-      ? {
-          value: currentOutput.machine,
-          label: `${machines.find((m) => m._id === currentOutput.machine)?.machineCode || ""} - ${
-            machines.find((m) => m._id === currentOutput.machine)?.name || ""
-          }`,
-        }
-      : null
-  }
-  options={machines.map((machine) => ({
-    value: machine._id,
-    label: `${machine.code} - ${machine.name}`,
-  }))}
-  onChange={(selected) =>
-    setCurrentOutput((prev) => ({
-      ...prev,
-      machine: selected?.value || "",
-    }))
-  }
-/>
+        {/* Desktop Table */}
+        <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Item Code
+                  </th>
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Item Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Machine
+                  </th>
+                  <th className="px-6 py-4 text-right text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Per Day Output
+                  </th>
+                  <th className="px-6 py-4 text-right text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Running Cost
+                  </th>
+                  <th className="px-6 py-4 text-right text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-10 text-center text-gray-400 italic">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : filteredOutputs.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-10 text-center text-gray-400 italic">
+                      No machine outputs found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOutputs.map((output) => (
+                    <tr key={output._id} className="hover:bg-indigo-50/20 transition-colors">
+                      <td className="px-6 py-4 font-bold text-indigo-600">
+                        {output.item?.itemCode || "N/A"}
+                      </td>
+                      <td className="px-6 py-4 text-gray-800">
+                        {output.item?.itemName || "N/A"}
+                      </td>
+                      <td className="px-6 py-4 text-gray-800">
+                        {output.machine
+                          ? `${output.machine.code || output.machine.machineCode} - ${output.machine.name}`
+                          : "N/A"}
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-gray-700">
+                        {output.perDayOutput}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-700">
+                        ₹{output.machineRunningCost || 0}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openModal(output)}
+                            className="p-1.5 text-gray-300 hover:text-indigo-600 transition-colors"
+                          >
+                            <FaEdit size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(output._id)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <FaTrash size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            <p className="text-center text-gray-400 py-10">Loading...</p>
+          ) : filteredOutputs.length === 0 ? (
+            <p className="text-center text-gray-400 py-10">No machine outputs found.</p>
+          ) : (
+            filteredOutputs.map((output) => <OutputCard key={output._id} output={output} />)
+          )}
+        </div>
+      </div>
 
-              {/* <select
-                name="machine"
-                value={currentOutput.machine}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md bg-white"
-              >
-                <option value="">Select Machine</option>
-                {machines.map((machine) => (
-                  <option key={machine._id} value={machine._id}>
-                    {machine.name}
-                  </option>
-                ))}
-              </select> */}
-
-              <input
-                name="perDayOutput"
-                type="number"
-                placeholder="Per Day Output"
-                value={currentOutput.perDayOutput}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md"
-              />
-
-              <input
-                name="machineRunningCost"
-                type="number"
-                placeholder="Machine Running Cost"
-                value={currentOutput.machineRunningCost}
-                onChange={handleInputChange}
-                className="w-full p-2 border rounded-md"
-              />
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3 bg-indigo-50/50">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm">
+                <FaCogs size={20} />
+              </div>
+              <h2 className="text-lg font-black text-gray-900 tracking-tight">
+                {editOutput ? "Edit Machine Output" : "Add Machine Output"}
+              </h2>
             </div>
 
-            <div className="mt-6 flex justify-end gap-4">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
-                disabled={isSaving}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
-                disabled={isSaving}
-              >
-                {isSaving ? "Saving..." : "Save"}
-              </button>
-            </div>
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+              {modalError && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+                  {modalError}
+                </div>
+              )}
+
+              <div>
+                <Lbl text="Item" req />
+                <Select
+                  placeholder="Select Item"
+                  value={formItem}
+                  options={items.map((item) => ({
+                    value: item._id,
+                    label: `${item.itemCode} - ${item.itemName}`,
+                  }))}
+                  onChange={(selected) => setFormItem(selected)}
+                  isClearable
+                  className="text-sm"
+                />
+              </div>
+
+              <div>
+                <Lbl text="Machine" req />
+                <Select
+                  placeholder="Select Machine"
+                  value={formMachine}
+                  options={machines.map((machine) => ({
+                    value: machine._id,
+                    label: `${machine.code || machine.machineCode} - ${machine.name}`,
+                  }))}
+                  onChange={(selected) => setFormMachine(selected)}
+                  isClearable
+                  className="text-sm"
+                />
+              </div>
+
+              <div>
+                <Lbl text="Per Day Output" req />
+                <input
+                  type="number"
+                  step="any"
+                  className={inputClass}
+                  value={formPerDayOutput}
+                  onChange={(e) => setFormPerDayOutput(e.target.value)}
+                  placeholder="0"
+                  required
+                />
+              </div>
+
+              <div>
+                <Lbl text="Machine Running Cost (₹)" />
+                <input
+                  type="number"
+                  step="0.01"
+                  className={inputClass}
+                  value={formRunningCost}
+                  onChange={(e) => setFormRunningCost(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="flex justify-end items-center gap-3 pt-3 border-t border-gray-50">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="text-sm font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

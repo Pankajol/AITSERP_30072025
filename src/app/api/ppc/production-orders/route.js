@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
-import Operator from "@/models/ppc/operatorModel";
+import ProductionOrder from "@/models/ppc/ProductionOrder";
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
 
-// ─── Auth helpers (keep your existing ones, unchanged) ──────────────────
+// ─── Auth helpers ─────────────────────────────────────────────────────────
 function isAuthorized(user) {
   if (!user) return false;
   if (user.type === "company") return true;
@@ -28,15 +28,19 @@ async function validateUser(req) {
   }
 }
 
+function getCompanyId(user) {
+  if (user.companyId) return user.companyId;
+  if (user.type === "company") return user.id || user._id;
+  return user.company || user.company_id || null;
+}
+
 // ─── GET ──────────────────────────────────────────────────────────────────
 export async function GET(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  let companyId = user.companyId;
-  if (!companyId && user.type === "company") companyId = user.id || user._id;
-  if (!companyId) companyId = user.company || user.company_id || user.orgId || user.organisation;
+  const companyId = getCompanyId(user);
   if (!companyId) return NextResponse.json({ success: false, message: "No company identifier" }, { status: 400 });
 
   try {
@@ -48,101 +52,95 @@ export async function GET(req) {
     const limit = Math.min(parseInt(searchParams.get("limit")) || 50, 100);
 
     if (id) {
-      const op = await Operator.findOne({ _id: id, companyId }).lean();
-      if (!op) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-      return NextResponse.json({ success: true, data: op });
+      const order = await ProductionOrder.findOne({ _id: id, companyId })
+        .populate("assignedMachine", "name code")
+        .populate("assignedOperator", "name operatorCode")
+        .populate("assignedResource", "name code")
+        .lean();
+      if (!order) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+      return NextResponse.json({ success: true, data: order });
     }
 
     const query = { companyId };
     if (search) {
       query.$or = [
-        { operatorCode: { $regex: search, $options: "i" } },
-        { name: { $regex: search, $options: "i" } },
+        { orderNumber: { $regex: search, $options: "i" } },
+        { itemName: { $regex: search, $options: "i" } },
       ];
     }
     if (statusFilter && statusFilter !== "all") query.status = statusFilter;
 
     const skip = (page - 1) * limit;
-    const [operators, total] = await Promise.all([
-      Operator.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Operator.countDocuments(query),
+    const [orders, total] = await Promise.all([
+      ProductionOrder.find(query)
+        .populate("assignedMachine", "name code")
+        .populate("assignedOperator", "name operatorCode")
+        .populate("assignedResource", "name code")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ProductionOrder.countDocuments(query),
     ]);
 
     return NextResponse.json({
       success: true,
-      data: operators,
+      data: orders,
       meta: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
-    console.error("GET error:", err);
+    console.error("GET production-orders error:", err);
     return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }
 
-// ─── POST ────────────────────────────────────────────────────────────────
+// ─── POST ─────────────────────────────────────────────────────────────────
 export async function POST(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  // 🔐 Robust extraction of companyId from token
-  let companyId = user.companyId;
-  if (!companyId && user.type === "company") {
-    companyId = user.id || user._id;
-  }
-  if (!companyId) {
-    companyId = user.company || user.company_id || user.orgId || user.organisation;
-  }
-
-  if (!companyId) {
-    console.error("❌ No companyId in token payload:", user);
-    return NextResponse.json(
-      { success: false, message: "Token does not contain a company identifier" },
-      { status: 400 }
-    );
-  }
+  const companyId = getCompanyId(user);
+  if (!companyId) return NextResponse.json({ success: false, message: "No company identifier" }, { status: 400 });
 
   try {
     const body = await req.json();
-    const { operatorCode, name, skill, costPerHour, costPerDay, efficiency, status: bodyStatus } = body;
+    const {
+      orderNumber,
+      itemCode,
+      itemName,
+      quantity,
+      status: orderStatus,
+      assignedMachine,
+      assignedOperator,
+      assignedResource,
+    } = body;
 
-    if (!name || !operatorCode) {
-      return NextResponse.json(
-        { success: false, message: "Name and operator code are required" },
-        { status: 400 }
-      );
+    if (!orderNumber || !itemCode || !itemName || !quantity) {
+      return NextResponse.json({ success: false, message: "Missing required fields" }, { status: 400 });
     }
 
-    // Duplicate check
-    const existing = await Operator.findOne({ operatorCode, companyId });
-    if (existing) {
-      return NextResponse.json(
-        { success: false, message: `Operator code '${operatorCode}' already exists` },
-        { status: 409 }
-      );
-    }
+    const existing = await ProductionOrder.findOne({ orderNumber, companyId });
+    if (existing) return NextResponse.json({ success: false, message: "Order number already exists" }, { status: 409 });
 
-    // ✅ Data object – companyId is guaranteed to be present
     const data = {
       companyId,
-      operatorCode,
-      name,
-      skill: skill || "other",
-      costPerHour: parseFloat(costPerHour) || 0,
-      costPerDay: parseFloat(costPerDay) || 0,
-      efficiency: parseFloat(efficiency) || 100,
-      status: bodyStatus || "active",
+      orderNumber,
+      itemCode,
+      itemName,
+      quantity: parseInt(quantity),
+      status: orderStatus || "Pending",
+      assignedMachine: assignedMachine || null,
+      assignedOperator: assignedOperator || null,
+      assignedResource: assignedResource || null,
       createdBy: user.id || user._id,
     };
 
-    // Temporary log – you can remove after confirming it works
-    console.log("📌 Creating operator with data:", JSON.stringify(data, null, 2));
-
-    const op = new Operator(data);
-    await op.save();
-    return NextResponse.json({ success: true, data: op, message: "Operator created" }, { status: 201 });
+    const order = new ProductionOrder(data);
+    await order.save();
+    return NextResponse.json({ success: true, data: order, message: "Production order created" }, { status: 201 });
   } catch (err) {
-    console.error("POST error:", err);
+    console.error("POST production-orders error:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
@@ -153,9 +151,7 @@ export async function PUT(req) {
   const { user, error, status } = await validateUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  let companyId = user.companyId;
-  if (!companyId && user.type === "company") companyId = user.id || user._id;
-  if (!companyId) companyId = user.company || user.company_id || user.orgId || user.organisation;
+  const companyId = getCompanyId(user);
   if (!companyId) return NextResponse.json({ success: false, message: "No company identifier" }, { status: 400 });
 
   try {
@@ -167,29 +163,30 @@ export async function PUT(req) {
     delete body.companyId;
     delete body._id;
 
-    const updated = await Operator.findOneAndUpdate(
+    const updated = await ProductionOrder.findOneAndUpdate(
       { _id: id, companyId },
       { $set: body },
       { new: true, runValidators: true }
-    );
+    )
+      .populate("assignedMachine", "name code")
+      .populate("assignedOperator", "name operatorCode")
+      .populate("assignedResource", "name code");
 
     if (!updated) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: updated, message: "Updated" });
   } catch (err) {
-    console.error("PUT error:", err);
+    console.error("PUT production-orders error:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-// ─── DELETE ──────────────────────────────────────────────────────────────
+// ─── DELETE ───────────────────────────────────────────────────────────────
 export async function DELETE(req) {
   await dbConnect();
   const { user, error, status } = await validateUser(req);
   if (error) return NextResponse.json({ success: false, message: error }, { status });
 
-  let companyId = user.companyId;
-  if (!companyId && user.type === "company") companyId = user.id || user._id;
-  if (!companyId) companyId = user.company || user.company_id || user.orgId || user.organisation;
+  const companyId = getCompanyId(user);
   if (!companyId) return NextResponse.json({ success: false, message: "No company identifier" }, { status: 400 });
 
   try {
@@ -197,11 +194,11 @@ export async function DELETE(req) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ success: false, message: "ID required" }, { status: 400 });
 
-    const deleted = await Operator.findOneAndDelete({ _id: id, companyId });
+    const deleted = await ProductionOrder.findOneAndDelete({ _id: id, companyId });
     if (!deleted) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, message: "Deleted" });
   } catch (err) {
-    console.error("DELETE error:", err);
+    console.error("DELETE production-orders error:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

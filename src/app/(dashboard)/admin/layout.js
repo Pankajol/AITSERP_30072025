@@ -13,6 +13,7 @@ import { FiArrowLeft, FiEye, FiEyeOff } from "react-icons/fi";
 import { GiStockpiles } from "react-icons/gi";
 import { SiCivicrm } from "react-icons/si";
 import LogoutButton from "@/components/LogoutButton";
+import Sidebar from "@/components/hr/Sidebar";
 
 // ------------------------- Safe View Context -------------------------
 const SafeViewContext = createContext({ safeViewEnabled: false, toggleSafeView: () => {} });
@@ -232,7 +233,9 @@ const MODULE_ROUTE_MAP = {
     { label: "Operations",              path: "/admin/ppc/operations",                 needsView: true },
     { label: "Production Planning",     path: "/admin/ppc/productionOrderPage",        needsView: true },
     { label: "Job Card",                path: "/admin/ppc/jobcards",                   needsView: true },
+    { label: "Tyre Job Card",           path: "/admin/ppc/tyrejobcards",               needsView: true },
     { label: "Downtime",                path: "/admin/ppc/downtime",                   needsView: true },
+    { label: "Production Job Card",     path: "/admin/ppc/productionjobcards",         needsView: true },
   ],
   "Task": [
     { label: "Tasks",              path: "/admin/tasks",                       needsView: true },
@@ -611,6 +614,8 @@ export default function Layout({ children }) {
                   <SidebarItem href="/admin/ppc/operations" icon={<HiPuzzle />} label="Operations" onClick={closeSidebar} isActive={isActive("/admin/ppc/operations")} />
                   <SidebarItem href="/admin/ppc/productionOrderPage" icon={<HiReceiptTax />} label="Production Planning" onClick={closeSidebar} isActive={isActive("/admin/ppc/productionOrderPage")} />
                   <SidebarItem href="/admin/ppc/jobcards" icon={<HiReceiptTax />} label="Job Card" onClick={closeSidebar} isActive={isActive("/admin/ppc/jobcards")} />
+                  <SidebarItem href="/admin/ppc/tyre-jobcards" icon={<HiReceiptTax />} label="Tyre Job Cards" onClick={closeSidebar} isActive={isActive("/admin/ppc/tyre-jobcards")} />
+                  <SidebarItem href="/admin/ppc/production-jobcards" icon={<HiReceiptTax />} label="Production Job Cards" onClick={closeSidebar} isActive={isActive("/admin/ppc/production-jobcards")} />
                   <SidebarItem href="/admin/ppc/downtime" icon={<HiReceiptTax />} label="Downtime" onClick={closeSidebar} isActive={isActive("/admin/ppc/downtime")} />
                 </Section>
 

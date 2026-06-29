@@ -3,18 +3,138 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useRouter } from "next/navigation";
-import { 
-  FaBox, FaWarehouse, FaListOl, FaProjectDiagram, 
-  FaPlus, FaTrash, FaCheck, FaArrowLeft, FaCogs, FaTools 
+import {
+  FaBox,
+  FaListOl,
+  FaPlus,
+  FaTrash,
+  FaCheck,
+  FaArrowLeft,
+  FaCogs,
 } from "react-icons/fa";
 
+// ── Color map for SectionCard (fixes dynamic Tailwind classes) ─────
+const colorMap = {
+  indigo: {
+    headerBg: "bg-indigo-50/40",
+    iconBg: "bg-indigo-100",
+    iconText: "text-indigo-500",
+  },
+  emerald: {
+    headerBg: "bg-emerald-50/40",
+    iconBg: "bg-emerald-100",
+    iconText: "text-emerald-500",
+  },
+  amber: {
+    headerBg: "bg-amber-50/40",
+    iconBg: "bg-amber-100",
+    iconText: "text-amber-500",
+  },
+  blue: {
+    headerBg: "bg-blue-50/40",
+    iconBg: "bg-blue-100",
+    iconText: "text-blue-500",
+  },
+};
+
+const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => {
+  const c = colorMap[color] || colorMap.indigo;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
+      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 ${c.headerBg}`}>
+        <div className={`w-8 h-8 rounded-lg ${c.iconBg} flex items-center justify-center ${c.iconText}`}>
+          <Icon className="text-sm" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-900">{title}</p>
+          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="px-6 py-5">{children}</div>
+    </div>
+  );
+};
+
+const Lbl = ({ text, req }) => (
+  <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+    {text}
+    {req && <span className="text-red-500 ml-0.5">*</span>}
+  </label>
+);
+
+const fi =
+  "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
+
+// ── Debounce helper ──────────────────────────────────────────
+function useDebounce(fn, delay) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// ── Async Item Select ────────────────────────────────────────
+function ItemAsyncSelect({ value, onChange, placeholder = "Search product code..." }) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+
+  // loadOptions is called every time the user types OR opens the dropdown (with empty input)
+  const loadOptions = useDebounce(async (inputValue, callback) => {
+    try {
+      // Always call the API – if inputValue is empty, it returns the first page
+      const params = new URLSearchParams();
+      if (inputValue && inputValue.length >= 1) {
+        params.append("search", inputValue);
+      }
+      params.append("limit", "50"); // keep the limit manageable
+
+      const res = await axios.get(`/api/items?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const items = res.data?.data || res.data || [];
+      const options = items.map((item) => ({
+        value: item._id,
+        label: `${item.itemCode} – ${item.itemName}`,
+        data: item,
+      }));
+      callback(options);
+    } catch (err) {
+      console.error("Item fetch error:", err);
+      callback([]);
+    }
+  }, 400);
+
+  const selectedOption = value
+    ? value._id
+      ? { value: value._id, label: `${value.itemCode || ""} – ${value.itemName || ""}` }
+      : value.value
+        ? value
+        : null
+    : null;
+
+  return (
+    <AsyncSelect
+      cacheOptions
+      defaultOptions
+      loadOptions={loadOptions}
+      value={selectedOption}
+      onChange={onChange}
+      placeholder={placeholder}
+      isClearable
+      className="text-sm"
+    />
+  );
+}
+
+// ── Main BOM Page ────────────────────────────────────────────
 export default function BOMPage() {
   const router = useRouter();
 
-  // --- Header Form State ---
+  // Header form state
   const [productNo, setProductNo] = useState("");
   const [productDesc, setProductDesc] = useState("");
   const [warehouse, setWarehouse] = useState("");
@@ -24,34 +144,35 @@ export default function BOMPage() {
   const [distRule, setDistRule] = useState("");
   const [project, setProject] = useState("");
 
-  // --- Master data ---
+  // Master data
   const [apiItems, setApiItems] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [priceLists, setPriceLists] = useState([]);
   const [resources, setResources] = useState([]);
 
-  // --- BOM arrays ---
+  // BOM arrays
   const [bomItems, setBomItems] = useState([]);
   const [bomResources, setBomResources] = useState([]);
 
-  // --- Add/search selections ---
-  const [selectedItemId, setSelectedItemId] = useState(null);
-  const [selectedResourceId, setSelectedResourceId] = useState(null);
+  // Selection states
+  const [selectedItem, setSelectedItem] = useState(null);          // parent product (async)
+  const [selectedItemOption, setSelectedItemOption] = useState(null); // raw material (async)
+  const [selectedResourceId, setSelectedResourceId] = useState(null); // resource (normal Select)
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     const config = { headers: { Authorization: `Bearer ${token}` } };
-
     axios.get("/api/items", config).then((res) => setApiItems(res.data.data || []));
     axios.get("/api/warehouse", config).then((res) => setWarehouses(res.data.data || []));
     axios.get("/api/price-list", config).then((res) => setPriceLists(res.data.data || []));
     axios.get("/api/ppc/resources", config).then((res) => setResources(res.data.data || []));
   }, []);
 
+  // ── Handlers ──────────────────────────────────────────────
   const handleAddItem = (type) => {
     if (type === "item") {
-      if (!selectedItemId) return;
-      const item = apiItems.find((i) => i._id === selectedItemId.value);
+      if (!selectedItemOption) return;
+      const item = selectedItemOption.data;
       if (!item) return;
       if (bomItems.some((i) => i.item === item._id)) return toast.error("Item already added!");
       setBomItems((prev) => [
@@ -66,7 +187,7 @@ export default function BOMPage() {
           total: item.unitPrice ?? 0,
         },
       ]);
-      setSelectedItemId(null);
+      setSelectedItemOption(null);
     } else {
       if (!selectedResourceId) return;
       const res = resources.find((r) => r._id === selectedResourceId.value);
@@ -133,39 +254,15 @@ export default function BOMPage() {
     }
   };
 
-  const productOptions = apiItems.map((i) => ({ value: i._id, label: `${i.itemCode} – ${i.itemName}` }));
   const resourceOptions = resources.map((r) => ({ value: r._id, label: `${r.code} – ${r.name}` }));
-
-  // --- UI Helpers ---
-  const Lbl = ({ text, req }) => (
-    <label className="block text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-      {text}{req && <span className="text-red-500 ml-0.5">*</span>}
-    </label>
-  );
-
-  const fi = "w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all outline-none";
-
-  const SectionCard = ({ icon: Icon, title, subtitle, children, color = "indigo" }) => (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
-      <div className={`flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-${color}-50/40`}>
-        <div className={`w-8 h-8 rounded-lg bg-${color}-100 flex items-center justify-center text-${color}-500`}>
-          <Icon className="text-sm" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-900">{title}</p>
-          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
-        </div>
-      </div>
-      <div className="px-6 py-5">{children}</div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-10">
       <div className="max-w-7xl mx-auto">
-        
-        {/* --- Header --- */}
-        <button onClick={() => router.push("/admin/bom-view")} className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4 hover:text-indigo-800">
+        <button
+          onClick={() => router.push("/admin/bom-view")}
+          className="flex items-center gap-1.5 text-indigo-600 font-semibold text-sm mb-4 hover:text-indigo-800"
+        >
           <FaArrowLeft className="text-xs" /> Back to BOM List
         </button>
 
@@ -174,41 +271,54 @@ export default function BOMPage() {
             <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Bill of Materials</h1>
             <p className="text-sm text-gray-400 mt-0.5">Define production structure and resource requirements</p>
           </div>
-          <button onClick={handleSaveBOM} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">
+          <button
+            onClick={handleSaveBOM}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+          >
             <FaCheck size={12} /> Save BOM Definition
           </button>
         </div>
 
-        {/* --- Parent Product Header --- */}
+        {/* Parent Product Definition */}
         <SectionCard icon={FaBox} title="Parent Product Definition" subtitle="Finished good details" color="indigo">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
             <div className="lg:col-span-2">
               <Lbl text="Finished Good (Product No.)" req />
-              <Select
-                options={productOptions}
-                value={productOptions.find((o) => o.value === productNo) || null}
-                onChange={(selected) => setProductNo(selected?.value || "")}
-                isClearable
+              <ItemAsyncSelect
+                value={selectedItem}
+                onChange={(opt) => {
+                  setProductNo(opt?.value || "");
+                  setSelectedItem(opt);
+                  if (opt?.data) setProductDesc(opt.data.itemName || "");
+                }}
                 placeholder="Search product code..."
-                className="text-sm"
               />
             </div>
             <div className="lg:col-span-2">
               <Lbl text="Product Description" />
-              <input value={productDesc} onChange={(e) => setProductDesc(e.target.value)} className={fi} placeholder="Automatic from item master..." />
+              <input
+                value={productDesc}
+                onChange={(e) => setProductDesc(e.target.value)}
+                className={fi}
+                placeholder="Automatic from item master..."
+              />
             </div>
             <div>
               <Lbl text="Default Warehouse" />
               <select value={warehouse} onChange={(e) => setWarehouse(e.target.value)} className={fi}>
                 <option value="">Select Warehouse</option>
-                {warehouses.map((w) => <option key={w._id} value={w._id}>{w.warehouseCode} – {w.warehouseName}</option>)}
+                {warehouses.map((w) => (
+                  <option key={w._id} value={w._id}>{w.warehouseCode} – {w.warehouseName}</option>
+                ))}
               </select>
             </div>
             <div>
               <Lbl text="Price List Reference" />
               <select value={priceList} onChange={(e) => setPriceList(e.target.value)} className={fi}>
                 <option value="">Select Price List</option>
-                {priceLists.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                {priceLists.map((p) => (
+                  <option key={p._id} value={p._id}>{p.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -226,15 +336,22 @@ export default function BOMPage() {
           </div>
         </SectionCard>
 
-        {/* --- Component Selection Toolbar --- */}
+        {/* Component Selection Toolbar */}
         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-5 flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[250px]">
             <Lbl text="Add Raw Material / Item" />
             <div className="flex gap-2">
               <div className="flex-1">
-                <Select options={productOptions} value={selectedItemId} onChange={setSelectedItemId} isClearable placeholder="Search components..." className="text-sm" />
+                <ItemAsyncSelect
+                  value={selectedItemOption}
+                  onChange={(opt) => setSelectedItemOption(opt)}
+                  placeholder="Search components..."
+                />
               </div>
-              <button onClick={() => handleAddItem("item")} className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-emerald-100 transition-colors">
+              <button
+                onClick={() => handleAddItem("item")}
+                className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-emerald-100 transition-colors"
+              >
                 <FaPlus className="inline mr-1" /> Add
               </button>
             </div>
@@ -243,16 +360,26 @@ export default function BOMPage() {
             <Lbl text="Add Manufacturing Resource" />
             <div className="flex gap-2">
               <div className="flex-1">
-                <Select options={resourceOptions} value={selectedResourceId} onChange={setSelectedResourceId} isClearable placeholder="Search resources..." className="text-sm" />
+                <Select
+                  options={resourceOptions}
+                  value={selectedResourceId}
+                  onChange={setSelectedResourceId}
+                  isClearable
+                  placeholder="Search resources..."
+                  className="text-sm"
+                />
               </div>
-              <button onClick={() => handleAddItem("resource")} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-blue-100 transition-colors">
+              <button
+                onClick={() => handleAddItem("resource")}
+                className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold text-xs hover:bg-blue-100 transition-colors"
+              >
                 <FaPlus className="inline mr-1" /> Add
               </button>
             </div>
           </div>
         </div>
 
-        {/* --- BOM Table --- */}
+        {/* BOM Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
           <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
             <FaListOl className="text-gray-400 text-sm" />
@@ -273,13 +400,25 @@ export default function BOMPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {[...bomItems.map(i => ({ ...i, type: "Item" })), ...bomResources.map(r => ({ ...r, type: "Resource" }))]
-                  .map((item, idx) => (
+                {[
+                  ...bomItems.map((i) => ({ ...i, type: "Item" })),
+                  ...bomResources.map((r) => ({ ...r, type: "Resource" })),
+                ].map((item, idx) => (
                   <tr key={item.item} className="hover:bg-indigo-50/20 transition-colors">
                     <td className="px-4 py-3 text-xs font-bold text-gray-300 font-mono">{idx + 1}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${item.type === 'Item' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                        {item.type === 'Item' ? <FaBox className="inline mr-1" /> : <FaCogs className="inline mr-1" />}
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                          item.type === "Item"
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-blue-50 text-blue-600"
+                        }`}
+                      >
+                        {item.type === "Item" ? (
+                          <FaBox className="inline mr-1" />
+                        ) : (
+                          <FaCogs className="inline mr-1" />
+                        )}
                         {item.type}
                       </span>
                     </td>
@@ -293,7 +432,8 @@ export default function BOMPage() {
                         min={1}
                         value={item.quantity}
                         onChange={(e) => {
-                          if (item.type === "Item") handleQtyChange("item", bomItems.indexOf(item), +e.target.value);
+                          if (item.type === "Item")
+                            handleQtyChange("item", bomItems.indexOf(item), +e.target.value);
                           else handleQtyChange("resource", bomResources.indexOf(item), +e.target.value);
                         }}
                         className="w-full bg-transparent border-b border-gray-200 text-center font-bold text-indigo-600 focus:border-indigo-500 outline-none"
@@ -303,13 +443,16 @@ export default function BOMPage() {
                       <select
                         value={item.warehouse}
                         onChange={(e) => {
-                          if (item.type === "Item") handleWarehouseChange("item", bomItems.indexOf(item), e.target.value);
+                          if (item.type === "Item")
+                            handleWarehouseChange("item", bomItems.indexOf(item), e.target.value);
                           else handleWarehouseChange("resource", bomResources.indexOf(item), e.target.value);
                         }}
                         className="bg-transparent text-xs font-medium text-gray-500 outline-none"
                       >
                         <option value="">Default WH</option>
-                        {warehouses.map((w) => <option key={w._id} value={w._id}>{w.warehouseCode}</option>)}
+                        {warehouses.map((w) => (
+                          <option key={w._id} value={w._id}>{w.warehouseCode}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-gray-500">₹{item.unitPrice.toFixed(2)}</td>
@@ -332,7 +475,7 @@ export default function BOMPage() {
           </div>
         </div>
 
-        {/* --- Summary Bar --- */}
+        {/* Summary Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between bg-indigo-900 rounded-2xl p-6 shadow-xl shadow-indigo-100 text-white">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white/10 rounded-xl">
@@ -340,17 +483,25 @@ export default function BOMPage() {
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Total Production Cost</p>
-              <p className="text-3xl font-black font-mono">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-3xl font-black font-mono">
+                ₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </p>
             </div>
           </div>
           <div className="flex gap-4 mt-4 sm:mt-0">
-             <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Project / Distribution</p>
-                <div className="flex gap-2 mt-1">
-                   <span className="text-xs bg-white/10 px-3 py-1 rounded-lg border border-white/10">{project || 'No Project'}</span>
-                   <span className="text-xs bg-white/10 px-3 py-1 rounded-lg border border-white/10">{distRule || 'No Rule'}</span>
-                </div>
-             </div>
+            <div className="text-right">
+              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">
+                Project / Distribution
+              </p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs bg-white/10 px-3 py-1 rounded-lg border border-white/10">
+                  {project || "No Project"}
+                </span>
+                <span className="text-xs bg-white/10 px-3 py-1 rounded-lg border border-white/10">
+                  {distRule || "No Rule"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -358,12 +509,18 @@ export default function BOMPage() {
   );
 }
 
+// ── Calculator SVG ───────────────────────────────────────────
 const FaCalculator = ({ className }) => (
-  <svg className={className} width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+  <svg
+    className={className}
+    width="20"
+    height="20"
+    fill="currentColor"
+    viewBox="0 0 24 24"
+  >
     <path d="M19,2H5A2,2,0,0,0,3,4V20a2,2,0,0,0,2,2H19a2,2,0,0,0,2,-2V4A2,2,0,0,0,19,2ZM7,7H9V9H7Zm0,4H9v2H7Zm0,4H9v2H7Zm10,2H11V15h6Zm0,-4H15V11h2Zm0,-4H15V7h2Zm0,-4H11V7h6Z" />
   </svg>
 );
-
 
 
 // "use client";

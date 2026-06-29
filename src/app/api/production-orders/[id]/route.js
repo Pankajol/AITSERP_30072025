@@ -1,222 +1,153 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/db";
 import ProductionOrder from "@/models/ProductionOrder";
 import "@/models/CustomerModel";
-import  "@/models/ItemModels";
-import  "@/models/warehouseModels";
-import "@/models/BOM";
-
-
-
-import "@/models/warehouseModels";  
-import "@/models/BOM";
 import "@/models/ItemModels";
+import "@/models/warehouseModels";
+import "@/models/BOM";
+
+import CompanyUser from "@/models/CompanyUser";
+import StockMovement from "@/models/StockMovement";
+import JobCard from "@/models/ppc/JobCardModel";
+import Machine from "@/models/ppc/machineModel";
+import Operation from "@/models/ppc/operationModel";
+import Operator from "@/models/ppc/operatorModel";
+
 import { getTokenFromHeader, verifyJWT } from "@/lib/auth";
-
-
 
 async function authenticate(req) {
   const token = getTokenFromHeader(req);
   if (!token) return { error: "Unauthorized: No token", status: 401 };
-
   try {
     const user = await verifyJWT(token);
-    return { user,};
+    return { user };
   } catch (error) {
     console.error("JWT verification failed:", error.message);
     return { error: "Invalid token", status: 401 };
   }
 }
 
-// GET /api/production-orders/[id]
-// export async function GET(req, { params }) {
-//   await connectDB();
-
-//   const { user, error, status } = await authenticate(req);
-//   if (error) return NextResponse.json({ error }, { status });
-
-//   try {
-//     const { id } = await params;
-//     const order = await ProductionOrder.findById(id)
-//       .populate('warehouse', 'warehouseName')
-//       .populate('items.warehouse', 'warehouseName')
-//       .populate({
-//         path: 'bomId',
-//         populate: {
-//           path: 'productNo', // populate the productNo inside bomId
-//           select: 'itemCode itemName',
-//         },
-//         select: 'productNo productDesc', // fields in BOM
-//       })
-//       .populate('items','managedBy')
-//       .populate({
-//   path: 'items.item',
-//   select: 'unitPrice itemName itemCode',
-// });
-
-
-//       // .populate("items.itemId")
-//       // .populate("items.warehouse")
-//       // .populate("createdBy", "name")
-//       // .lean();
-
-//     if (!order) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
-//     console.log("Fetched order:", order);
-
-//     if (String(order.companyId) !== String(user.companyId)) {
-//       return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
-//     }
-
-//     return NextResponse.json(order, { status: 200 });
-//   } catch (err) {
-//     console.error("GET production order error:", err.message);
-//     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-//   }
-// }
-
+function getCompanyId(user) {
+  if (user.companyId) return user.companyId;
+  if (user.type === "company") return user.id || user._id;
+  return user.company || null;
+}
 
 export async function GET(req, { params }) {
   await connectDB();
-
-  // ---- Auth ----
   const { user, error, status } = await authenticate(req);
   if (error) return NextResponse.json({ error }, { status });
 
+  const companyId = getCompanyId(user);
+  if (!companyId) return NextResponse.json({ error: "Company ID missing" }, { status: 400 });
+
   try {
-    const { id } = params; // Correct — NO await
+    const { id } = await params;   // await in App Router
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json(
-        { error: "Production order ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // ---- Query with populate ----
-    const order = await ProductionOrder.findById(id)
-      .populate("warehouse", "warehouseName")
-
-      .populate("items.warehouse", "warehouseName")
-
+    const order = await ProductionOrder.findOne({ _id: id, companyId })
+      .populate("warehouse", "warehouseName name")
+      .populate("items.warehouse", "warehouseName name")
       .populate({
         path: "bomId",
-        populate: {
-          path: "productNo",
-          select: "itemCode itemName",
-        },
+        populate: { path: "productNo", select: "itemCode itemName" },
         select: "productNo productDesc",
       })
-
-      .populate({
-        path: "items.item",
-        select: "unitPrice itemName itemCode",
-      })
+      .populate("items.item", "unitPrice itemName itemCode")
       .populate("operationFlow.operation")
-.populate("operationFlow.machine")
-.populate("operationFlow.operator")
+      .populate("operationFlow.machine")
+      .populate("operationFlow.operator")
+      .lean();
 
-      .lean(); // IMPORTANT: convert mongoose document → plain JSON
-
-    if (!order) {
-      return NextResponse.json(
-        { error: "Production order not found" },
-        { status: 404 }
-      );
-    }
-
-    // ---- Company Authorization ----
-    if (String(order.companyId) !== String(user.companyId)) {
-      return NextResponse.json(
-        { error: "Unauthorized access to this order" },
-        { status: 403 }
-      );
-    }
+    if (!order) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
 
     return NextResponse.json(order, { status: 200 });
-
   } catch (err) {
-    console.error("GET /production-orders/[id] ERROR:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("GET production-order error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-
-
-// PUT /api/production-orders/[id]
 export async function PUT(req, { params }) {
   await connectDB();
-
   const { user, error, status } = await authenticate(req);
   if (error) return NextResponse.json({ error }, { status });
 
+  const companyId = getCompanyId(user);
+  if (!companyId) return NextResponse.json({ error: "Company ID missing" }, { status: 400 });
+
   try {
-    const existingOrder = await ProductionOrder.findById(params.id);
-
-    if (!existingOrder) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
-
-    if (String(existingOrder.companyId) !== String(user.companyId)) {
-      return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
-    }
+    const { id } = await params;
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const body = await req.json();
 
-    if (body.transferQty !== undefined) {
-      if (body.transferQty > existingOrder.pendingQty) {
-        return NextResponse.json({ error: "Transfer quantity exceeds pending quantity" }, { status: 400 });
-      }
-
-      existingOrder.transferredQty += body.transferQty;
-      existingOrder.pendingQty -= body.transferQty;
-
-      if (existingOrder.pendingQty === 0) {
-        existingOrder.status = "Completed";
-      }
-
-      await existingOrder.save();
-      return NextResponse.json({ message: "Transfer quantity updated", order: existingOrder }, { status: 200 });
+    // 🔧 Sanitise: convert empty warehouse strings to null for items and resources
+    if (body.items && Array.isArray(body.items)) {
+      body.items = body.items.map((item) => ({
+        ...item,
+        warehouse: item.warehouse && item.warehouse !== "" ? item.warehouse : null,
+      }));
     }
+    if (body.resources && Array.isArray(body.resources)) {
+      body.resources = body.resources.map((res) => ({
+        ...res,
+        warehouse: res.warehouse && res.warehouse !== "" ? res.warehouse : null,
+      }));
+    }
+    // Also sanitise top-level warehouse
+    if (body.warehouse === "") body.warehouse = null;
 
-    const updatedOrder = await ProductionOrder.findByIdAndUpdate(
-      params.id,
-      { ...body, updatedBy: user._id },
-      { new: true }
-    );
+    // Remove fields that shouldn't be updated
+    delete body.companyId;
+    delete body._id;
+    delete body.createdAt;
+    delete body.updatedAt;
 
-    return NextResponse.json({ message: "Production order updated", order: updatedOrder }, { status: 200 });
+    const updatedOrder = await ProductionOrder.findOneAndUpdate(
+      { _id: id, companyId },
+      { $set: body },
+      { new: true, runValidators: true }
+    )
+      .populate("warehouse", "warehouseName name")
+      .populate("items.warehouse", "warehouseName name")
+      .populate({
+        path: "bomId",
+        populate: { path: "productNo", select: "itemCode itemName" },
+        select: "productNo productDesc",
+      })
+      .populate("items.item", "unitPrice itemName itemCode")
+      .populate("operationFlow.operation")
+      .populate("operationFlow.machine")
+      .populate("operationFlow.operator")
+      .lean();
+
+    if (!updatedOrder) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    return NextResponse.json(updatedOrder, { status: 200 });
   } catch (err) {
-    console.error("PUT production order error:", err.message);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("PUT production-order error:", err);
+    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
   }
 }
-
-// DELETE /api/production-orders/[id]
 export async function DELETE(req, { params }) {
   await connectDB();
-
   const { user, error, status } = await authenticate(req);
   if (error) return NextResponse.json({ error }, { status });
 
+  const companyId = getCompanyId(user);
+  if (!companyId) return NextResponse.json({ error: "Company ID missing" }, { status: 400 });
+
   try {
-    const existingOrder = await ProductionOrder.findById(params.id);
-    if (!existingOrder) return NextResponse.json({ error: "Production order not found" }, { status: 404 });
-
-    if (String(existingOrder.companyId) !== String(user.companyId)) {
-      return NextResponse.json({ error: "Unauthorized access" }, { status: 403 });
-    }
-
-    await ProductionOrder.findByIdAndDelete(params.id);
-    return NextResponse.json({ message: "Production order deleted successfully" }, { status: 200 });
+    const { id } = await params;
+    const deleted = await ProductionOrder.findOneAndDelete({ _id: id, companyId });
+    if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ message: "Deleted" }, { status: 200 });
   } catch (err) {
-    console.error("DELETE production order error:", err.message);
+    console.error("DELETE production-order error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
 
 
 

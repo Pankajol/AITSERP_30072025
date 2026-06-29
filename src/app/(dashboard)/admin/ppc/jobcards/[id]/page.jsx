@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import axios from "axios";
 import {
   Play,
@@ -9,11 +10,19 @@ import {
   Save,
   ArrowLeft,
   Clock,
+  Gauge,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Search,
+  Timer,
   Car,
 } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
-// import "react-toastify/dist/ReactToastify.css"; // Removed this line to fix the build error
+import "react-toastify/dist/ReactToastify.css";
 
+/* ─── Helpers ──────────────────────────────────────────── */
 const formatTime = (seconds) => {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -24,125 +33,209 @@ const formatTime = (seconds) => {
 };
 
 const formatDateTime = (date) =>
-  date ? new Date(date).toLocaleString("en-IN") : "-";
+  date ? new Date(date).toLocaleString("en-IN") : "—";
 
-export default function JobCardPage() {
-  const [productionOrderId, setProductionOrderId] = useState("");
+/* ─── Wrapper ─────────────────────────────────────────── */
+export default function JobCardWorkflowWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#f4f6f9] flex items-center justify-center">
+          <Activity className="animate-spin h-10 w-10 text-sky-600" />
+        </div>
+      }
+    >
+      <JobCardWorkflowPage />
+    </Suspense>
+  );
+}
+
+function JobCardWorkflowPage() {
+  const searchParams = useSearchParams();
+  const productionOrderId = searchParams.get("productionOrderId");
+  const router = useRouter();
+
+  const [token, setToken] = useState(null);
   const [jobCards, setJobCards] = useState([]);
   const [editableData, setEditableData] = useState({});
   const [timers, setTimers] = useState({});
   const [loading, setLoading] = useState(true);
+  const [actionState, setActionState] = useState({}); // { id: 'starting' | 'pausing' | 'completing' | 'saving' }
+  const [expandedIds, setExpandedIds] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+
   const intervalRefs = useRef({});
 
-  // Fetch Production Order ID
+  // ── Token ─────────────────────────────────────────────
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setProductionOrderId(params.get("productionOrderId") || "");
+    const tk = localStorage.getItem("token");
+    if (tk) setToken(tk);
   }, []);
 
-  // Fetch Job Cards (with AbortController for safety)
+  // ── Fetch Job Cards ──────────────────────────────────
   useEffect(() => {
-    if (!productionOrderId) return;
-
+    if (!productionOrderId || !token) return;
     const controller = new AbortController();
     const signal = controller.signal;
 
     const fetchData = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem("token");
         const res = await axios.get(
           `/api/ppc/jobcards?productionOrderId=${productionOrderId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: signal, // Pass signal to axios
-          }
+          { headers: { Authorization: `Bearer ${token}` }, signal }
         );
         const cards = res.data?.data || [];
         setJobCards(cards);
 
         const initEditable = {};
         const initTimers = {};
+        const initExpanded = {};
         cards.forEach((jc) => {
           initEditable[jc._id] = {
             completedQty: jc.completedQty || 0,
             status: jc.status || "planned",
-            actualStartDate: jc.actualStartDate
-              ? new Date(jc.actualStartDate)
-              : null,
-            actualEndDate: jc.actualEndDate
-              ? new Date(jc.actualEndDate)
-              : null,
-              expectedStartDate: jc.expectedStartDate
-              ? new Date(jc.expectedStartDate)
-              : null,
-              expectedEndDate: jc.expectedEndDate
-              ? new Date(jc.expectedEndDate)
-              : null,
+            actualStartDate: jc.actualStartDate ? new Date(jc.actualStartDate) : null,
+            actualEndDate: jc.actualEndDate ? new Date(jc.actualEndDate) : null,
+            expectedStartDate: jc.expectedStartDate ? new Date(jc.expectedStartDate) : null,
+            expectedEndDate: jc.expectedEndDate ? new Date(jc.expectedEndDate) : null,
           };
-          // IMPORTANT: Set running state from fetch
           initTimers[jc._id] = {
             seconds: Number(jc.totalDuration) || 0,
             running: jc.status === "in progress",
           };
+          initExpanded[jc._id] = false;
         });
         setEditableData(initEditable);
         setTimers(initTimers);
+        setExpandedIds(initExpanded);
       } catch (err) {
-        if (err.name === "CanceledError") {
-          // console.log('Fetch canceled');
-        } else {
-          toast.error("Failed to fetch job cards");
-        }
+        if (err.name !== "CanceledError") toast.error("Failed to fetch job cards");
       } finally {
-        if (!signal.aborted) {
-          setLoading(false);
-        }
+        if (!signal.aborted) setLoading(false);
       }
     };
 
     fetchData();
+    return () => controller.abort();
+  }, [productionOrderId, token]);
 
-    // Cleanup function
-    return () => {
-      controller.abort(); // Abort fetch on unmount/re-run
-    };
-  }, [productionOrderId]);
-
-  // ---- NEW: Central Timer Management Effect ----
-  // This useEffect is now the *only* place timers are created or destroyed.
+  // ── Timer effect ──────────────────────────────────────
   useEffect(() => {
     Object.keys(timers).forEach((id) => {
-      const timer = timers[id];
-
-      // Case 1: Timer should be running, but has no interval.
-      if (timer.running && !intervalRefs.current[id]) {
+      const t = timers[id];
+      if (t.running && !intervalRefs.current[id]) {
         intervalRefs.current[id] = setInterval(() => {
           setTimers((prev) => {
-            // Check 'running' state *inside* the updater to be safe
             if (prev[id]?.running) {
-              return {
-                ...prev,
-                [id]: { ...prev[id], seconds: (prev[id].seconds || 0) + 1 },
-              };
+              return { ...prev, [id]: { ...prev[id], seconds: (prev[id].seconds || 0) + 1 } };
             }
             return prev;
           });
         }, 1000);
-      }
-      // Case 2: Timer should be stopped, but has an interval.
-      else if (!timer.running && intervalRefs.current[id]) {
+      } else if (!t.running && intervalRefs.current[id]) {
         clearInterval(intervalRefs.current[id]);
         delete intervalRefs.current[id];
       }
     });
-
-    // Cleanup: Clear all intervals on unmount
     return () => {
       Object.values(intervalRefs.current).forEach(clearInterval);
       intervalRefs.current = {};
     };
-  }, [timers]); // This effect re-runs whenever the 'timers' state changes
+  }, [timers]);
+
+  // ─── API helpers (all use query params) ───────────────
+  const updateJobCard = async (id, payload) => {
+    try {
+      const res = await axios.put(`/api/ppc/jobcards?id=${id}`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setJobCards((prev) => prev.map((j) => (j._id === id ? res.data.data : j)));
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Update failed");
+    }
+  };
+
+  const startJob = async (id) => {
+    try {
+      setActionState((prev) => ({ ...prev, [id]: "starting" }));
+      await axios.patch(`/api/ppc/jobcards?id=${id}&action=start`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const now = new Date();
+      handleDataChange(id, "status", "in progress");
+      if (!editableData[id]?.actualStartDate) handleDataChange(id, "actualStartDate", now);
+      setTimers((prev) => ({ ...prev, [id]: { ...prev[id], running: true } }));
+      toast.success("Started");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Start failed");
+    } finally {
+      setActionState((prev) => ({ ...prev, [id]: undefined }));
+    }
+  };
+
+  const pauseJob = async (id) => {
+    try {
+      setActionState((prev) => ({ ...prev, [id]: "pausing" }));
+      const now = new Date();
+      handleDataChange(id, "status", "on_hold");
+      handleDataChange(id, "actualEndDate", now);
+      setTimers((prev) => ({ ...prev, [id]: { ...prev[id], running: false } }));
+      await updateJobCard(id, {
+        status: "on_hold",
+        actualEndDate: now,
+        totalDuration: timers[id]?.seconds || 0,
+      });
+      toast.warn("Paused");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Pause failed");
+    } finally {
+      setActionState((prev) => ({ ...prev, [id]: undefined }));
+    }
+  };
+
+  const saveProgress = async (id, allowedQty) => {
+    const data = editableData[id];
+    if (data.completedQty > allowedQty) {
+      toast.error(`Cannot exceed allowed quantity (${allowedQty})`);
+      return;
+    }
+    try {
+      setActionState((prev) => ({ ...prev, [id]: "saving" }));
+      await updateJobCard(id, {
+        completedQty: data.completedQty,
+        totalDuration: timers[id]?.seconds || 0,
+      });
+      toast.success("Saved");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Save failed");
+    } finally {
+      setActionState((prev) => ({ ...prev, [id]: undefined }));
+    }
+  };
+
+  const completeJob = async (id, allowedQty) => {
+    const data = editableData[id];
+    if (data.completedQty > allowedQty) {
+      toast.error(`Cannot exceed allowed quantity (${allowedQty})`);
+      return;
+    }
+    try {
+      setActionState((prev) => ({ ...prev, [id]: "completing" }));
+      setTimers((prev) => ({ ...prev, [id]: { ...prev[id], running: false } }));
+      handleDataChange(id, "status", "completed");
+      await updateJobCard(id, {
+        completedQty: data.completedQty,
+        status: "completed",
+        totalDuration: timers[id]?.seconds || 0,
+      });
+      toast.success("Completed");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Complete failed");
+    } finally {
+      setActionState((prev) => ({ ...prev, [id]: undefined }));
+    }
+  };
 
   const handleDataChange = (id, field, value) => {
     setEditableData((prev) => ({
@@ -151,344 +244,290 @@ export default function JobCardPage() {
     }));
   };
 
-  const updateJobCard = async (id, payload) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.put(`/api/ppc/jobcards/${id}`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setJobCards((prev) =>
-        prev.map((jc) => (jc._id === id ? res.data.data : jc))
-      );
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Update failed!");
-    }
+  const toggleExpand = (id) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Start or Resume
-  const handleStart = (id) => {
-    const now = new Date();
+  // ── Filter cards ──────────────────────────────────────
+  const filteredCards = jobCards.filter((jc) =>
+    [jc.jobCardNo, jc.operation?.name, jc.machine?.name, jc.operator?.name]
+      .some((s) => (s || "").toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
-    // Don’t trigger if already running
-    if (timers[id]?.running) {
-      toast.info("Already running!");
-      return;
-    }
-
-    // 1. Update local data state
-    handleDataChange(id, "status", "in progress");
-    if (!editableData[id]?.actualStartDate) {
-      handleDataChange(id, "actualStartDate", now);
-    }
-
-    // 2. Set 'running' to true. This triggers the useEffect.
-    setTimers((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], running: true },
-    }));
-
-    // 3. Update database
-    updateJobCard(id, {
-      status: "in progress",
-      actualStartDate: editableData[id]?.actualStartDate || now,
-    });
-    toast.info("Started / Resumed!");
-  };
-
-  // Pause
-  const handleStop = (id) => {
-    const now = new Date();
-
-    // Check if it's even running
-    if (!timers[id]?.running) {
-      return; // Do nothing if already stopped
-    }
-
-    // 1. Update local data state
-    handleDataChange(id, "status", "on_hold");
-    handleDataChange(id, "actualEndDate", now);
-
-    // 2. Set 'running' to false. This triggers the useEffect.
-    setTimers((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], running: false },
-    }));
-
-    // 3. Update database
-    updateJobCard(id, {
-      status: "on_hold",
-      actualEndDate: now,
-      totalDuration: timers[id]?.seconds || 0,
-    });
-    toast.warn("Paused!");
-  };
-
-  const handleUpdate = (id, allowedQty) => {
-    const data = editableData[id];
-
-    if (data.completedQty > allowedQty) {
-      toast.error(`Completed Qty cannot exceed Allowed Qty (${allowedQty})`);
-      return;
-    }
-
-    updateJobCard(id, {
-      ...data,
-      totalDuration: timers[id]?.seconds || 0,
-    });
-    toast.success("Saved!");
-  };
-
-  const handleComplete = (id, allowedQty) => {
-    const data = editableData[id];
-
-    if (data.completedQty > allowedQty) {
-      toast.error(`Completed Qty cannot exceed Allowed Qty (${allowedQty})`);
-      return;
-    }
-
-    // 1. Set 'running' to false. This triggers the useEffect to stop the timer.
-    setTimers((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], running: false },
-    }));
-
-    // 2. Update database
-    updateJobCard(id, {
-      ...data,
-      status: "completed",
-      totalDuration: timers[id]?.seconds || 0,
-    });
-
-    // 3. Update local data state
-    handleDataChange(id, "status", "completed");
-    toast.success("Completed!");
-  };
-
-  const StatusBadge = ({ status }) => {
-    const styles = {
-      planned: "bg-gray-200 text-gray-800",
-      "in progress": "bg-blue-200 text-blue-800 animate-pulse",
-      on_hold: "bg-yellow-200 text-yellow-800",
-      completed: "bg-green-200 text-green-800",
-    };
+  // ── Loading state ─────────────────────────────────────
+  if (loading) {
     return (
-      <span
-        className={`px-3 py-1 text-sm font-medium rounded-full ${
-          styles[status] || styles.planned
-        }`}
-      >
-        {status}{" "}
-      </span>
+      <div className="min-h-screen bg-[#f4f6f9] flex items-center justify-center">
+        <Activity className="animate-spin h-10 w-10 text-sky-600" />
+      </div>
     );
-  };
-
-  if (loading)
-    return <div className="p-6 text-center text-gray-600">Loading...</div>;
+  }
 
   return (
-    <>
-      <ToastContainer />
-      <div className="p-4 md-p-6 bg-gray-50 min-h-screen">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Car size={32} /> Job Card Workflow
-            </h2>
+    <div className="min-h-screen bg-[#f4f6f9] py-8 px-4 sm:px-10">
+      <ToastContainer position="bottom-right" theme="colored" />
+      <div className="max-w-5xl mx-auto">
+        {/* ── Header ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() =>
-                (window.location.href = "/admin/ppc/production-orders")
-              }
-              className="bg-white border px-4 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+              onClick={() => router.back()}
+              className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:text-sky-600 hover:border-sky-200 transition-all shadow-sm"
             >
-              <ArrowLeft size={16} /> Back
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
+                <Layers className="h-6 w-6 text-sky-600" />
+                Job Card Workflow
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Live production tracking &amp; control
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="text"
+                className="pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-50 outline-none w-64 transition-all"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={() => router.push(`/admin/ppc/jobcards/jobcardlists?productionOrderId=${productionOrderId}`)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 text-white font-bold text-sm hover:bg-sky-700 shadow-lg shadow-sky-100 transition-all"
+            >
+              <Layers className="h-4 w-4" />
+              List View
             </button>
           </div>
+        </div>
 
-          <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-            {jobCards.map((jc, idx) => {
+        {/* ── Workflow Cards ── */}
+        <div className="space-y-5">
+          {filteredCards.length === 0 ? (
+            <div className="bg-white rounded-2xl p-12 shadow-sm text-center">
+              <Gauge className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+              <p className="text-sm font-medium text-gray-500">No job cards found</p>
+              <p className="text-xs text-gray-400 mt-1">Adjust your search.</p>
+            </div>
+          ) : (
+            filteredCards.map((jc, idx) => {
               const data = editableData[jc._id] || {};
               const timer = timers[jc._id] || { seconds: 0, running: false };
+              const isExpanded = expandedIds[jc._id] || false;
+              const isStarting = actionState[jc._id] === "starting";
+              const isPausing = actionState[jc._id] === "pausing";
+              const isSaving = actionState[jc._id] === "saving";
+              const isCompleting = actionState[jc._id] === "completing";
 
-              // --- Updated Dependency Logic (Partial Completion) ---
-              let allowedQty = 0;
-              let isCardActive = false;
-              let isPrevCardStarted = false; // For dimming logic
-
+              // Dependency logic
+              let allowedQty = 0,
+                isCardActive = false,
+                isPrevCardStarted = false;
               if (idx === 0) {
-                // First card is always active (unless completed)
                 allowedQty = jc.qtyToManufacture;
                 isCardActive = data.status !== "completed";
-                isPrevCardStarted = true; // Always allow first card
+                isPrevCardStarted = true;
               } else {
-                // Subsequent cards
-                const prevCardData = editableData[jobCards[idx - 1]._id] || {};
-                const prevCardCompletedQty = prevCardData.completedQty || 0;
-
-                // This card's allowed qty is the previous card's completed qty
-                allowedQty = prevCardCompletedQty;
-
-                // *** THIS IS THE KEY CHANGE ***
-                // Activate if the previous card has completed ANY quantity (> 0)
-                isPrevCardStarted = prevCardCompletedQty > 0;
-
-                // This card is active if the previous one has started AND this one isn't complete
+                const prevData = editableData[jobCards[idx - 1]._id] || {};
+                const prevDone = prevData.completedQty || 0;
+                allowedQty = prevDone;
+                isPrevCardStarted = prevDone > 0;
                 isCardActive = isPrevCardStarted && data.status !== "completed";
               }
-              // --- End Updated Logic ---
 
               const progressPercent = Math.min(
                 ((data.completedQty || 0) / (allowedQty || 1)) * 100,
                 100
               );
-              let progressColor = "bg-red-500";
-              if (progressPercent > 0 && progressPercent < 100)
-                progressColor = "bg-yellow-400";
-              if (progressPercent >= 100) progressColor = "bg-green-500";
+              const progressColor =
+                progressPercent >= 100
+                  ? "bg-emerald-500"
+                  : progressPercent > 0
+                  ? "bg-amber-500"
+                  : "bg-gray-300";
 
               return (
                 <div
                   key={jc._id}
-                  className={`bg-white rounded-xl shadow-md overflow-hidden transition-opacity ${
-                    !isPrevCardStarted && idx > 0 // Dim if previous card hasn't started
-                      ? "opacity-60 bg-gray-50"
-                      : ""
+                  className={`bg-white rounded-2xl border border-gray-100 shadow-sm transition-all ${
+                    !isPrevCardStarted && idx > 0 ? "opacity-60 pointer-events-none" : ""
                   }`}
                 >
-                  <div className="p-4 flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold">
-                        {idx + 1}. {jc.operation?.name || "N/A"}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        Machine: {jc.machine?.name || "N/A"} | Operator:{" "}
-                        {jc.operator?.name || "N/A"}
-                      </p>
-                      <p className="text-sm text-gray-400 mt-1">
-                        Start: {formatDateTime(data.actualStartDate)} | End:{" "}
-                        {formatDateTime(data.actualEndDate)}
-                      </p>
+                  {/* Header */}
+                  <div
+                    onClick={() => toggleExpand(jc._id)}
+                    className="flex items-center justify-between p-5 cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="relative w-12 h-12 rounded-full bg-gradient-to-br from-sky-100 to-sky-200 flex items-center justify-center text-sky-700 font-extrabold text-sm">
+                        {idx + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 truncate">
+                          {jc.operation?.name || "Unnamed"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {jc.machine?.name || "—"} &middot; {jc.operator?.name || "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                      {timer.running && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded-full">
+                          <Timer className="h-3.5 w-3.5" />
+                          {formatTime(timer.seconds)}
+                        </span>
+                      )}
+                      {isExpanded ? (
+                        <ChevronUp className="h-5 w-5 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
 
-                          <p className="text-sm text-gray-400 mt-1">
-                        Expected Start Date: {formatDateTime(data.expectedStartDate)} | Expected  End Date:{" "}
-                        {formatDateTime(data.expectedEndDate)}
-                      </p>
-
-                      <div className="relative w-full bg-gray-300 h-3 rounded-full mt-3 overflow-visible">
-                        <div
-                          className={`${progressColor} h-3 rounded-full transition-all duration-500 relative`}
-                          style={{ width: `${progressPercent}%` }}
-                        >
-                          <div className="absolute -top-[6px] right-[-5px] ">
-                            <Car size={22} className="text-gray-700  " />
+                  {/* Expandable section */}
+                  <div
+                    className={`transition-all duration-300 ease-in-out ${
+                      isExpanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+                    }`}
+                  >
+                    <div className="px-5 pb-5 border-t border-gray-100 pt-4 space-y-5">
+                      {/* Progress bar with car icon */}
+                      <div>
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Progress</span>
+                          <span className="font-bold">{progressPercent}%</span>
+                        </div>
+                        <div className="relative w-full bg-gray-200 h-4 rounded-full overflow-visible">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 relative ${progressColor}`}
+                            style={{ width: `${progressPercent}%` }}
+                          >
+                            {progressPercent > 0 && (
+                              <div className="absolute -top-1.5 right-0 transform translate-x-1/2">
+                                <Car className="h-5 w-5 text-gray-700 drop-shadow" />
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <StatusBadge status={data.status || jc.status} />
-                  </div>
 
-                  <div className="p-4 border-t grid grid-cols-1 sm:grid-cols-5 gap-4 items-center">
-                    <div>
-                      <p className="text-sm text-gray-500">To Manufacture</p>
-                      <p className="font-semibold">{jc.qtyToManufacture}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Allowed Qty</p>
-                      <p className="font-semibold text-blue-700">
-                        {allowedQty}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Completed Qty</p>
-                      <input
-                        type="number"
-                        value={data.completedQty}
-                        disabled={!isCardActive}
-                        onChange={(e) =>
-                          handleDataChange(
-                            jc._id,
-                            "completedQty",
-                            Number(e.target.value)
-                          )
-                        }
-                        className={`mt-1 border rounded-md px-2 py-1 w-full ${
-                          !isCardActive
-                            ? "bg-gray-100 cursor-not-allowed"
-                            : ""
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Total Duration</p>
-                      <div className="flex items-center gap-1 text-blue-600 font-semibold">
-                        <Clock size={16} /> {formatTime(timer.seconds)}
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-400">To Manufacture</span>
+                          <p className="font-bold text-gray-900">{jc.qtyToManufacture}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Allowed Qty</span>
+                          <p className="font-bold text-sky-600">{allowedQty}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Completed</span>
+                          <p className="font-bold text-gray-900">{data.completedQty || 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Duration</span>
+                          <p className="font-bold text-gray-900 flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatTime(timer.seconds)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => handleStart(jc._id)}
-                        disabled={
-                          !isCardActive ||
-                          data.status === "completed" ||
-                          timer.running
-                        }
-                        className={`bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 flex items-center gap-1 ${
-                          !isCardActive ||
-                          data.status === "completed" ||
-                          timer.running
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        <Play size={16} />{" "}
-                        {timer.running ? "Running" : "Start / Resume"}
-                      </button>
-                      <button
-                        onClick={() => handleStop(jc._id)}
-                        disabled={!timer.running}
-                        className={`bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 flex items-center gap-1 ${
-                          !timer.running
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        <Square size={16} /> Stop
-                      </button>
-                      <button
-                        onClick={() => handleUpdate(jc._id, allowedQty)}
-                        disabled={!isCardActive || data.status === "completed"}
-                        className={`bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 flex items-center gap-1 ${
-                          !isCardActive || data.status === "completed"
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        <Save size={16} /> Save
-                      </button>
-                      <button
-                        onClick={() => handleComplete(jc._id, allowedQty)}
-                        disabled={!isCardActive || data.status === "completed"}
-                        className={`bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 flex items-center gap-1 ${
-                          !isCardActive || data.status === "completed"
-                            ? "opacity-5B0 cursor-not-allowed"
-                            : ""
-                        }`}
-                      >
-                        <Check size={16} /> Complete
-                      </button>
+
+                      {/* Editable quantity input */}
+                      <div>
+                        <input
+                          type="number"
+                          min={0}
+                          max={allowedQty}
+                          value={data.completedQty}
+                          disabled={!isCardActive}
+                          onChange={(e) =>
+                            handleDataChange(jc._id, "completedQty", Number(e.target.value))
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-bold focus:border-sky-500 focus:ring-2 focus:ring-sky-50 outline-none disabled:bg-gray-100 transition-all"
+                          placeholder="Enter completed quantity"
+                        />
+                      </div>
+
+                      {/* Dates */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <span className="text-gray-400">Started</span>
+                          <p className="font-medium">{formatDateTime(data.actualStartDate)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Ended</span>
+                          <p className="font-medium">{formatDateTime(data.actualEndDate)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Expected Start</span>
+                          <p className="font-medium">{formatDateTime(data.expectedStartDate)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Expected End</span>
+                          <p className="font-medium">{formatDateTime(data.expectedEndDate)}</p>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          onClick={() => startJob(jc._id)}
+                          disabled={!isCardActive || data.status === "completed" || timer.running || isStarting}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 disabled:opacity-50 transition-all"
+                        >
+                          {isStarting ? (
+                            <Activity className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                          {timer.running ? "Running" : "Start"}
+                        </button>
+                        <button
+                          onClick={() => pauseJob(jc._id)}
+                          disabled={!timer.running || isPausing}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-50 transition-all"
+                        >
+                          {isPausing ? <Activity className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+                          Pause
+                        </button>
+                        <button
+                          onClick={() => saveProgress(jc._id, allowedQty)}
+                          disabled={!isCardActive || data.status === "completed" || isSaving}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 transition-all"
+                        >
+                          {isSaving ? <Activity className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                          Save
+                        </button>
+                        <button
+                          onClick={() => completeJob(jc._id, allowedQty)}
+                          disabled={!isCardActive || data.status === "completed" || isCompleting}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 transition-all"
+                        >
+                          {isCompleting ? <Activity className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          Complete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               );
-            })}
-          </div>
+            })
+          )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
-
-
 
 // "use client";
 
